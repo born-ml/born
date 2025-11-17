@@ -1,9 +1,13 @@
 # Born - Production-Ready ML for Go
 
 [![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Reference](https://pkg.go.dev/badge/github.com/born-ml/born.svg)](https://pkg.go.dev/github.com/born-ml/born)
+[![Go Report Card](https://goreportcard.com/badge/github.com/born-ml/born)](https://goreportcard.com/report/github.com/born-ml/born)
+[![Pure Go](https://img.shields.io/badge/100%25-Pure_Go-00ADD8)](https://golang.org/)
 [![Release](https://img.shields.io/github/v/release/born-ml/born?include_prereleases&label=version)](https://github.com/born-ml/born/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Pure Go](https://img.shields.io/badge/100%25-Pure_Go-00ADD8)](https://golang.org/)
+[![Test Status](https://github.com/born-ml/born/actions/workflows/test.yml/badge.svg)](https://github.com/born-ml/born/actions/workflows/test.yml)
+[![Codecov](https://codecov.io/gh/born-ml/born/branch/main/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/born-ml/born)
 
 > **"Models are born production-ready"**
 
