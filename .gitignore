@@ -84,8 +84,7 @@ cpu.prof
 mem.prof
 *.trace
 
-# Go module cache
-go.sum
+# Go module cache (go.sum MUST be committed!)
 
 # Compiled Object files
 *.o
