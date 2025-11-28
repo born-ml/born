@@ -5,33 +5,48 @@ import (
 )
 
 // Add performs element-wise addition on GPU.
-// TODO: Implement WGSL compute shader for addition.
-func (b *Backend) Add(_, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Add not implemented yet - see TASK-009")
+func (b *Backend) Add(a, other *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runBinaryOp(a, other, "add", addShader)
+	if err != nil {
+		panic("webgpu: Add: " + err.Error())
+	}
+	return result
 }
 
 // Sub performs element-wise subtraction on GPU.
-// TODO: Implement WGSL compute shader for subtraction.
-func (b *Backend) Sub(_, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Sub not implemented yet - see TASK-009")
+func (b *Backend) Sub(a, other *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runBinaryOp(a, other, "sub", subShader)
+	if err != nil {
+		panic("webgpu: Sub: " + err.Error())
+	}
+	return result
 }
 
 // Mul performs element-wise multiplication on GPU.
-// TODO: Implement WGSL compute shader for multiplication.
-func (b *Backend) Mul(_, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Mul not implemented yet - see TASK-009")
+func (b *Backend) Mul(a, other *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runBinaryOp(a, other, "mul", mulShader)
+	if err != nil {
+		panic("webgpu: Mul: " + err.Error())
+	}
+	return result
 }
 
 // Div performs element-wise division on GPU.
-// TODO: Implement WGSL compute shader for division.
-func (b *Backend) Div(_, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: Div not implemented yet - see TASK-009")
+func (b *Backend) Div(a, other *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runBinaryOp(a, other, "div", divShader)
+	if err != nil {
+		panic("webgpu: Div: " + err.Error())
+	}
+	return result
 }
 
 // MatMul performs matrix multiplication on GPU.
-// TODO: Implement WGSL compute shader for matmul.
-func (b *Backend) MatMul(_, _ *tensor.RawTensor) *tensor.RawTensor {
-	panic("webgpu: MatMul not implemented yet - see TASK-009")
+func (b *Backend) MatMul(a, other *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runMatMul(a, other)
+	if err != nil {
+		panic("webgpu: MatMul: " + err.Error())
+	}
+	return result
 }
 
 // Conv2D performs 2D convolution on GPU.
@@ -69,7 +84,19 @@ func (b *Backend) Reshape(t *tensor.RawTensor, newShape tensor.Shape) *tensor.Ra
 }
 
 // Transpose transposes the tensor by permuting its dimensions.
-// TODO: Implement WGSL compute shader for transpose.
-func (b *Backend) Transpose(_ *tensor.RawTensor, _ ...int) *tensor.RawTensor {
-	panic("webgpu: Transpose not implemented yet - see TASK-009")
+// Currently supports only 2D tensors (matrix transpose).
+// For multi-dimensional transpose with custom axes, use the general case (TODO).
+func (b *Backend) Transpose(t *tensor.RawTensor, axes ...int) *tensor.RawTensor {
+	// Simple 2D transpose
+	if len(t.Shape()) == 2 && len(axes) == 0 {
+		result, err := b.runTranspose(t)
+		if err != nil {
+			panic("webgpu: Transpose: " + err.Error())
+		}
+		return result
+	}
+
+	// General multi-dimensional transpose (TODO: implement on GPU)
+	// For now, fall back to CPU implementation
+	panic("webgpu: multi-dimensional transpose not implemented yet - only 2D is supported")
 }
