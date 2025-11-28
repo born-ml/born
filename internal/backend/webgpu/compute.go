@@ -213,9 +213,6 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 }
 
 // runUnaryOp executes a unary element-wise operation (relu, sigmoid, tanh, neg, exp, log, sqrt) on GPU.
-// TODO: Expose this in ops.go when implementing activation functions and unary ops.
-//
-//nolint:unused // Will be used when implementing activation functions (ReLU, Sigmoid, etc.)
 func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode string) (*tensor.RawTensor, error) {
 	// Validate input
 	if input.DType() != tensor.Float32 {
@@ -459,6 +456,87 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 	// Create result tensor with transposed shape
 	resultShape := tensor.Shape{int(cols), int(rows)}
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
+	if err != nil {
+		return nil, err
+	}
+
+	copy(result.Data(), resultData)
+	return result, nil
+}
+
+// runSoftmax executes softmax along the last dimension on GPU.
+// Input shape: [batch_size, num_classes].
+func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error) {
+	// Validate input
+	if input.DType() != tensor.Float32 {
+		return nil, fmt.Errorf("webgpu: only float32 is supported, got %s", input.DType())
+	}
+	if len(input.Shape()) != 2 {
+		return nil, fmt.Errorf("webgpu: softmax requires 2D tensor, got %v", input.Shape())
+	}
+
+	//nolint:gosec // G115: Safe conversions, shape dimensions are non-negative
+	batchSize := uint32(input.Shape()[0])
+	//nolint:gosec // G115: Safe conversions, shape dimensions are non-negative
+	numClasses := uint32(input.Shape()[1])
+
+	// Compile shader
+	shader := b.compileShader("softmax", softmaxShader)
+
+	// Get or create pipeline
+	pipeline := b.getOrCreatePipeline("softmax", shader)
+
+	// Create GPU buffers
+	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	defer bufferInput.Release()
+
+	//nolint:gosec // G115: Safe conversion, ByteSize() returns non-negative int
+	resultSize := uint64(input.ByteSize())
+	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+	defer bufferResult.Release()
+
+	// Create uniform buffer for params (batch_size, num_classes: u32 each)
+	params := make([]byte, 16) // 16-byte aligned
+	binary.LittleEndian.PutUint32(params[0:4], batchSize)
+	binary.LittleEndian.PutUint32(params[4:8], numClasses)
+	bufferParams := b.createUniformBuffer(params)
+	defer bufferParams.Release()
+
+	// Get bind group layout and create bind group
+	bindGroupLayout := pipeline.GetBindGroupLayout(0)
+	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
+		wgpu.BufferBindingEntry(0, bufferInput, 0, resultSize),
+		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
+		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	})
+	defer bindGroup.Release()
+
+	// Execute compute pass
+	encoder := b.device.CreateCommandEncoder(nil)
+	computePass := encoder.BeginComputePass(nil)
+
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bindGroup, nil)
+
+	// Each workgroup handles one row (batch sample)
+	workgroups := (batchSize + workgroupSize - 1) / workgroupSize
+	computePass.DispatchWorkgroups(workgroups, 1, 1)
+	computePass.End()
+
+	cmdBuffer := encoder.Finish(nil)
+	b.queue.Submit(cmdBuffer)
+
+	// Read result back from GPU
+	resultData, err := b.readBuffer(bufferResult, resultSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create result tensor
+	result, err := tensor.NewRaw(input.Shape(), tensor.Float32, tensor.WebGPU)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package cpu
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -159,6 +160,132 @@ func (cpu *CPUBackend) Reshape(t *tensor.RawTensor, newShape tensor.Shape) *tens
 	// Copy data
 	copy(result.Data(), t.Data())
 	return result
+}
+
+// ReLU applies ReLU activation: max(0, x).
+func (cpu *CPUBackend) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := tensor.NewRaw(x.Shape(), x.DType(), cpu.device)
+	if err != nil {
+		panic(fmt.Sprintf("relu: %v", err))
+	}
+
+	switch x.DType() {
+	case tensor.Float32:
+		src := x.AsFloat32()
+		dst := result.AsFloat32()
+		for i, v := range src {
+			if v > 0 {
+				dst[i] = v
+			} else {
+				dst[i] = 0
+			}
+		}
+	case tensor.Float64:
+		src := x.AsFloat64()
+		dst := result.AsFloat64()
+		for i, v := range src {
+			if v > 0 {
+				dst[i] = v
+			} else {
+				dst[i] = 0
+			}
+		}
+	default:
+		panic(fmt.Sprintf("relu: unsupported dtype %s", x.DType()))
+	}
+
+	return result
+}
+
+// Softmax applies softmax along the last dimension.
+// Expects 2D input [batch_size, num_classes].
+func (cpu *CPUBackend) Softmax(x *tensor.RawTensor) *tensor.RawTensor {
+	if len(x.Shape()) != 2 {
+		panic(fmt.Sprintf("softmax: requires 2D tensor, got %dD", len(x.Shape())))
+	}
+
+	result, err := tensor.NewRaw(x.Shape(), x.DType(), cpu.device)
+	if err != nil {
+		panic(fmt.Sprintf("softmax: %v", err))
+	}
+
+	batchSize := x.Shape()[0]
+	numClasses := x.Shape()[1]
+
+	switch x.DType() {
+	case tensor.Float32:
+		softmaxFloat32(result.AsFloat32(), x.AsFloat32(), batchSize, numClasses)
+	case tensor.Float64:
+		softmaxFloat64(result.AsFloat64(), x.AsFloat64(), batchSize, numClasses)
+	default:
+		panic(fmt.Sprintf("softmax: unsupported dtype %s", x.DType()))
+	}
+
+	return result
+}
+
+// softmaxFloat32 computes softmax for float32 data.
+func softmaxFloat32(dst, src []float32, batchSize, numClasses int) {
+	for b := 0; b < batchSize; b++ {
+		offset := b * numClasses
+		// Find max for numerical stability
+		maxVal := src[offset]
+		for i := 1; i < numClasses; i++ {
+			if src[offset+i] > maxVal {
+				maxVal = src[offset+i]
+			}
+		}
+		// Compute exp(x - max) and sum
+		sum := float32(0)
+		for i := 0; i < numClasses; i++ {
+			exp := expFloat32(src[offset+i] - maxVal)
+			dst[offset+i] = exp
+			sum += exp
+		}
+		// Normalize
+		if sum > 0 {
+			for i := 0; i < numClasses; i++ {
+				dst[offset+i] /= sum
+			}
+		}
+	}
+}
+
+// softmaxFloat64 computes softmax for float64 data.
+func softmaxFloat64(dst, src []float64, batchSize, numClasses int) {
+	for b := 0; b < batchSize; b++ {
+		offset := b * numClasses
+		// Find max for numerical stability
+		maxVal := src[offset]
+		for i := 1; i < numClasses; i++ {
+			if src[offset+i] > maxVal {
+				maxVal = src[offset+i]
+			}
+		}
+		// Compute exp(x - max) and sum
+		sum := float64(0)
+		for i := 0; i < numClasses; i++ {
+			exp := expFloat64(src[offset+i] - maxVal)
+			dst[offset+i] = exp
+			sum += exp
+		}
+		// Normalize
+		if sum > 0 {
+			for i := 0; i < numClasses; i++ {
+				dst[offset+i] /= sum
+			}
+		}
+	}
+}
+
+// expFloat32 computes exp(x) for float32.
+func expFloat32(x float32) float32 {
+	return float32(math.Exp(float64(x)))
+}
+
+// expFloat64 computes exp(x) for float64.
+func expFloat64(x float64) float64 {
+	return math.Exp(x)
 }
 
 // Transpose transposes the tensor by permuting its dimensions.

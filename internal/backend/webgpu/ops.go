@@ -100,3 +100,40 @@ func (b *Backend) Transpose(t *tensor.RawTensor, axes ...int) *tensor.RawTensor 
 	// For now, fall back to CPU implementation
 	panic("webgpu: multi-dimensional transpose not implemented yet - only 2D is supported")
 }
+
+// ReLU applies ReLU activation: max(0, x).
+func (b *Backend) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runUnaryOp(x, "relu", reluShader)
+	if err != nil {
+		panic("webgpu: ReLU: " + err.Error())
+	}
+	return result
+}
+
+// Sigmoid applies sigmoid activation: 1 / (1 + exp(-x)).
+func (b *Backend) Sigmoid(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runUnaryOp(x, "sigmoid", sigmoidShader)
+	if err != nil {
+		panic("webgpu: Sigmoid: " + err.Error())
+	}
+	return result
+}
+
+// Tanh applies tanh activation.
+func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runUnaryOp(x, "tanh", tanhShader)
+	if err != nil {
+		panic("webgpu: Tanh: " + err.Error())
+	}
+	return result
+}
+
+// Softmax applies softmax along the last dimension.
+// Expects 2D input [batch_size, num_classes].
+func (b *Backend) Softmax(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runSoftmax(x)
+	if err != nil {
+		panic("webgpu: Softmax: " + err.Error())
+	}
+	return result
+}

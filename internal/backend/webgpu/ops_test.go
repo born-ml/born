@@ -322,3 +322,112 @@ func TestLargeMatMul(t *testing.T) {
 		}
 	}
 }
+
+func TestReLU(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("WebGPU not available")
+	}
+
+	backend, err := New()
+	if err != nil {
+		t.Fatalf("failed to create backend: %v", err)
+	}
+	defer backend.Release()
+
+	// Test case: ReLU([-2, -1, 0, 1, 2]) = [0, 0, 0, 1, 2]
+	x := createTensor(t, tensor.Shape{5}, []float32{-2, -1, 0, 1, 2})
+
+	result := backend.ReLU(x)
+
+	expected := []float32{0, 0, 0, 1, 2}
+	actual := extractData(t, result)
+
+	if !compareSlices(t, expected, actual, 1e-6) {
+		t.Errorf("ReLU failed: expected %v, got %v", expected, actual)
+	}
+}
+
+func TestSigmoid(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("WebGPU not available")
+	}
+
+	backend, err := New()
+	if err != nil {
+		t.Fatalf("failed to create backend: %v", err)
+	}
+	defer backend.Release()
+
+	// Test case: Sigmoid([0]) = [0.5]
+	x := createTensor(t, tensor.Shape{3}, []float32{0, -100, 100})
+
+	result := backend.Sigmoid(x)
+
+	expected := []float32{0.5, 0, 1}
+	actual := extractData(t, result)
+
+	if !compareSlices(t, expected, actual, 1e-4) {
+		t.Errorf("Sigmoid failed: expected %v, got %v", expected, actual)
+	}
+}
+
+func TestTanh(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("WebGPU not available")
+	}
+
+	backend, err := New()
+	if err != nil {
+		t.Fatalf("failed to create backend: %v", err)
+	}
+	defer backend.Release()
+
+	// Test case: Tanh([0]) = [0]
+	x := createTensor(t, tensor.Shape{3}, []float32{0, -100, 100})
+
+	result := backend.Tanh(x)
+
+	expected := []float32{0, -1, 1}
+	actual := extractData(t, result)
+
+	if !compareSlices(t, expected, actual, 1e-4) {
+		t.Errorf("Tanh failed: expected %v, got %v", expected, actual)
+	}
+}
+
+func TestSoftmax(t *testing.T) {
+	if !IsAvailable() {
+		t.Skip("WebGPU not available")
+	}
+
+	backend, err := New()
+	if err != nil {
+		t.Fatalf("failed to create backend: %v", err)
+	}
+	defer backend.Release()
+
+	// Test case: Softmax([[1, 2, 3], [1, 1, 1]]) - should sum to 1 per row
+	x := createTensor(t, tensor.Shape{2, 3}, []float32{1, 2, 3, 1, 1, 1})
+
+	result := backend.Softmax(x)
+	actual := extractData(t, result)
+
+	// Check that each row sums to 1
+	sum1 := actual[0] + actual[1] + actual[2]
+	sum2 := actual[3] + actual[4] + actual[5]
+
+	if math.Abs(float64(sum1-1.0)) > 1e-5 {
+		t.Errorf("Softmax row 1 doesn't sum to 1: %v (sum=%f)", actual[:3], sum1)
+	}
+	if math.Abs(float64(sum2-1.0)) > 1e-5 {
+		t.Errorf("Softmax row 2 doesn't sum to 1: %v (sum=%f)", actual[3:6], sum2)
+	}
+
+	// Second row should be uniform distribution [1/3, 1/3, 1/3]
+	expectedUniform := float32(1.0 / 3.0)
+	for i := 3; i < 6; i++ {
+		if math.Abs(float64(actual[i]-expectedUniform)) > 1e-5 {
+			t.Errorf("Softmax uniform distribution failed at %d: expected %f, got %f", i, expectedUniform, actual[i])
+		}
+	}
+}

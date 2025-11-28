@@ -20,9 +20,9 @@ const (
 
 const (
 	// Size thresholds for buffer categories.
-	smallThreshold  = 4 * 1024      // 4KB
-	mediumThreshold = 1024 * 1024   // 1MB
-	maxPoolSize     = 100           // Max buffers per category
+	smallThreshold  = 4 * 1024    // 4KB
+	mediumThreshold = 1024 * 1024 // 1MB
+	maxPoolSize     = 100         // Max buffers per category
 )
 
 // pooledBuffer wraps a GPU buffer with metadata.

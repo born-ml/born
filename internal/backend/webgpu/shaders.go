@@ -149,8 +149,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 `
 
 // reluShader applies ReLU activation: result = max(0, x).
-//
-//nolint:unused // Will be used when activation functions are exposed in ops.go
 const reluShader = `
 @group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> result: array<f32>;
@@ -170,8 +168,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 `
 
 // sigmoidShader applies sigmoid activation: result = 1 / (1 + exp(-x)).
-//
-//nolint:unused // Will be used when activation functions are exposed in ops.go
 const sigmoidShader = `
 @group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> result: array<f32>;
@@ -191,8 +187,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 `
 
 // tanhShader applies tanh activation.
-//
-//nolint:unused // Will be used when activation functions are exposed in ops.go
 const tanhShader = `
 @group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> result: array<f32>;
@@ -358,6 +352,49 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
     if (idx < params.size) {
         result[idx] = input[idx] + params.scalar;
+    }
+}
+`
+
+// softmaxShader applies softmax along rows (last dimension).
+// Input shape: [batch_size, num_classes]
+// Uses max-shift trick for numerical stability.
+const softmaxShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    batch_size: u32,
+    num_classes: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let row = global_id.x;
+    if (row >= params.batch_size) {
+        return;
+    }
+
+    let offset = row * params.num_classes;
+
+    // Find max for numerical stability
+    var max_val: f32 = input[offset];
+    for (var i: u32 = 1u; i < params.num_classes; i = i + 1u) {
+        max_val = max(max_val, input[offset + i]);
+    }
+
+    // Compute exp(x - max) and sum
+    var sum: f32 = 0.0;
+    for (var i: u32 = 0u; i < params.num_classes; i = i + 1u) {
+        let exp_val = exp(input[offset + i] - max_val);
+        result[offset + i] = exp_val;
+        sum = sum + exp_val;
+    }
+
+    // Normalize
+    for (var i: u32 = 0u; i < params.num_classes; i = i + 1u) {
+        result[offset + i] = result[offset + i] / sum;
     }
 }
 `
