@@ -1,3 +1,5 @@
+//go:build windows
+
 // MNIST GPU Inference Benchmark
 //
 // This example demonstrates CPU vs WebGPU performance comparison for neural network inference.

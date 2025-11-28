@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
 // Uses go-webgpu (github.com/go-webgpu/webgpu) for zero-CGO WebGPU bindings.
 package webgpu
