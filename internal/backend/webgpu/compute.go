@@ -52,8 +52,6 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule) *w
 }
 
 // createBuffer creates a GPU buffer and optionally uploads initial data.
-//
-//nolint:unparam // usage parameter will vary when more operations are added
 func (b *Backend) createBuffer(data []byte, usage wgpu.BufferUsage) *wgpu.Buffer {
 	size := uint64(len(data))
 
