@@ -24,6 +24,17 @@ type Backend struct {
 
 	// Device info
 	adapterInfo *wgpu.AdapterInfoGo
+
+	// Buffer pool for memory management
+	bufferPool *BufferPool
+
+	// Memory tracking
+	memoryStats struct {
+		totalAllocatedBytes uint64
+		peakMemoryBytes     uint64
+		activeBuffers       int64
+		mu                  sync.RWMutex
+	}
 }
 
 // New creates a new WebGPU backend.
@@ -65,7 +76,7 @@ func New() (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to get queue")
 	}
 
-	return &Backend{
+	b := &Backend{
 		instance:    instance,
 		adapter:     adapter,
 		device:      device,
@@ -73,7 +84,10 @@ func New() (*Backend, error) {
 		shaders:     make(map[string]*wgpu.ShaderModule),
 		pipelines:   make(map[string]*wgpu.ComputePipeline),
 		adapterInfo: adapterInfo,
-	}, nil
+		bufferPool:  NewBufferPool(device),
+	}
+
+	return b, nil
 }
 
 // Release releases all WebGPU resources.
@@ -81,6 +95,12 @@ func New() (*Backend, error) {
 func (b *Backend) Release() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Release buffer pool
+	if b.bufferPool != nil {
+		b.bufferPool.Clear()
+		b.bufferPool = nil
+	}
 
 	// Release pipelines
 	for _, p := range b.pipelines {
@@ -170,4 +190,69 @@ func ListAdapters() ([]*wgpu.AdapterInfoGo, error) {
 	}
 
 	return []*wgpu.AdapterInfoGo{info}, nil
+}
+
+// MemoryStats represents GPU memory usage statistics.
+type MemoryStats struct {
+	// Total bytes allocated since backend creation
+	TotalAllocatedBytes uint64
+	// Peak memory usage in bytes
+	PeakMemoryBytes uint64
+	// Number of currently active buffers
+	ActiveBuffers int64
+	// Buffer pool statistics
+	PoolAllocated uint64
+	PoolReleased  uint64
+	PoolHits      uint64
+	PoolMisses    uint64
+	PooledBuffers int
+}
+
+// MemoryStats returns current GPU memory usage statistics.
+func (b *Backend) MemoryStats() MemoryStats {
+	b.memoryStats.mu.RLock()
+	totalAllocated := b.memoryStats.totalAllocatedBytes
+	peakMemory := b.memoryStats.peakMemoryBytes
+	activeBuffers := b.memoryStats.activeBuffers
+	b.memoryStats.mu.RUnlock()
+
+	// Get buffer pool stats
+	allocated, released, hits, misses, pooledCount := b.bufferPool.Stats()
+
+	return MemoryStats{
+		TotalAllocatedBytes: totalAllocated,
+		PeakMemoryBytes:     peakMemory,
+		ActiveBuffers:       activeBuffers,
+		PoolAllocated:       allocated,
+		PoolReleased:        released,
+		PoolHits:            hits,
+		PoolMisses:          misses,
+		PooledBuffers:       pooledCount,
+	}
+}
+
+// trackBufferAllocation records a buffer allocation in memory statistics.
+func (b *Backend) trackBufferAllocation(size uint64) {
+	b.memoryStats.mu.Lock()
+	defer b.memoryStats.mu.Unlock()
+
+	b.memoryStats.totalAllocatedBytes += size
+	b.memoryStats.activeBuffers++
+
+	// Update peak memory if needed
+	currentMemory := b.memoryStats.totalAllocatedBytes
+	if currentMemory > b.memoryStats.peakMemoryBytes {
+		b.memoryStats.peakMemoryBytes = currentMemory
+	}
+}
+
+// trackBufferRelease records a buffer release in memory statistics.
+func (b *Backend) trackBufferRelease(size uint64) {
+	b.memoryStats.mu.Lock()
+	defer b.memoryStats.mu.Unlock()
+
+	if b.memoryStats.totalAllocatedBytes >= size {
+		b.memoryStats.totalAllocatedBytes -= size
+	}
+	b.memoryStats.activeBuffers--
 }
