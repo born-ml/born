@@ -13,9 +13,10 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.1.1 Released!** (Public API available - MNIST: 97.44% MLP, 98.18% CNN)
+**Project Status**: 🚀 **v0.2.0 Coming Soon!** (WebGPU GPU backend - 123x MatMul speedup!)
+**Latest**: ⚡ Phase 2 GPU complete - WebGPU backend with 10.9x inference speedup at batch inference
 
-*Celebrating 16 years of Go (2009-2025) with production-ready ML* 🎂
+*Pure Go ML with GPU acceleration - no CGO required!*
 
 ---
 
@@ -169,11 +170,11 @@ type Backend interface {
 
 | Backend | Status | Description |
 |---------|--------|-------------|
-| CPU | Planned | Pure Go with SIMD optimizations |
-| CUDA | Planned | NVIDIA GPU via direct driver calls |
-| Vulkan | Planned | Cross-platform GPU compute |
-| Metal | Planned | Apple GPU (macOS/iOS) |
-| WebGPU | Planned | Modern browser GPU |
+| CPU | ✅ **Available** | Pure Go implementation (v0.1.1) |
+| WebGPU | ✅ **Available** | Zero-CGO GPU via [go-webgpu](https://github.com/go-webgpu/webgpu) (v0.2.0) |
+| Vulkan | 📋 Q3 2025 | Cross-platform GPU compute |
+| CUDA | 📋 Q3 2025 | NVIDIA GPU via zero-CGO |
+| Metal | 📋 Q4 2025 | Apple GPU (macOS/iOS) |
 
 ### Decorator Pattern
 
@@ -220,21 +221,23 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 **Status**: All 7 core tasks complete. 132 unit tests, 83.8% average coverage, 0 linter issues.
 
-### Phase 2: GPU (v0.2) - Q2 2025
-- [ ] Vulkan backend
-- [ ] CUDA backend
-- [ ] Kernel fusion
-- [ ] Memory optimization
+### Phase 2: GPU (v0.2) - ✅ COMPLETE (Nov 2025)
+- [x] WebGPU backend (zero-CGO via go-webgpu)
+- [x] WGSL compute shaders (12 operations)
+- [x] GPU buffer pooling & memory management
+- [x] MNIST GPU inference (10.9x speedup)
 
-### Phase 3: Production (v0.3) - Q3 2025
+**Status**: All 5 GPU tasks complete. 123x MatMul speedup, ~16000 samples/sec throughput.
+
+### Phase 3: Production (v0.3) - Q1 2026
 - [ ] ONNX import/export
 - [ ] Model quantization
 - [ ] Model serving
-- [ ] Distributed training
+- [ ] Vulkan/CUDA backends
 
-### Phase 4: Advanced (v1.0) - Q4 2025
+### Phase 4: Advanced (v1.0) - Q2 2026
 - [ ] Metal backend
-- [ ] WebGPU backend
+- [ ] Distributed training
 - [ ] Advanced optimizations
 - [ ] Model zoo
 
@@ -244,12 +247,18 @@ Full roadmap: See project milestones
 
 ## Documentation
 
+### For Users
+
+- **[Philosophy](docs/PHILOSOPHY.md)** - Production-first design principles
+- **[Use Cases](docs/USE_CASES.md)** - When to use Born (and when not)
+- **[GPU Setup](docs/dev/GPU_SETUP.md)** - WebGPU backend configuration 🆕
 - **[Getting Started](docs/getting-started.md)** - Installation and first steps *(coming soon)*
-- **[API Reference](docs/api/)** - Complete API documentation *(coming soon)*
-- **[Examples](examples/)** - Sample code and tutorials *(coming soon)*
+- **[API Reference](https://pkg.go.dev/github.com/born-ml/born)** - Complete API documentation
+- **[Examples](examples/)** - Sample code (MNIST MLP, CNN, GPU inference)
 
 ### For Contributors
 
+- **[Kanban Board](docs/dev/kanban/INDEX.md)** - Development roadmap and tasks 🆕
 - **[Contributing](CONTRIBUTING.md)** - How to contribute *(coming soon)*
 
 ---
@@ -288,15 +297,25 @@ Born trains    →  Born ready   →  Born serves
 
 ## Performance
 
-*Benchmarks coming with Phase 1 implementation*
+**Actual Benchmarks** (AMD Ryzen 9 5950X, NVIDIA RTX 3080):
 
-**Targets** (Intel i9-13900K, NVIDIA RTX 4090):
+### Matrix Operations (WebGPU vs CPU)
 
-| Operation | CPU Target | GPU Target | Speedup |
-|-----------|------------|------------|---------|
-| MatMul 1024x1024 | < 20ms | < 1ms | 20x |
-| Conv2d 224x224 | < 100ms | < 3ms | 30x |
-| Transformer Block | < 150ms | < 5ms | 30x |
+| Operation | CPU | GPU | Speedup |
+|-----------|-----|-----|---------|
+| MatMul 1024x1024 | 7143ms | 58ms | **123x** |
+| MatMul 512x512 | 499ms | 12ms | **41x** |
+| MatMul 256x256 | 56ms | 3.7ms | **15x** |
+
+### Neural Network Inference
+
+| Batch Size | CPU | GPU | Speedup | Throughput |
+|------------|-----|-----|---------|------------|
+| 64 | 48ms | 19ms | 2.5x | 3,357/s |
+| 256 | 182ms | 21ms | **8.5x** | 11,883/s |
+| 512 | 348ms | 32ms | **10.9x** | 15,973/s |
+
+*Note: CPU backend uses naive O(n³) MatMul. SIMD optimizations planned for v0.3.*
 
 ---
 
@@ -343,7 +362,7 @@ See [LICENSE](LICENSE) file for full terms.
 A: Gorgonia is great but uses a different approach. Born focuses on modern Go (generics), pure Go (no CGO), and production-first design inspired by Burn.
 
 **Q: When will it be ready?**
-A: Phase 1 (CPU, basic training) targeted for Q1 2026. Follow development on GitHub.
+A: Phase 1 (v0.1.1) and Phase 2 (v0.2.0 WebGPU) are RELEASED! ONNX support (Phase 3) targeted for Q1 2026.
 
 **Q: Can I use PyTorch models?**
 A: Yes! Via ONNX import (Phase 3). Train in PyTorch, deploy with Born.
