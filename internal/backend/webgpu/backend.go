@@ -291,3 +291,8 @@ func (b *Backend) Gather(_ *tensor.RawTensor, _ int, _ *tensor.RawTensor) *tenso
 func (b *Backend) Where(_, _, _ *tensor.RawTensor) *tensor.RawTensor {
 	panic("webgpu: Where not implemented yet - TODO(TASK-016)")
 }
+
+// Embedding performs embedding lookup (not implemented yet).
+func (b *Backend) Embedding(_, _ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: Embedding not implemented yet")
+}

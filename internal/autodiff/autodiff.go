@@ -948,3 +948,25 @@ func (b *AutodiffBackend[B]) Where(condition, x, y *tensor.RawTensor) *tensor.Ra
 
 	return result
 }
+
+// Embedding performs embedding lookup with autodiff support.
+//
+// weight: [numEmbeddings, embeddingDim]
+// indices: any shape of int32 indices
+// output: [...indices.shape, embeddingDim]
+//
+// The gradient for weight is computed via scatter-add.
+func (b *AutodiffBackend[B]) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor {
+	defer weight.ForceNonUnique()()
+
+	// Forward pass
+	result := b.inner.Embedding(weight, indices)
+
+	// Record operation for gradient computation
+	if b.tape.IsRecording() {
+		op := ops.NewEmbeddingOp(weight, indices, result)
+		b.tape.Record(op)
+	}
+
+	return result
+}

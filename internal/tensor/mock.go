@@ -991,6 +991,55 @@ func (m *MockBackend) Where(condition, x, y *RawTensor) *RawTensor {
 	return result
 }
 
+// Embedding performs embedding lookup (naive implementation).
+// weight: [numEmbeddings, embeddingDim]
+// indices: any shape of int32 indices
+// output: [...indices.shape, embeddingDim]
+func (m *MockBackend) Embedding(weight, indices *RawTensor) *RawTensor {
+	if indices.DType() != Int32 {
+		panic(fmt.Sprintf("embedding: indices must be int32, got %s", indices.DType()))
+	}
+
+	weightShape := weight.Shape()
+	if len(weightShape) != 2 {
+		panic(fmt.Sprintf("embedding: weight must be 2D, got shape %v", weightShape))
+	}
+
+	numEmbeddings := weightShape[0]
+	embeddingDim := weightShape[1]
+
+	// Output shape: [...indices.shape, embeddingDim]
+	indicesShape := indices.Shape()
+	outputShape := make(Shape, len(indicesShape)+1)
+	copy(outputShape, indicesShape)
+	outputShape[len(outputShape)-1] = embeddingDim
+
+	result, err := NewRaw(outputShape, weight.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	// Lookup embeddings
+	indicesData := indices.AsInt32()
+	weightData := m.toFloat64Slice(weight)
+	resultData := m.toFloat64Slice(result)
+
+	numIndices := indices.NumElements()
+	for i := 0; i < numIndices; i++ {
+		idx := int(indicesData[i])
+		if idx < 0 || idx >= numEmbeddings {
+			panic(fmt.Sprintf("embedding: index %d out of bounds [0, %d)", idx, numEmbeddings))
+		}
+
+		srcOffset := idx * embeddingDim
+		dstOffset := i * embeddingDim
+		copy(resultData[dstOffset:dstOffset+embeddingDim], weightData[srcOffset:srcOffset+embeddingDim])
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
 // Scalar operations (naive implementations).
 
 // MulScalar multiplies tensor elements by a scalar (mock implementation).

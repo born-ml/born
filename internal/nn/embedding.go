@@ -90,6 +90,7 @@ func NewEmbeddingWithWeight[B tensor.Backend](weight *tensor.Tensor[float32, B])
 // Forward performs embedding lookup.
 //
 // Maps each index to its corresponding embedding vector.
+// This operation is differentiable - gradients flow back to the weight tensor.
 //
 // Parameters:
 //   - indices: Tensor of indices [batch, seq] or any shape [...] of type int32
@@ -104,42 +105,8 @@ func NewEmbeddingWithWeight[B tensor.Backend](weight *tensor.Tensor[float32, B])
 //
 // Panics if any index is out of bounds [0, NumEmbed).
 func (e *Embedding[B]) Forward(indices *tensor.Tensor[int32, B]) *tensor.Tensor[float32, B] {
-	indicesShape := indices.Shape()
-	indicesData := indices.Data()
-
-	// Validate indices
-	for i, idx := range indicesData {
-		if idx < 0 || int(idx) >= e.NumEmbed {
-			panic(fmt.Sprintf("index out of bounds at position %d: %d (valid range: [0, %d))",
-				i, idx, e.NumEmbed))
-		}
-	}
-
-	// Output shape: [...indices.shape..., EmbedDim]
-	outputShape := make(tensor.Shape, len(indicesShape)+1)
-	copy(outputShape, indicesShape)
-	outputShape[len(outputShape)-1] = e.EmbedDim
-
-	// Create output tensor
-	numElements := outputShape.NumElements()
-	outputData := make([]float32, numElements)
-
-	// Lookup embeddings
-	weightData := e.Weight.Tensor().Data()
-	for i, idx := range indicesData {
-		// Copy embedding vector for this index
-		srcOffset := int(idx) * e.EmbedDim
-		dstOffset := i * e.EmbedDim
-		copy(outputData[dstOffset:dstOffset+e.EmbedDim], weightData[srcOffset:srcOffset+e.EmbedDim])
-	}
-
-	// Create output tensor
-	output, err := tensor.FromSlice[float32, B](outputData, outputShape, indices.Backend())
-	if err != nil {
-		panic(fmt.Sprintf("failed to create output tensor: %v", err))
-	}
-
-	return output
+	// Use tensor Embedding operation which records on autodiff tape
+	return e.Weight.Tensor().Embedding(indices)
 }
 
 // Parameters returns the list of trainable parameters.

@@ -487,3 +487,78 @@ func getConditionAsUint8(condition *tensor.RawTensor) []uint8 {
 	}
 	return condition.AsUint8()
 }
+
+// Embedding performs embedding lookup.
+// weight: [numEmbeddings, embeddingDim]
+// indices: any shape of int32 indices
+// output: [...indices.shape, embeddingDim]
+//
+// Similar to PyTorch's F.embedding or nn.Embedding.
+func (cpu *CPUBackend) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor {
+	// Validate indices dtype
+	if indices.DType() != tensor.Int32 {
+		panic(fmt.Sprintf("embedding: indices must be int32, got %s", indices.DType()))
+	}
+
+	// Validate weight shape (must be 2D)
+	weightShape := weight.Shape()
+	if len(weightShape) != 2 {
+		panic(fmt.Sprintf("embedding: weight must be 2D, got shape %v", weightShape))
+	}
+
+	numEmbeddings := weightShape[0]
+	embeddingDim := weightShape[1]
+
+	// Output shape: [...indices.shape, embeddingDim]
+	indicesShape := indices.Shape()
+	outputShape := make(tensor.Shape, len(indicesShape)+1)
+	copy(outputShape, indicesShape)
+	outputShape[len(outputShape)-1] = embeddingDim
+
+	// Create output tensor
+	result, err := tensor.NewRaw(outputShape, weight.DType(), cpu.device)
+	if err != nil {
+		panic(fmt.Sprintf("embedding: failed to create result tensor: %v", err))
+	}
+
+	// Perform embedding lookup
+	indicesData := indices.AsInt32()
+	numIndices := indices.NumElements()
+
+	switch weight.DType() {
+	case tensor.Float32:
+		embeddingFloat32(result.AsFloat32(), weight.AsFloat32(), indicesData, numIndices, numEmbeddings, embeddingDim)
+	case tensor.Float64:
+		embeddingFloat64(result.AsFloat64(), weight.AsFloat64(), indicesData, numIndices, numEmbeddings, embeddingDim)
+	default:
+		panic(fmt.Sprintf("embedding: unsupported weight dtype %s", weight.DType()))
+	}
+
+	return result
+}
+
+func embeddingFloat32(dst, weight []float32, indices []int32, numIndices, numEmbeddings, embeddingDim int) {
+	for i := 0; i < numIndices; i++ {
+		idx := int(indices[i])
+		if idx < 0 || idx >= numEmbeddings {
+			panic(fmt.Sprintf("embedding: index %d out of bounds [0, %d)", idx, numEmbeddings))
+		}
+
+		srcOffset := idx * embeddingDim
+		dstOffset := i * embeddingDim
+		copy(dst[dstOffset:dstOffset+embeddingDim], weight[srcOffset:srcOffset+embeddingDim])
+	}
+}
+
+func embeddingFloat64(dst, weight []float64, indices []int32, numIndices, numEmbeddings, embeddingDim int) {
+	for i := 0; i < numIndices; i++ {
+		idx := int(indices[i])
+		if idx < 0 || idx >= numEmbeddings {
+			panic(fmt.Sprintf("embedding: index %d out of bounds [0, %d)", idx, numEmbeddings))
+		}
+
+		srcOffset := idx * embeddingDim
+		dstOffset := i * embeddingDim
+		copy(dst[dstOffset:dstOffset+embeddingDim], weight[srcOffset:srcOffset+embeddingDim])
+	}
+}

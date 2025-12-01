@@ -77,6 +77,7 @@ type Backend interface {
 	// Indexing operations
 	Gather(x *RawTensor, dim int, index *RawTensor) *RawTensor // select elements along dim using index tensor
 	Where(condition, x, y *RawTensor) *RawTensor               // conditional element selection
+	Embedding(weight, indices *RawTensor) *RawTensor           // lookup embeddings by indices
 
 	// Shape operations (broadcast)
 	Expand(x *RawTensor, shape Shape) *RawTensor // broadcast to shape

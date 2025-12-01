@@ -377,6 +377,25 @@ func (t *Tensor[T, B]) Gather(dim int, index *Tensor[int32, B]) *Tensor[T, B] {
 	return New[T, B](result, t.backend)
 }
 
+// Embedding performs embedding lookup using the tensor as the weight matrix.
+//
+// The tensor t should have shape [numEmbeddings, embeddingDim].
+// The indices tensor contains integer indices to look up.
+// Returns embeddings with shape [...indices.shape, embeddingDim].
+//
+// This operation is differentiable - gradients flow back to the weight tensor
+// via scatter-add (same indices accumulate gradients).
+//
+// Example:
+//
+//	weight := tensor.Randn[float32](Shape{1000, 256}, backend)  // vocab=1000, dim=256
+//	indices := tensor.FromSlice([]int32{0, 5, 3}, Shape{3}, backend)
+//	embeddings := weight.Embedding(indices)  // shape: [3, 256]
+func (t *Tensor[T, B]) Embedding(indices *Tensor[int32, B]) *Tensor[T, B] {
+	result := t.backend.Embedding(t.raw, indices.raw)
+	return New[T, B](result, t.backend)
+}
+
 // ============================================================================
 // Reduction Operations (Phase 3 - IMPORTANT)
 // ============================================================================
