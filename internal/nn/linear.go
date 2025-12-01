@@ -85,9 +85,8 @@ func (l *Linear[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[flo
 		panic(fmt.Sprintf("Linear.Forward: expected input with %d features, got %d", l.inFeatures, inputShape[1]))
 	}
 
-	// Get weight and bias tensors
+	// Get weight tensor
 	w := l.weight.Tensor() // [out_features, in_features]
-	b := l.bias.Tensor()   // [out_features]
 
 	// Transpose weight: W.T has shape [in_features, out_features]
 	wT := w.Transpose() // [in_features, out_features]
@@ -96,21 +95,26 @@ func (l *Linear[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[flo
 	// [batch_size, in_features] @ [in_features, out_features] = [batch_size, out_features]
 	output := input.MatMul(wT)
 
-	// Broadcast bias: b has shape [out_features], broadcast to [batch_size, out_features]
-	// We need to reshape bias to [1, out_features] for proper broadcasting
-	bReshaped := b.Reshape(1, l.outFeatures)
-
-	// Add bias
-	output = output.Add(bReshaped)
+	// Add bias if present
+	if l.bias != nil {
+		b := l.bias.Tensor() // [out_features]
+		// Broadcast bias: b has shape [out_features], broadcast to [batch_size, out_features]
+		// We need to reshape bias to [1, out_features] for proper broadcasting
+		bReshaped := b.Reshape(1, l.outFeatures)
+		output = output.Add(bReshaped)
+	}
 
 	return output
 }
 
 // Parameters returns the trainable parameters of this layer.
 //
-// Returns [weight, bias].
+// Returns [weight, bias] if bias is present, otherwise [weight].
 func (l *Linear[B]) Parameters() []*Parameter[B] {
-	return []*Parameter[B]{l.weight, l.bias}
+	if l.bias != nil {
+		return []*Parameter[B]{l.weight, l.bias}
+	}
+	return []*Parameter[B]{l.weight}
 }
 
 // Weight returns the weight parameter.
