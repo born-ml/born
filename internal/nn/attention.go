@@ -52,14 +52,10 @@ func ScaledDotProductAttention[B tensor.Backend](
 		scale = float32(1.0 / math.Sqrt(float64(qHeadDim)))
 	}
 
-	// Extract dimensions
-	batch := query.Shape()[0]
-	heads := query.Shape()[1]
-	seqQ := query.Shape()[2]
-	seqK := key.Shape()[2]
-
-	// 1. Compute attention scores: QK^T
-	scores := batchedMatMulQK(query, key, batch, heads, seqQ, seqK, qHeadDim)
+	// 1. Compute attention scores: Q @ K^T using BatchMatMul
+	// K^T: transpose last two dimensions [batch, heads, seq_k, head_dim] -> [batch, heads, head_dim, seq_k]
+	kT := key.Transpose(0, 1, 3, 2)
+	scores := query.BatchMatMul(kT)
 
 	// 2. Scale
 	scores = scores.MulScalar(scale)
@@ -72,8 +68,8 @@ func ScaledDotProductAttention[B tensor.Backend](
 	// 4. Softmax along last dimension (over keys)
 	weights := scores.Softmax(-1)
 
-	// 5. Compute output: weights @ V
-	output := batchedMatMulWV(weights, value, batch, heads, seqQ, seqK, qHeadDim)
+	// 5. Compute output: weights @ V using BatchMatMul
+	output := weights.BatchMatMul(value)
 
 	return output, weights
 }
@@ -104,102 +100,6 @@ func validateAttentionInputs[B tensor.Backend](
 	vSeqLen := value.Shape()[2]
 	if kSeqLen != vSeqLen {
 		panic("ScaledDotProductAttention: key and value must have same seq length")
-	}
-}
-
-// batchedMatMulQK computes batched matrix multiplication for Q @ K^T.
-// Returns scores of shape [batch, heads, seq_q, seq_k].
-func batchedMatMulQK[B tensor.Backend](
-	query, key *tensor.Tensor[float32, B],
-	batch, heads, seqQ, seqK, headDim int,
-) *tensor.Tensor[float32, B] {
-	backend := query.Backend()
-
-	// Reshape to [batch*heads, seq, dim]
-	qReshaped := query.Reshape(batch*heads, seqQ, headDim)
-	kReshaped := key.Reshape(batch*heads, seqK, headDim)
-
-	scoresData := make([]float32, batch*heads*seqQ*seqK)
-
-	// Compute matmul for each batch*head
-	for bh := 0; bh < batch*heads; bh++ {
-		// Extract Q and K slices for this batch*head
-		qSlice := extractSlice2D(qReshaped, bh, seqQ, headDim, backend)
-		kSlice := extractSlice2D(kReshaped, bh, seqK, headDim, backend)
-
-		// K^T and MatMul
-		kSliceT := kSlice.T()
-		scoresSlice := qSlice.MatMul(kSliceT)
-
-		// Copy to output
-		copySliceData(scoresSlice.Data(), scoresData, bh*seqQ*seqK)
-	}
-
-	scores, err := tensor.FromSlice[float32](scoresData, tensor.Shape{batch, heads, seqQ, seqK}, backend)
-	if err != nil {
-		panic("batchedMatMulQK: failed to create scores tensor")
-	}
-
-	return scores
-}
-
-// batchedMatMulWV computes batched matrix multiplication for weights @ V.
-// Returns output of shape [batch, heads, seq_q, head_dim].
-func batchedMatMulWV[B tensor.Backend](
-	weights, value *tensor.Tensor[float32, B],
-	batch, heads, seqQ, seqK, headDim int,
-) *tensor.Tensor[float32, B] {
-	backend := value.Backend()
-
-	// Reshape to [batch*heads, seq, dim]
-	vReshaped := value.Reshape(batch*heads, seqK, headDim)
-	wReshaped := weights.Reshape(batch*heads, seqQ, seqK)
-
-	outputData := make([]float32, batch*heads*seqQ*headDim)
-
-	// Compute matmul for each batch*head
-	for bh := 0; bh < batch*heads; bh++ {
-		// Extract W and V slices for this batch*head
-		wSlice := extractSlice2D(wReshaped, bh, seqQ, seqK, backend)
-		vSlice := extractSlice2D(vReshaped, bh, seqK, headDim, backend)
-
-		// MatMul
-		outSlice := wSlice.MatMul(vSlice)
-
-		// Copy to output
-		copySliceData(outSlice.Data(), outputData, bh*seqQ*headDim)
-	}
-
-	output, err := tensor.FromSlice[float32](outputData, tensor.Shape{batch, heads, seqQ, headDim}, backend)
-	if err != nil {
-		panic("batchedMatMulWV: failed to create output tensor")
-	}
-
-	return output
-}
-
-// extractSlice2D extracts a 2D slice from a 3D tensor at the given index.
-func extractSlice2D[B tensor.Backend](
-	t *tensor.Tensor[float32, B],
-	index, dim1, dim2 int,
-	backend B,
-) *tensor.Tensor[float32, B] {
-	slice := tensor.Zeros[float32](tensor.Shape{dim1, dim2}, backend)
-	tData := t.Data()
-	sliceData := slice.Data()
-
-	offset := index * dim1 * dim2
-	for i := 0; i < dim1*dim2; i++ {
-		sliceData[i] = tData[offset+i]
-	}
-
-	return slice
-}
-
-// copySliceData copies data from source to destination starting at offset.
-func copySliceData(src, dst []float32, offset int) {
-	for i := 0; i < len(src); i++ {
-		dst[offset+i] = src[i]
 	}
 }
 
