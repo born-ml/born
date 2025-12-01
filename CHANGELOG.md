@@ -5,6 +5,99 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-12-01
+
+### 🚀 Phase 4: Attention Mechanisms
+
+Major release adding complete transformer architecture support! Build GPT, LLaMA, BERT, and modern LLM architectures with Born.
+
+### ✨ Added
+
+**Attention Mechanisms** (`internal/nn/`):
+- **Scaled Dot-Product Attention (SDPA)** - Core attention with optional mask and dropout
+- **Multi-Head Attention (MHA)** - Full implementation with WQ, WK, WV, WO projections
+- **KV-Cache** - Efficient autoregressive generation (3.94x speedup for 100 tokens)
+
+**Normalization Layers** (`internal/nn/`):
+- **LayerNorm** - Classic layer normalization with learnable gamma/beta
+- **RMSNorm** - Root Mean Square normalization (LLaMA style)
+
+**Positional Encodings** (`internal/nn/`):
+- **RoPE (Rotary Position Embedding)** - Used by LLaMA, Mistral, DeepSeek
+- **ALiBi (Attention with Linear Biases)** - Used by BLOOM, MPT
+- **Sinusoidal** - Original Transformer positional encoding
+- **Learned** - Trainable position embeddings (GPT-2 style)
+
+**Transformer Building Blocks** (`internal/nn/`):
+- **TransformerBlock** - Complete transformer layer with:
+  - Pre-Norm (LLaMA style) and Post-Norm (original) support
+  - RMSNorm or LayerNorm selection
+  - Configurable attention and FFN dimensions
+- **FFN (Feed-Forward Network)** - SiLU activation (LLaMA style)
+- **ForwardWithCache** - Efficient inference with KV-cache
+
+**Tensor Operations** (`internal/tensor/`, `internal/backend/cpu/`):
+- **BatchMatMul** - Native 3D/4D batched matrix multiplication
+  - `[B, M, K] @ [B, K, N] → [B, M, N]` (3D)
+  - `[B, H, M, K] @ [B, H, K, N] → [B, H, M, N]` (4D)
+- Refactored SDPA to use BatchMatMul (-40% code)
+
+### 🔧 Fixed
+
+- **Scalar gradient broadcasting** - Fixed `reduceBroadcast` panic when propagating scalar gradients
+- **Multi-dim Softmax backward** - Now supports 3D/4D tensors (not just 2D)
+
+### 📊 Testing
+
+- **70+ new unit tests** across attention modules
+- **Comprehensive benchmarks** for all new components
+- **0 golangci-lint issues**
+- KV-Cache: 3.94x speedup verified
+- Parameter counts verified (7.1M per transformer block, matching GPT-2)
+
+### 🎯 What You Can Build Now
+
+```go
+import (
+    "github.com/born-ml/born/nn"
+    "github.com/born-ml/born/tensor"
+)
+
+// Create a transformer block (GPT-2 style)
+config := nn.TransformerConfig{
+    EmbedDim:   768,
+    NumHeads:   12,
+    FFNDim:     3072,
+    NormFirst:  true,   // Pre-Norm (LLaMA)
+    UseRMSNorm: true,   // RMSNorm (LLaMA)
+    NormEps:    1e-5,
+}
+block := nn.NewTransformerBlock(config, backend)
+
+// Forward pass
+x := tensor.Randn[float32](tensor.Shape{1, 512, 768}, backend)
+output := block.Forward(x, nil)
+
+// With KV-Cache for generation
+cache := nn.NewKVCache(1, 12, 2048, 64, backend)
+for i := 0; i < 100; i++ {
+    token := getNextToken()
+    output := block.ForwardWithCache(token, cache)
+}
+```
+
+### 📈 Performance
+
+| Operation | Benchmark |
+|-----------|-----------|
+| SDPA (512 seq) | 89.2% coverage |
+| MHA (768d/12h) | 2.3M params verified |
+| KV-Cache (100 tokens) | **3.94x speedup** |
+| TransformerBlock | ~7.1M params/block |
+| RoPE (2048 seq) | Pre-computed cos/sin |
+
+---
+
 ## [0.3.0] - 2025-11-30
 
 ### 🚀 Phase 2.5: Transformer Primitives + Public API

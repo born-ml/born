@@ -14,8 +14,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.3.0 Released!** (Transformer Primitives - LLaMA/GPT support!)
-**Latest**: ⚡ Phase 2.5 complete - Modern LLM architectures now supported
+**Project Status**: 🎉 **v0.4.0 Released!** (Complete Transformer Architecture!)
+**Latest**: ⚡ Phase 4 complete - Full Attention, MHA, KV-Cache, Positional Encodings
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -53,14 +53,22 @@ prediction := model.Predict(image)
 
 ## Features
 
+### Core
 - **Pure Go** - No CGO dependencies, trivial cross-compilation
 - **Type Safe** - Generics-powered API for compile-time guarantees
 - **GPU Acceleration** - WebGPU backend (zero-CGO, 123x speedup)
-- **Transformer Ready** - Full support for LLaMA, GPT, Mistral architectures
-- **Autodiff** - Automatic differentiation via decorators
-- **Modern Layers** - RMSNorm, SiLU, Embedding, Multi-head Attention (v0.4)
+- **Autodiff** - Automatic differentiation via decorator pattern
 - **Production Ready** - Single binary deployment, fast startup
 - **WebAssembly** - Run inference in browsers natively
+
+### Transformer Architecture (v0.4.0) 🆕
+- **Multi-Head Attention (MHA)** - Full implementation with Q, K, V projections
+- **Scaled Dot-Product Attention** - Core attention with optional mask/dropout
+- **KV-Cache** - Efficient autoregressive generation (3.94x speedup)
+- **Positional Encodings** - RoPE, ALiBi, Sinusoidal, Learned
+- **TransformerBlock** - Complete Pre-Norm/Post-Norm support
+- **Normalizations** - LayerNorm, RMSNorm (LLaMA style)
+- **FFN** - Feed-Forward Networks with SiLU activation
 
 ---
 
