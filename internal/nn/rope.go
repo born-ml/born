@@ -45,8 +45,8 @@ import (
 type RotaryEncoding[B tensor.Backend] struct {
 	FreqCos   *tensor.Tensor[float32, B] // [max_seq_len, d_model/2] - cosine values
 	FreqSin   *tensor.Tensor[float32, B] // [max_seq_len, d_model/2] - sine values
-	MaxSeqLen int                         // Maximum sequence length
-	DModel    int                         // Model dimension (must be even)
+	MaxSeqLen int                        // Maximum sequence length
+	DModel    int                        // Model dimension (must be even)
 	backend   B
 }
 

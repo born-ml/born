@@ -266,9 +266,9 @@ func TestLearnedPositionalEmbeddingDifferentPositions(t *testing.T) {
 
 	// Embeddings for different positions should be different (with high probability)
 	// Check that position 0 and position 1 have different embeddings
-	pos0 := outData[0:4]   // First 4 elements
-	pos1 := outData[4:8]   // Next 4 elements
-	pos2 := outData[8:12]  // Last 4 elements
+	pos0 := outData[0:4]  // First 4 elements
+	pos1 := outData[4:8]  // Next 4 elements
+	pos2 := outData[8:12] // Last 4 elements
 
 	// At least one dimension should differ (very high probability with random init)
 	same01 := true

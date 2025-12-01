@@ -135,7 +135,7 @@ func TestScaledDotProductAttention_CrossAttention(t *testing.T) {
 	seqKV := 7 // encoder sequence length
 	headDim := 16
 
-	Q := tensor.Randn[float32](tensor.Shape{2, 4, seqQ, headDim}, backend)  // batch=2, heads=4
+	Q := tensor.Randn[float32](tensor.Shape{2, 4, seqQ, headDim}, backend) // batch=2, heads=4
 	K := tensor.Randn[float32](tensor.Shape{2, 4, seqKV, headDim}, backend)
 	V := tensor.Randn[float32](tensor.Shape{2, 4, seqKV, headDim}, backend)
 

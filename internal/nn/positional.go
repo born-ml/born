@@ -33,8 +33,8 @@ import (
 //	// Shape: [1, 10, 256]
 type SinusoidalPositionalEncoding[B tensor.Backend] struct {
 	Encoding *tensor.Tensor[float32, B] // [max_len, dim] - pre-computed encodings
-	MaxLen   int                         // Maximum sequence length
-	Dim      int                         // Embedding dimension
+	MaxLen   int                        // Maximum sequence length
+	Dim      int                        // Embedding dimension
 	backend  B
 }
 
@@ -150,8 +150,8 @@ func (s *SinusoidalPositionalEncoding[B]) Forward(seqLen int) *tensor.Tensor[flo
 // The embeddings are initialized from a normal distribution N(0, 1).
 type LearnedPositionalEmbedding[B tensor.Backend] struct {
 	Embedding *Embedding[B] // Embedding layer for position indices
-	MaxLen    int            // Maximum sequence length
-	Dim       int            // Embedding dimension
+	MaxLen    int           // Maximum sequence length
+	Dim       int           // Embedding dimension
 	backend   B
 }
 
@@ -209,8 +209,10 @@ func (l *LearnedPositionalEmbedding[B]) Forward(seqLen int) *tensor.Tensor[float
 	}
 
 	// Create position indices: [0, 1, 2, ..., seqLen-1]
+	// seqLen is bounded by MaxLen (typically 2048-8192), safe for int32
 	indices := make([]int32, seqLen)
 	for i := 0; i < seqLen; i++ {
+		//nolint:gosec // seqLen bounded by MaxLen (checked above), i always fits in int32
 		indices[i] = int32(i)
 	}
 

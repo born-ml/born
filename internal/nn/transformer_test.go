@@ -69,8 +69,8 @@ func TestTransformerBlock_PreNorm(t *testing.T) {
 		NumHeads:   12,
 		FFNDim:     3072,
 		Dropout:    0,
-		NormFirst:  true,  // Pre-Norm
-		UseRMSNorm: true,  // RMSNorm
+		NormFirst:  true, // Pre-Norm
+		UseRMSNorm: true, // RMSNorm
 		NormEps:    1e-5,
 	}
 	block := NewTransformerBlock(config, backend)

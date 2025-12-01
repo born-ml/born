@@ -164,8 +164,9 @@ func (t *TransformerBlock[B]) Forward(x, mask *tensor.Tensor[float32, B]) *tenso
 // forwardPreNorm implements Pre-Norm architecture (LLaMA style).
 //
 // x → Norm → MHA → + → Norm → FFN → + → output
-//      ↑_______|         ↑_______|
-//    (residual)        (residual)
+//
+//	  ↑_______|         ↑_______|
+//	(residual)        (residual)
 func (t *TransformerBlock[B]) forwardPreNorm(x, mask *tensor.Tensor[float32, B]) *tensor.Tensor[float32, B] {
 	// 1. Attention block with residual
 	// Norm -> MHA -> Add residual
@@ -185,8 +186,9 @@ func (t *TransformerBlock[B]) forwardPreNorm(x, mask *tensor.Tensor[float32, B])
 // forwardPostNorm implements Post-Norm architecture (original Transformer).
 //
 // x → MHA → + → Norm → FFN → + → Norm → output
-//      ↑___|              ↑___|
-//    (residual)         (residual)
+//
+//	  ↑___|              ↑___|
+//	(residual)         (residual)
 func (t *TransformerBlock[B]) forwardPostNorm(x, mask *tensor.Tensor[float32, B]) *tensor.Tensor[float32, B] {
 	// 1. Attention block with residual
 	// MHA -> Add residual -> Norm

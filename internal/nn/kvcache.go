@@ -22,8 +22,8 @@ import (
 type KVCache[B tensor.Backend] struct {
 	keys    []*tensor.Tensor[float32, B] // List of key tensors
 	values  []*tensor.Tensor[float32, B] // List of value tensors
-	length  int                           // Current sequence length in cache
-	maxLen  int                           // Maximum sequence length
+	length  int                          // Current sequence length in cache
+	maxLen  int                          // Maximum sequence length
 	backend B
 }
 
