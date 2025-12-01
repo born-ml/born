@@ -250,25 +250,38 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 - [x] Gradient control (NoGrad, Detach)
 - [x] **31 public API operations** (MulScalar, Greater/Gt, Int32, etc.)
 
-**Status**: All 7 tasks complete. 112 new tests, 0 linter issues. **LLaMA/GPT/Mistral architectures now supported!**
+**Status**: All 7 tasks complete. 112 new tests, 0 linter issues.
 
-### Phase 3: Attention Mechanisms (v0.4) - Q1 2026
-- [ ] Multi-head attention (MHA)
-- [ ] Scaled dot-product attention
-- [ ] KV-cache for inference
-- [ ] Layer normalization variants
+### Phase 4: Attention Mechanisms (v0.4.0) - December 2025 ✅ COMPLETE
+- [x] Multi-head attention (MHA)
+- [x] Scaled dot-product attention (SDPA)
+- [x] KV-cache for inference (3.94x speedup)
+- [x] Layer normalization (LayerNorm + RMSNorm)
+- [x] Positional encodings (RoPE, ALiBi, Sinusoidal, Learned)
+- [x] Transformer block with FFN
+- [x] BatchMatMul for 3D/4D tensors
 
-### Phase 4: Cross-Platform & ONNX (v0.5) - Q2 2026
+**Status**: All 8 tasks complete. 80+ new tests, 0 linter issues. **Full Transformer architecture ready!**
+
+### Phase 5: LLM Support (v0.5.0) - Q1 2026
+- [ ] Grouped Query Attention (GQA)
+- [ ] SwiGLU + GLU variants
+- [ ] Model Loader (SafeTensors/GGUF)
+- [ ] Tokenizer integration
+- [ ] Sampling strategies
+- [ ] Inference Pipeline
+
+### Phase 6: ONNX & Cross-Platform (v0.6.0) - Q2 2026
 - [ ] Linux/macOS WebGPU support
 - [ ] ONNX import/export
 - [ ] Model quantization (INT8, FP16)
 - [ ] Pre-trained model loading
 
-### Long-Term: v1.0 LTS - 2027-2028
-- [ ] Training utilities (BatchNorm, Dropout)
+### Long-Term: v1.0 LTS - 2027
 - [ ] Distributed training
-- [ ] Advanced optimizations
+- [ ] Flash Attention
 - [ ] Model zoo
+- [ ] Production optimizations
 
 **Full roadmap**: See [ROADMAP.md](ROADMAP.md)
 

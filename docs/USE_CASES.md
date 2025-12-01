@@ -179,7 +179,59 @@ func processBatch(inputs []Tensor) []Prediction {
 
 ---
 
-### 6. ONNX Model Deployment (Planned Feature)
+### 6. LLM & Transformer Inference (v0.4.0+)
+
+**Scenario:**
+Run transformer-based models (GPT, LLaMA, BERT) with efficient autoregressive generation.
+
+**Why Born:**
+- **Full transformer architecture** in pure Go
+- **KV-Cache** for 3.94x faster text generation
+- **Modern positional encodings**: RoPE (LLaMA), ALiBi (BLOOM)
+- **Pre-Norm/Post-Norm** support for different model architectures
+
+**Example:**
+```go
+import (
+    "github.com/born-ml/born/nn"
+    "github.com/born-ml/born/tensor"
+)
+
+// Create transformer block (LLaMA style)
+config := nn.TransformerConfig{
+    EmbedDim:   768,
+    NumHeads:   12,
+    FFNDim:     3072,
+    NormFirst:  true,   // Pre-Norm (LLaMA)
+    UseRMSNorm: true,   // RMSNorm (LLaMA)
+    NormEps:    1e-5,
+}
+block := nn.NewTransformerBlock(config, backend)
+
+// Efficient generation with KV-cache
+cache := nn.NewKVCache(1, 12, 2048, 64, backend)
+for i := 0; i < 100; i++ {
+    token := getNextToken()
+    output := block.ForwardWithCache(token, cache)
+    // 3.94x faster than recomputing all tokens!
+}
+```
+
+**Benefits:**
+- ✅ Single binary LLM inference
+- ✅ No Python/PyTorch runtime
+- ✅ Efficient KV-cache (3.94x speedup)
+- ✅ Modern architectures (RoPE, RMSNorm, SiLU)
+
+**Example applications:**
+- Local LLM inference
+- Edge AI assistants
+- Privacy-preserving text generation
+- Embedded chatbots
+
+---
+
+### 7. ONNX Model Deployment (Planned Feature)
 
 **Scenario:**
 Train models in PyTorch/TensorFlow, deploy with Born.
