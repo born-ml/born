@@ -6,9 +6,9 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
-// SoftmaxOp represents the softmax operation along the last dimension.
+// SoftmaxOp represents the softmax operation along a specified dimension.
 //
-// Forward (for each row):
+// Forward (for each slice along dim):
 //
 //	softmax(x)_i = exp(x_i - max(x)) / Σ_j exp(x_j - max(x))
 //
@@ -23,19 +23,24 @@ import (
 //	∂L/∂x_j = Σ_i (∂L/∂softmax_i) * softmax_i * (δ_ij - softmax_j)
 //	        = softmax_j * (∂L/∂softmax_j - Σ_i (∂L/∂softmax_i * softmax_i))
 //
-// Assumptions:
-//   - Input shape: [batch_size, num_classes] (2D)
-//   - Softmax applied along last dimension (classes)
+//	Simplified formula:
+//	∂L/∂x = y * (upstream_grad - sum(y * upstream_grad, dim=axis, keepdim=True))
+//
+// Supports:
+//   - N-dimensional tensors (2D, 3D, 4D, etc.)
+//   - Softmax applied along any dimension (positive or negative indexing)
 type SoftmaxOp struct {
 	input  *tensor.RawTensor
 	output *tensor.RawTensor // Cached softmax output for backward pass
+	dim    int               // Dimension along which softmax was applied
 }
 
 // NewSoftmaxOp creates a new softmax operation.
-func NewSoftmaxOp(input, output *tensor.RawTensor) *SoftmaxOp {
+func NewSoftmaxOp(input, output *tensor.RawTensor, dim int) *SoftmaxOp {
 	return &SoftmaxOp{
 		input:  input,
 		output: output,
+		dim:    dim,
 	}
 }
 
@@ -51,72 +56,41 @@ func (op *SoftmaxOp) Output() *tensor.RawTensor {
 
 // Backward computes the gradient with respect to input.
 //
-// Uses the simplified formula for batched softmax:
+// Uses the simplified formula:
 //
-//	∂L/∂x[b,j] = softmax[b,j] * (∂L/∂softmax[b,j] - dot(∂L/∂softmax[b,:], softmax[b,:]))
+//	∂L/∂x = y * (upstream_grad - sum(y * upstream_grad, dim=axis, keepdim=True))
 //
 // Where:
-//   - b is the batch index
-//   - j is the class index
-//   - dot is the dot product over the class dimension
-func (op *SoftmaxOp) Backward(outputGrad *tensor.RawTensor, _ tensor.Backend) []*tensor.RawTensor {
-	shape := op.input.Shape()
-	if len(shape) != 2 {
-		panic("SoftmaxOp: backward only supports 2D tensors [batch_size, num_classes]")
+//   - y is the softmax output (op.output)
+//   - upstream_grad is the gradient from the next layer
+//   - sum is performed along the same dimension as softmax (op.dim)
+//
+// This formula works for N-dimensional tensors (2D, 3D, 4D, etc.).
+func (op *SoftmaxOp) Backward(outputGrad *tensor.RawTensor, backend tensor.Backend) []*tensor.RawTensor {
+	shape := op.output.Shape()
+	dim := op.dim
+
+	// Normalize negative dimension
+	if dim < 0 {
+		dim = len(shape) + dim
 	}
 
-	batchSize := shape[0]
-	numClasses := shape[1]
-
-	// Create gradient tensor
-	inputGrad, err := tensor.NewRaw(shape, op.input.DType(), op.input.Device())
-	if err != nil {
-		panic(err)
+	// Validate dimension
+	if dim < 0 || dim >= len(shape) {
+		panic("SoftmaxOp: invalid dimension for backward pass")
 	}
 
-	switch op.input.DType() {
-	case tensor.Float32:
-		softmaxData := op.output.AsFloat32()
-		outGradData := outputGrad.AsFloat32()
-		inGradData := inputGrad.AsFloat32()
+	// Step 1: y * upstream_grad (element-wise)
+	yTimesGrad := backend.Mul(op.output, outputGrad)
 
-		for b := 0; b < batchSize; b++ {
-			// Compute dot product: Σ_i (grad_output[i] * softmax[i])
-			dotProduct := float32(0.0)
-			for j := 0; j < numClasses; j++ {
-				idx := b*numClasses + j
-				dotProduct += outGradData[idx] * softmaxData[idx]
-			}
+	// Step 2: sum(y * upstream_grad, dim=axis, keepdim=True)
+	sumYG := backend.SumDim(yTimesGrad, dim, true)
 
-			// Compute gradient for each class
-			for j := 0; j < numClasses; j++ {
-				idx := b*numClasses + j
-				// grad_input[j] = softmax[j] * (grad_output[j] - dotProduct)
-				inGradData[idx] = softmaxData[idx] * (outGradData[idx] - dotProduct)
-			}
-		}
+	// Step 3: upstream_grad - sum(...)
+	diff := backend.Sub(outputGrad, sumYG)
 
-	case tensor.Float64:
-		softmaxData := op.output.AsFloat64()
-		outGradData := outputGrad.AsFloat64()
-		inGradData := inputGrad.AsFloat64()
-
-		for b := 0; b < batchSize; b++ {
-			dotProduct := 0.0
-			for j := 0; j < numClasses; j++ {
-				idx := b*numClasses + j
-				dotProduct += outGradData[idx] * softmaxData[idx]
-			}
-
-			for j := 0; j < numClasses; j++ {
-				idx := b*numClasses + j
-				inGradData[idx] = softmaxData[idx] * (outGradData[idx] - dotProduct)
-			}
-		}
-
-	default:
-		panic("SoftmaxOp: backward only supports float32 and float64")
-	}
+	// Step 4: y * diff (element-wise)
+	inputGrad := backend.Mul(op.output, diff)
 
 	return []*tensor.RawTensor{inputGrad}
 }

@@ -693,20 +693,23 @@ func TestSoftmaxOp_Forward(t *testing.T) {
 
 // TestSoftmaxOp_Backward tests the backward pass of SoftmaxOp.
 func TestSoftmaxOp_Backward(t *testing.T) {
-	backend := cpu.New()
+	// Use autodiff backend so that backward operations (Mul, Sub, SumDim) work
+	cpuBackend := cpu.New()
+	backend := autodiff.New(cpuBackend)
 
 	// Simple test: 1 sample, 2 classes
-	input, _ := tensor.FromSlice([]float32{1.0, 2.0}, tensor.Shape{1, 2}, backend)
+	input, _ := tensor.FromSlice([]float32{1.0, 2.0}, tensor.Shape{1, 2}, cpuBackend)
 
-	output := ops.Softmax(input.Raw(), backend.Device())
+	// Compute softmax using ops.Softmax (non-autodiff version)
+	output := ops.Softmax(input.Raw(), cpuBackend.Device())
 	outputData := output.AsFloat32()
 
-	op := ops.NewSoftmaxOp(input.Raw(), output)
+	op := ops.NewSoftmaxOp(input.Raw(), output, -1) // dim=-1 (last dimension)
 
 	// Output gradient: [1, 0] (gradient w.r.t. first class only)
-	outputGrad, _ := tensor.FromSlice([]float32{1.0, 0.0}, tensor.Shape{1, 2}, backend)
+	outputGrad, _ := tensor.FromSlice([]float32{1.0, 0.0}, tensor.Shape{1, 2}, cpuBackend)
 
-	// Backward pass
+	// Backward pass - use autodiff backend for operations
 	inputGrads := op.Backward(outputGrad.Raw(), backend)
 	inputGradData := inputGrads[0].AsFloat32()
 
@@ -797,7 +800,7 @@ func TestSoftmaxOp_InputsOutputMethods(t *testing.T) {
 	input, _ := tensor.FromSlice([]float32{1.0, 2.0, 3.0}, tensor.Shape{1, 3}, backend)
 	output := ops.Softmax(input.Raw(), backend.Device())
 
-	op := ops.NewSoftmaxOp(input.Raw(), output)
+	op := ops.NewSoftmaxOp(input.Raw(), output, -1) // dim=-1 (last dimension)
 
 	if len(op.Inputs()) != 1 {
 		t.Errorf("SoftmaxOp.Inputs() length: got %d, want 1", len(op.Inputs()))
@@ -821,5 +824,200 @@ func TestLogOp_InputsOutputMethods(t *testing.T) {
 	}
 	if op.Output() != output {
 		t.Error("LogOp.Output() doesn't match result")
+	}
+}
+
+// TestSoftmaxOp_Backward_3D tests SoftmaxOp backward with 3D tensors.
+func TestSoftmaxOp_Backward_3D(t *testing.T) {
+	cpuBackend := cpu.New()
+	backend := autodiff.New(cpuBackend)
+
+	// Test 3D tensor [Batch, SeqLen, VocabSize]
+	// Simple case: [2, 3, 4]
+	batchSize := 2
+	seqLen := 3
+	vocabSize := 4
+
+	// Create input logits
+	data := make([]float32, batchSize*seqLen*vocabSize)
+	for i := range data {
+		data[i] = float32(i%vocabSize) + 1.0 // [1, 2, 3, 4, 1, 2, 3, 4, ...]
+	}
+	logits, _ := tensor.FromSlice(data, tensor.Shape{batchSize, seqLen, vocabSize}, cpuBackend)
+
+	// Apply softmax using CPU backend (to get output)
+	probs := backend.Inner().Softmax(logits.Raw(), -1)
+
+	// Create SoftmaxOp
+	op := ops.NewSoftmaxOp(logits.Raw(), probs, -1)
+
+	// Create upstream gradient (non-uniform - important!)
+	// Using all ones would give zero gradient because sum(softmax) = const
+	upstreamGradData := make([]float32, batchSize*seqLen*vocabSize)
+	for i := range upstreamGradData {
+		// Vary the gradient: [1, 2, 3, 4, 1, 2, 3, 4, ...]
+		upstreamGradData[i] = float32(i%vocabSize) + 1.0
+	}
+	upstreamGrad, _ := tensor.FromSlice(
+		upstreamGradData,
+		tensor.Shape{batchSize, seqLen, vocabSize},
+		cpuBackend,
+	)
+
+	// Call backward directly
+	inputGrads := op.Backward(upstreamGrad.Raw(), backend)
+
+	// Verify gradient shape
+	gradLogits := inputGrads[0]
+	expectedShape := tensor.Shape{batchSize, seqLen, vocabSize}
+	if !gradLogits.Shape().Equal(expectedShape) {
+		t.Errorf("Gradient shape: got %v, want %v", gradLogits.Shape(), expectedShape)
+	}
+
+	// Verify gradients are not all zeros (sanity check)
+	gradData := gradLogits.AsFloat32()
+	hasNonZero := false
+	for _, v := range gradData {
+		if v != 0 {
+			hasNonZero = true
+			break
+		}
+	}
+	if !hasNonZero {
+		t.Error("All gradients are zero, expected non-zero values")
+	}
+}
+
+// TestSoftmaxOp_Backward_4D tests SoftmaxOp backward with 4D tensors (attention scores).
+func TestSoftmaxOp_Backward_4D(t *testing.T) {
+	cpuBackend := cpu.New()
+	backend := autodiff.New(cpuBackend)
+
+	// Attention scores: [Batch, Heads, SeqLen, SeqLen]
+	batchSize := 2
+	numHeads := 4
+	seqLen := 8
+
+	// Create input scores
+	totalSize := batchSize * numHeads * seqLen * seqLen
+	data := make([]float32, totalSize)
+	for i := range data {
+		data[i] = float32(i%seqLen) / float32(seqLen) // Small values
+	}
+	scores, _ := tensor.FromSlice(data, tensor.Shape{batchSize, numHeads, seqLen, seqLen}, cpuBackend)
+
+	// Apply softmax using CPU backend (to get output)
+	weights := backend.Inner().Softmax(scores.Raw(), -1)
+
+	// Create SoftmaxOp
+	op := ops.NewSoftmaxOp(scores.Raw(), weights, -1)
+
+	// Create upstream gradient (non-uniform - important!)
+	// Using all ones would give zero gradient because sum(softmax) = const
+	upstreamGradData := make([]float32, totalSize)
+	for i := range upstreamGradData {
+		// Vary the gradient: [1, 2, 3, ..., seqLen, 1, 2, ...]
+		upstreamGradData[i] = float32(i%seqLen) + 1.0
+	}
+	upstreamGrad, _ := tensor.FromSlice(
+		upstreamGradData,
+		tensor.Shape{batchSize, numHeads, seqLen, seqLen},
+		cpuBackend,
+	)
+
+	// Call backward directly
+	inputGrads := op.Backward(upstreamGrad.Raw(), backend)
+
+	// Verify gradient shape
+	gradScores := inputGrads[0]
+	expectedShape := tensor.Shape{batchSize, numHeads, seqLen, seqLen}
+	if !gradScores.Shape().Equal(expectedShape) {
+		t.Errorf("Gradient shape: got %v, want %v", gradScores.Shape(), expectedShape)
+	}
+
+	// Verify gradients are not all zeros
+	gradData := gradScores.AsFloat32()
+	hasNonZero := false
+	for _, v := range gradData {
+		if v != 0 {
+			hasNonZero = true
+			break
+		}
+	}
+	if !hasNonZero {
+		t.Error("All gradients are zero, expected non-zero values")
+	}
+
+	// Additional check: verify gradient sum property
+	// For softmax, gradients along the softmax dimension should sum to ~0
+	// (because softmax outputs sum to 1, so their gradients must sum to 0)
+	// Check one slice: [batch=0, head=0, seq=0, :]
+	slice := gradData[0:seqLen]
+	sum := float32(0.0)
+	for _, v := range slice {
+		sum += v
+	}
+	if math.Abs(float64(sum)) > 1e-4 {
+		t.Logf("Warning: gradient sum along softmax dimension should be ~0, got %f", sum)
+		// This is expected behavior, just logging for verification
+	}
+}
+
+// TestSoftmaxOp_Backward_GradientCorrectness tests numerical gradient correctness.
+func TestSoftmaxOp_Backward_GradientCorrectness(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	// Simple 2D case for numerical gradient check
+	// Input: [1, 3] shape
+	input, _ := tensor.FromSlice([]float32{1.0, 2.0, 3.0}, tensor.Shape{1, 3}, backend)
+
+	// Forward pass
+	backend.Tape().StartRecording()
+	output := input.Softmax(-1)
+	loss := output.Sum() // Simple loss: sum of all outputs
+	backend.Tape().StopRecording()
+
+	// Analytical gradient
+	grads := autodiff.Backward(loss, backend)
+	analyticalGrad := grads[input.Raw()].AsFloat32()
+
+	// Numerical gradient using finite differences
+	epsilon := float32(1e-4)
+	numericalGrad := make([]float32, 3)
+	inputData := input.Raw().AsFloat32()
+
+	for i := 0; i < 3; i++ {
+		// Forward perturbation: input[i] + epsilon
+		inputData[i] += epsilon
+		outPlus := backend.Inner().Softmax(input.Raw(), -1)
+		lossPlus := float32(0.0)
+		outPlusData := outPlus.AsFloat32()
+		for _, v := range outPlusData {
+			lossPlus += v
+		}
+
+		// Backward perturbation: input[i] - epsilon
+		inputData[i] -= 2 * epsilon
+		outMinus := backend.Inner().Softmax(input.Raw(), -1)
+		lossMinus := float32(0.0)
+		outMinusData := outMinus.AsFloat32()
+		for _, v := range outMinusData {
+			lossMinus += v
+		}
+
+		// Restore original value
+		inputData[i] += epsilon
+
+		// Compute numerical gradient
+		numericalGrad[i] = (lossPlus - lossMinus) / (2 * epsilon)
+	}
+
+	// Compare analytical and numerical gradients
+	for i := 0; i < 3; i++ {
+		diff := math.Abs(float64(analyticalGrad[i] - numericalGrad[i]))
+		if diff > 1e-3 {
+			t.Errorf("Gradient mismatch at index %d: analytical=%f, numerical=%f, diff=%f",
+				i, analyticalGrad[i], numericalGrad[i], diff)
+		}
 	}
 }

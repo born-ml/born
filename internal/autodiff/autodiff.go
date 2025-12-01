@@ -520,7 +520,7 @@ func (b *AutodiffBackend[B]) Softmax(x *tensor.RawTensor, dim int) *tensor.RawTe
 
 	// Record operation if tape is recording
 	if b.tape.IsRecording() {
-		op := ops.NewSoftmaxOp(x, result)
+		op := ops.NewSoftmaxOp(x, result, dim)
 		b.tape.Record(op)
 	}
 
