@@ -776,7 +776,7 @@ func (b *AutodiffBackend[B]) Cast(x *tensor.RawTensor, dtype tensor.DataType) *t
 	return b.inner.Cast(x, dtype)
 }
 
-// Cat concatenates tensors along a dimension (passthrough - no autodiff yet).
+// Cat concatenates tensors along a dimension.
 func (b *AutodiffBackend[B]) Cat(tensors []*tensor.RawTensor, dim int) *tensor.RawTensor {
 	// Mark all inputs as non-unique for safety
 	//nolint:gocritic // defer in loop is intentional for cleanup of all inputs
@@ -784,18 +784,55 @@ func (b *AutodiffBackend[B]) Cat(tensors []*tensor.RawTensor, dim int) *tensor.R
 		defer t.ForceNonUnique()()
 	}
 
-	// TODO(TASK-015): Implement CatOp for gradient computation
-	// For now, passthrough to inner backend
-	return b.inner.Cat(tensors, dim)
+	// Perform forward pass
+	result := b.inner.Cat(tensors, dim)
+
+	// Record operation for gradient computation
+	if b.tape.IsRecording() {
+		// Normalize dimension and compute sizes
+		ndim := len(tensors[0].Shape())
+		normalizedDim := dim
+		if normalizedDim < 0 {
+			normalizedDim = ndim + normalizedDim
+		}
+
+		sizes := make([]int, len(tensors))
+		for i, t := range tensors {
+			sizes[i] = t.Shape()[normalizedDim]
+		}
+
+		op := ops.NewCatOp(tensors, normalizedDim, sizes, result)
+		b.tape.Record(op)
+	}
+
+	return result
 }
 
-// Chunk splits tensor into equal parts (passthrough - no autodiff yet).
+// Chunk splits tensor into equal parts.
+// Note: Multi-output operation - gradient computation requires special handling.
 func (b *AutodiffBackend[B]) Chunk(x *tensor.RawTensor, n, dim int) []*tensor.RawTensor {
 	defer x.ForceNonUnique()()
 
-	// TODO(TASK-015): Implement ChunkOp for gradient computation
-	// For now, passthrough to inner backend
-	return b.inner.Chunk(x, n, dim)
+	// Perform forward pass
+	results := b.inner.Chunk(x, n, dim)
+
+	// Record operation for gradient computation
+	// Note: ChunkOp is a multi-output operation.
+	// The tape needs to handle this specially since the Operation interface
+	// expects a single output.
+	if b.tape.IsRecording() {
+		// Normalize dimension
+		ndim := len(x.Shape())
+		normalizedDim := dim
+		if normalizedDim < 0 {
+			normalizedDim = ndim + normalizedDim
+		}
+
+		op := ops.NewChunkOp(x, n, normalizedDim, results)
+		b.tape.Record(op)
+	}
+
+	return results
 }
 
 // Unsqueeze adds a dimension (recorded via Reshape).
@@ -810,15 +847,28 @@ func (b *AutodiffBackend[B]) Squeeze(x *tensor.RawTensor, dim int) *tensor.RawTe
 	return b.inner.Squeeze(x, dim)
 }
 
-// Gather selects elements along dim using index tensor (passthrough - no autodiff yet).
+// Gather selects elements along dim using index tensor.
 func (b *AutodiffBackend[B]) Gather(x *tensor.RawTensor, dim int, index *tensor.RawTensor) *tensor.RawTensor {
 	defer x.ForceNonUnique()()
 	defer index.ForceNonUnique()()
 
-	// TODO(TASK-016): Implement GatherOp for gradient computation
-	// Backward: scatter_add grad_output to grad_input at index positions
-	// For now, passthrough to inner backend
-	return b.inner.Gather(x, dim, index)
+	// Perform forward pass
+	result := b.inner.Gather(x, dim, index)
+
+	// Record operation for gradient computation
+	if b.tape.IsRecording() {
+		// Normalize dimension
+		ndim := len(x.Shape())
+		normalizedDim := dim
+		if normalizedDim < 0 {
+			normalizedDim = ndim + normalizedDim
+		}
+
+		op := ops.NewGatherOp(x, normalizedDim, index, result)
+		b.tape.Record(op)
+	}
+
+	return result
 }
 
 // Where performs conditional element selection (passthrough - no autodiff yet).

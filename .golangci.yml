@@ -209,6 +209,12 @@ linters:
           - gocognit     # Backward pass algorithms inherently complex
           - gocritic     # Math notation (N, H, W, CIn, COut) for clarity
 
+      # Autodiff ops - type-specific implementations (cat, chunk, gather)
+      - path: internal/autodiff/ops/(cat|chunk|gather)\.go
+        linters:
+          - dupl         # Type-specific implementations for float32, float64, int32, int64, uint8, bool
+          - revive       # Unused parameters in multi-output ops (ChunkOp.Backward)
+
       # Backend types - stuttering is acceptable in Go (e.g., cpu.CPUBackend, autodiff.AutodiffBackend)
       - path: internal/backend/cpu/backend\.go
         text: "type name will be used as cpu.CPUBackend"
