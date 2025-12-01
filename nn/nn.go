@@ -150,6 +150,20 @@ func NewRMSNorm[B tensor.Backend](dModel int, epsilon float32, backend B) *RMSNo
 	return nn.NewRMSNorm(dModel, epsilon, backend)
 }
 
+// LayerNorm represents Layer Normalization.
+type LayerNorm[B tensor.Backend] = nn.LayerNorm[B]
+
+// NewLayerNorm creates a new LayerNorm layer.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	norm := nn.NewLayerNorm[B](768, 1e-5, backend)
+//	output := norm.Forward(input)  // [..., 768] -> [..., 768]
+func NewLayerNorm[B tensor.Backend](normalizedShape int, epsilon float32, backend B) *LayerNorm[B] {
+	return nn.NewLayerNorm(normalizedShape, epsilon, backend)
+}
+
 // Loss Functions
 
 // CrossEntropyLoss represents the cross-entropy loss for classification.
