@@ -22,6 +22,25 @@ func reduceBroadcast(grad *tensor.RawTensor, targetShape tensor.Shape, backend t
 		return grad.Clone()
 	}
 
+	// Handle scalar upstream gradient (empty shape)
+	// This happens when gradient flows from scalar loss (e.g., CrossEntropy, MSE)
+	// We need to broadcast scalar to target shape
+	if len(gradShape) == 0 {
+		// Extract scalar value
+		var scalarValue float64
+		switch grad.DType() {
+		case tensor.Float32:
+			scalarValue = float64(grad.AsFloat32()[0])
+		case tensor.Float64:
+			scalarValue = grad.AsFloat64()[0]
+		default:
+			panic(fmt.Sprintf("reduceBroadcast: unsupported dtype %s for scalar gradient", grad.DType()))
+		}
+
+		// Create tensor filled with scalar value in target shape
+		return createScalar(targetShape, grad.DType(), scalarValue, grad.Device())
+	}
+
 	// Handle scalar target (empty shape)
 	if len(targetShape) == 0 {
 		// Sum all elements to scalar
