@@ -169,6 +169,67 @@ func (m *MultiHeadAttention[B]) projectAndReshape(
 	return output2D.Reshape(batch, seq, m.EmbedDim)
 }
 
+// ForwardWithCache computes attention using KV cache for efficient autoregressive generation.
+//
+// This method is optimized for inference where tokens are generated one at a time.
+// Instead of recomputing K,V for all previous tokens, we cache them and only compute
+// for the new token.
+//
+// Args:
+//   - query: Query tensor [batch, 1, embed_dim] (typically single token)
+//   - cache: KV cache storing previous key-value pairs
+//
+// Returns:
+//   - output: [batch, 1, embed_dim]
+//
+// The cache is automatically updated with new K,V pairs.
+//
+// Example:
+//
+//	cache := nn.NewKVCache[B](1, 12, 512, 64, backend)
+//	for i := 0; i < 100; i++ {
+//	    token := getNextToken(i) // [1, 1, 768]
+//	    output := mha.ForwardWithCache(token, cache)
+//	}
+func (m *MultiHeadAttention[B]) ForwardWithCache(
+	query *tensor.Tensor[float32, B],
+	cache *KVCache[B],
+) *tensor.Tensor[float32, B] {
+	batch := query.Shape()[0]
+	seqQ := query.Shape()[1] // Typically 1 for autoregressive generation
+
+	// 1. Project Q, K, V for the new token
+	q := m.projectAndReshape(query, m.WQ, batch, seqQ)
+	k := m.projectAndReshape(query, m.WK, batch, seqQ) // Use query as input for self-attention
+	v := m.projectAndReshape(query, m.WV, batch, seqQ)
+
+	// 2. Reshape to [batch, seq, num_heads, head_dim] then transpose to [batch, num_heads, seq, head_dim]
+	q = q.Reshape(batch, seqQ, m.NumHeads, m.HeadDim).Transpose(0, 2, 1, 3)
+	k = k.Reshape(batch, seqQ, m.NumHeads, m.HeadDim).Transpose(0, 2, 1, 3)
+	v = v.Reshape(batch, seqQ, m.NumHeads, m.HeadDim).Transpose(0, 2, 1, 3)
+
+	// 3. Update cache with new K,V
+	cache.Update(k, v)
+
+	// 4. Get all cached K,V (including the new one)
+	cachedK, cachedV := cache.Get()
+
+	// 5. Scaled dot-product attention with cached K,V
+	// q: [batch, num_heads, 1, head_dim]
+	// cachedK, cachedV: [batch, num_heads, cache_len, head_dim]
+	attnOut, _ := ScaledDotProductAttention(q, cachedK, cachedV, nil, 0)
+
+	// 6. Transpose back and reshape to [batch, seq_q, embed_dim]
+	attnOut = attnOut.Transpose(0, 2, 1, 3).Reshape(batch, seqQ, m.EmbedDim)
+
+	// 7. Output projection
+	attnOut2D := attnOut.Reshape(batch*seqQ, m.EmbedDim)
+	output := m.WO.Forward(attnOut2D)
+	output = output.Reshape(batch, seqQ, m.EmbedDim)
+
+	return output
+}
+
 // Parameters returns all trainable parameters (WQ, WK, WV, WO weights and biases).
 func (m *MultiHeadAttention[B]) Parameters() []*Parameter[B] {
 	params := make([]*Parameter[B], 0, 8)
