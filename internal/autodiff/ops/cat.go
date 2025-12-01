@@ -22,9 +22,9 @@ import (
 //	gradInput2: [dL/d3, dL/d4, dL/d5]
 type CatOp struct {
 	inputs []*tensor.RawTensor // Input tensors that were concatenated
-	dim    int                  // Dimension along which concatenation happened
-	sizes  []int                // Size of each input along concat dimension
-	output *tensor.RawTensor    // Concatenated output tensor
+	dim    int                 // Dimension along which concatenation happened
+	sizes  []int               // Size of each input along concat dimension
+	output *tensor.RawTensor   // Concatenated output tensor
 }
 
 // NewCatOp creates a new cat operation.

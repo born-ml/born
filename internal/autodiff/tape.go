@@ -66,16 +66,6 @@ func (t *GradientTape) Clear() {
 //  4. Accumulate gradients when the same tensor is used multiple times
 //
 // Returns a map from RawTensor to its accumulated gradient.
-//
-// Example:
-//
-//	// y = (x + 2) * 3
-//	// dy/dx = 3
-//	tape := NewGradientTape()
-//	tape.StartRecording()
-//	// ... operations recorded ...
-//	gradients := tape.Backward(ones, backend)
-//	dydx := gradients[x.Raw()]
 func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Backend) map[*tensor.RawTensor]*tensor.RawTensor {
 	if len(t.operations) == 0 {
 		return make(map[*tensor.RawTensor]*tensor.RawTensor)
@@ -98,33 +88,116 @@ func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Bac
 	// Walk tape backwards
 	for i := len(t.operations) - 1; i >= 0; i-- {
 		op := t.operations[i]
-		opOutput := op.Output()
-
-		// Get gradient for this operation's output
-		opOutputGrad, hasGrad := grads[opOutput]
-		if !hasGrad {
-			// No gradient flows to this operation (e.g., unused result)
+		inputGrads := t.computeInputGrads(op, grads, backend)
+		if inputGrads == nil {
 			continue
 		}
-
-		// Compute gradients for inputs
-		inputGrads := op.Backward(opOutputGrad, backend)
-
-		// Accumulate gradients for each input
-		for j, input := range op.Inputs() {
-			inputGrad := inputGrads[j]
-
-			if existing, ok := grads[input]; ok {
-				// Accumulate: grad += inputGrad
-				grads[input] = backend.Add(existing, inputGrad)
-			} else {
-				// First gradient for this input
-				grads[input] = inputGrad
-			}
-		}
+		t.accumulateGrads(op, inputGrads, grads, backend)
 	}
 
 	return grads
+}
+
+// computeInputGrads computes gradients for an operation's inputs.
+// Returns nil if no gradient flows to this operation.
+func (t *GradientTape) computeInputGrads(
+	op ops.Operation,
+	grads map[*tensor.RawTensor]*tensor.RawTensor,
+	backend tensor.Backend,
+) []*tensor.RawTensor {
+	// Check if this is a multi-output operation (e.g., Chunk)
+	multiOp, isMulti := op.(ops.MultiOutputOperation)
+	if isMulti {
+		return t.computeMultiOutputGrads(multiOp, grads, backend)
+	}
+	return t.computeSingleOutputGrads(op, grads, backend)
+}
+
+// computeMultiOutputGrads handles backward pass for multi-output operations.
+func (t *GradientTape) computeMultiOutputGrads(
+	multiOp ops.MultiOutputOperation,
+	grads map[*tensor.RawTensor]*tensor.RawTensor,
+	backend tensor.Backend,
+) []*tensor.RawTensor {
+	outputs := multiOp.Outputs()
+	outputGrads, hasAnyGrad := t.collectOutputGrads(outputs, grads)
+	if !hasAnyGrad {
+		return nil
+	}
+	t.fillMissingGradsWithZeros(outputs, outputGrads, backend)
+	return multiOp.BackwardMulti(outputGrads, backend)
+}
+
+// computeSingleOutputGrads handles backward pass for single-output operations.
+func (t *GradientTape) computeSingleOutputGrads(
+	op ops.Operation,
+	grads map[*tensor.RawTensor]*tensor.RawTensor,
+	backend tensor.Backend,
+) []*tensor.RawTensor {
+	opOutput := op.Output()
+	opOutputGrad, hasGrad := grads[opOutput]
+	if !hasGrad {
+		return nil
+	}
+	return op.Backward(opOutputGrad, backend)
+}
+
+// collectOutputGrads collects gradients for all outputs of a multi-output operation.
+func (t *GradientTape) collectOutputGrads(
+	outputs []*tensor.RawTensor,
+	grads map[*tensor.RawTensor]*tensor.RawTensor,
+) ([]*tensor.RawTensor, bool) {
+	outputGrads := make([]*tensor.RawTensor, len(outputs))
+	hasAnyGrad := false
+	for j, out := range outputs {
+		if grad, exists := grads[out]; exists {
+			outputGrads[j] = grad
+			hasAnyGrad = true
+		}
+	}
+	return outputGrads, hasAnyGrad
+}
+
+// fillMissingGradsWithZeros fills nil gradients with zero tensors.
+func (t *GradientTape) fillMissingGradsWithZeros(
+	outputs []*tensor.RawTensor,
+	outputGrads []*tensor.RawTensor,
+	backend tensor.Backend,
+) {
+	for j, out := range outputs {
+		if outputGrads[j] != nil {
+			continue
+		}
+		zeroGrad, err := tensor.NewRaw(out.Shape(), out.DType(), backend.Device())
+		if err != nil {
+			continue // Skip if can't create zero grad
+		}
+		outputGrads[j] = zeroGrad
+	}
+}
+
+// accumulateGrads accumulates gradients for each input tensor.
+func (t *GradientTape) accumulateGrads(
+	op ops.Operation,
+	inputGrads []*tensor.RawTensor,
+	grads map[*tensor.RawTensor]*tensor.RawTensor,
+	backend tensor.Backend,
+) {
+	inputs := op.Inputs()
+	for j, input := range inputs {
+		if j >= len(inputGrads) {
+			break
+		}
+		inputGrad := inputGrads[j]
+		if inputGrad == nil {
+			continue
+		}
+		if existing, ok := grads[input]; ok {
+			grads[input] = backend.Add(existing, inputGrad)
+		} else {
+			grads[input] = inputGrad
+		}
+	}
 }
 
 // NumOps returns the number of recorded operations.

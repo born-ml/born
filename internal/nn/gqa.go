@@ -185,9 +185,9 @@ func (g *GroupedQueryAttention[B]) ForwardWithMask(
 	seqLen := x.Shape()[1]
 
 	// 1. Project Q, K, V
-	q := g.project(x, g.QProj, batch, seqLen)   // [batch, seq, n_q * head_dim]
-	k := g.project(x, g.KProj, batch, seqLen)   // [batch, seq, n_kv * head_dim]
-	v := g.project(x, g.VProj, batch, seqLen)   // [batch, seq, n_kv * head_dim]
+	q := g.project(x, g.QProj, batch, seqLen) // [batch, seq, n_q * head_dim]
+	k := g.project(x, g.KProj, batch, seqLen) // [batch, seq, n_kv * head_dim]
+	v := g.project(x, g.VProj, batch, seqLen) // [batch, seq, n_kv * head_dim]
 
 	// 2. Reshape to [batch, seq, n_heads, head_dim]
 	q = q.Reshape(batch, seqLen, g.config.NQHeads, g.config.HeadDim)

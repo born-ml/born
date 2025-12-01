@@ -344,3 +344,27 @@ func Accuracy[B tensor.Backend](
 ) float32 {
 	return nn.Accuracy(logits, targets)
 }
+
+// NewEmbeddingWithWeight creates an embedding layer from an existing weight tensor.
+//
+// This is useful when loading pre-trained embeddings.
+//
+// Example:
+//
+//	weights := tensor.Randn[float32](tensor.Shape{50000, 768}, backend)
+//	embed := nn.NewEmbeddingWithWeight(weights)
+func NewEmbeddingWithWeight[B tensor.Backend](weight *tensor.Tensor[float32, B]) *Embedding[B] {
+	return nn.NewEmbeddingWithWeight(weight)
+}
+
+// ReLUFunc applies the ReLU activation function element-wise.
+// ReLU(x) = max(0, x).
+func ReLUFunc[B tensor.Backend](x *tensor.Tensor[float32, B]) *tensor.Tensor[float32, B] {
+	return nn.ReLUFunc(x)
+}
+
+// SigmoidFunc applies the sigmoid activation function element-wise.
+// Sigmoid(x) = 1 / (1 + exp(-x)).
+func SigmoidFunc[B tensor.Backend](x *tensor.Tensor[float32, B]) *tensor.Tensor[float32, B] {
+	return nn.SigmoidFunc(x)
+}

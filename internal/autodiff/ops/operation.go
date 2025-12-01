@@ -34,3 +34,23 @@ type Operation interface {
 	// Output returns the output tensor produced by this operation.
 	Output() *tensor.RawTensor
 }
+
+// MultiOutputOperation represents an operation that produces multiple outputs.
+// Examples: Chunk (splits tensor into multiple parts), Split.
+//
+// The tape handles these specially by collecting gradients for ALL outputs
+// before calling BackwardMulti.
+type MultiOutputOperation interface {
+	Operation
+
+	// Outputs returns all output tensors produced by this operation.
+	Outputs() []*tensor.RawTensor
+
+	// BackwardMulti computes gradients for inputs given gradients for ALL outputs.
+	// This is used instead of Backward for multi-output operations.
+	//
+	// Example for ChunkOp (splits [a,b,c,d] into [a,b] and [c,d]):
+	//   outputGrads: [grad_chunk1, grad_chunk2]
+	//   returns: [grad_input] where grad_input = Cat(outputGrads)
+	BackwardMulti(outputGrads []*tensor.RawTensor, backend tensor.Backend) []*tensor.RawTensor
+}

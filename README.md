@@ -14,8 +14,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🎉 **v0.4.0 Released!** (Complete Transformer Architecture!)
-**Latest**: ⚡ Phase 4 complete - Full Attention, MHA, KV-Cache, Positional Encodings
+**Project Status**: 🎉 **v0.5.0 Released!** (Complete LLM Support!)
+**Latest**: ⚡ Phase 5 complete - GQA, SwiGLU, Tokenizers, Model Loading, Text Generation
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -61,7 +61,15 @@ prediction := model.Predict(image)
 - **Production Ready** - Single binary deployment, fast startup
 - **WebAssembly** - Run inference in browsers natively
 
-### Transformer Architecture (v0.4.0) 🆕
+### LLM Support (v0.5.0) 🆕
+- **Grouped Query Attention (GQA)** - Memory-efficient attention (LLaMA 2/3, Mistral)
+- **SwiGLU FFN** - Modern FFN with gated activations (+ GeGLU, ReGLU, GLU)
+- **Model Loading** - GGUF format support, weight mapping for LLaMA/Mistral/DeepSeek
+- **Tokenizers** - TikToken, BPE, HuggingFace format, chat templates
+- **Sampling** - Temperature, Top-K, Top-P (nucleus), Min-P, repetition penalty
+- **Text Generation** - Streaming API, KV-cache integration, stop sequences
+
+### Transformer Architecture (v0.4.0)
 - **Multi-Head Attention (MHA)** - Full implementation with Q, K, V projections
 - **Scaled Dot-Product Attention** - Core attention with optional mask/dropout
 - **KV-Cache** - Efficient autoregressive generation (3.94x speedup)
@@ -151,6 +159,49 @@ func main() {
 ```
 
 **Run it:** `cd examples/mnist && go run .`
+
+### Example: LLM Text Generation (v0.5.0)
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/born-ml/born/generate"
+    "github.com/born-ml/born/tokenizer"
+    "github.com/born-ml/born/loader"
+)
+
+func main() {
+    // Load tokenizer
+    tok, _ := tokenizer.NewTikTokenForModel("gpt-4")
+
+    // Load model (GGUF format)
+    model, _ := loader.OpenModel("llama-7b.gguf")
+
+    // Create generator with sampling config
+    gen := generate.NewTextGenerator(model, tok, generate.SamplingConfig{
+        Temperature: 0.7,
+        TopP:        0.9,
+        TopK:        40,
+    })
+
+    // Generate text
+    result, _ := gen.Generate("Hello, world!", generate.GenerateConfig{
+        MaxTokens: 100,
+    })
+    fmt.Println(result)
+
+    // Or use streaming
+    stream, _ := gen.GenerateStream("Once upon a time", generate.GenerateConfig{
+        MaxTokens: 50,
+        Stream:    true,
+    })
+    for chunk := range stream {
+        fmt.Print(chunk.Token)
+    }
+}
+```
 
 **Core Features:**
 - ✅ Tensor operations (Add, MatMul, Reshape, Exp, Sqrt, Cat, etc.)
@@ -263,25 +314,27 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 **Status**: All 8 tasks complete. 80+ new tests, 0 linter issues. **Full Transformer architecture ready!**
 
-### Phase 5: LLM Support (v0.5.0) - Q1 2026
-- [ ] Grouped Query Attention (GQA)
-- [ ] SwiGLU + GLU variants
-- [ ] Model Loader (SafeTensors/GGUF)
-- [ ] Tokenizer integration
-- [ ] Sampling strategies
-- [ ] Inference Pipeline
+### Phase 5: LLM Support (v0.5.0) - December 2025 ✅ COMPLETE
+- [x] Grouped Query Attention (GQA) - LLaMA 2/3, Mistral style
+- [x] SwiGLU + GLU variants (GeGLU, ReGLU)
+- [x] Model Loader (GGUF format, weight mappers)
+- [x] Tokenizer integration (TikToken, BPE, chat templates)
+- [x] Sampling strategies (Top-K, Top-P, Min-P, temperature, penalties)
+- [x] Inference Pipeline (TextGenerator, streaming, stop sequences)
 
-### Phase 6: ONNX & Cross-Platform (v0.6.0) - Q2 2026
+**Status**: All 6 LLM tasks complete. 100+ new tests, 0 linter issues. **Ready for LLM inference!**
+
+### Phase 6: ONNX & Cross-Platform (v0.6.0) - Q1 2026
 - [ ] Linux/macOS WebGPU support
 - [ ] ONNX import/export
 - [ ] Model quantization (INT8, FP16)
-- [ ] Pre-trained model loading
+- [ ] Pre-trained model hub integration
 
-### Long-Term: v1.0 LTS - 2027
+### Long-Term: v1.0 LTS - 2026
 - [ ] Distributed training
 - [ ] Flash Attention
-- [ ] Model zoo
-- [ ] Production optimizations
+- [ ] Model zoo with pre-trained weights
+- [ ] Production optimizations (SIMD, memory pooling)
 
 **Full roadmap**: See [ROADMAP.md](ROADMAP.md)
 
@@ -425,17 +478,23 @@ See [LICENSE](LICENSE) file for full terms.
 **Q: Why not use Gorgonia?**
 A: Gorgonia is great but uses a different approach. Born focuses on modern Go (generics), pure Go (no CGO), and production-first design inspired by Burn.
 
+**Q: Can I run LLMs with Born?**
+A: Yes! v0.5.0 includes full LLM support - GGUF model loading, tokenizers, sampling strategies, and text generation with streaming. Load LLaMA, Mistral, or DeepSeek models directly.
+
 **Q: When will it be ready?**
-A: Core features (v0.1-v0.3) are RELEASED! Includes CPU/GPU backends and transformer primitives. ONNX import targeted for v0.5.0 (Q2 2026).
+A: Core features (v0.1-v0.5) are RELEASED! Includes CPU/GPU backends, transformer architecture, and LLM support. ONNX import targeted for v0.6.0 (Q1 2026).
 
 **Q: Can I use PyTorch models?**
-A: Yes! Via ONNX import (v0.5.0, Q2 2026). Train in PyTorch, deploy with Born.
+A: Yes! Via ONNX import (v0.6.0, Q1 2026). Train in PyTorch, deploy with Born. Currently GGUF models are supported.
 
 **Q: WebAssembly support?**
 A: Yes! Pure Go compiles to WASM natively. Inference in browsers out of the box.
 
+**Q: What LLM architectures are supported?**
+A: LLaMA 2/3, Mistral, DeepSeek, and compatible architectures. GQA, RoPE, SwiGLU are all supported.
+
 **Q: How can I help?**
-A: Watch this space! Contributing guide coming soon.
+A: Check our [Contributing Guide](CONTRIBUTING.md) and [GitHub Issues](https://github.com/born-ml/born/issues)!
 
 ---
 

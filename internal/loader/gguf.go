@@ -386,6 +386,7 @@ func (r *GGUFReader) calculateTensorSize(info *GGUFTensorInfo) uint64 {
 
 // ggufDTypeToDataType converts GGUF dtype to Born DataType.
 // Returns error for quantized types (Q4_0, Q8_0) as they require dequantization.
+//
 //nolint:unparam // Returns 0 for error cases, which is expected for type conversion failures
 func ggufDTypeToDataType(dtype GGUFDType) (tensor.DataType, error) {
 	switch dtype {

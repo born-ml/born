@@ -22,7 +22,7 @@ import (
 //	gradInput: [dL/d10, 0, dL/d30, dL/d40]  (scattered back to original positions)
 type GatherOp struct {
 	input  *tensor.RawTensor // Input tensor
-	dim    int                // Dimension along which gather happened
+	dim    int               // Dimension along which gather happened
 	index  *tensor.RawTensor // Index tensor (int32)
 	output *tensor.RawTensor // Gathered output tensor
 }

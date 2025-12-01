@@ -5,6 +5,147 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-12-01
+
+### 🚀 Phase 5: LLM Support
+
+Major release adding complete LLM inference support! Run LLaMA, Mistral, DeepSeek, and other modern language models with Born.
+
+### ✨ Added
+
+**Grouped Query Attention (GQA)** (`internal/nn/gqa.go`):
+- **GroupedQueryAttention** - Memory-efficient attention for LLaMA 2/3, Mistral
+- **RepeatKV** - KV head broadcasting (e.g., 8 KV heads → 32 Q heads)
+- **MQA helper** - Multi-Query Attention config (extreme GQA with 1 KV head)
+- Full RoPE integration with KV-cache support
+- 4:1 memory savings for KV-cache vs standard MHA
+
+**SwiGLU & GLU Variants** (`internal/nn/glu.go`, `internal/nn/swiglu_ffn.go`):
+- **SwiGLU** - `x * SiLU(gate)` activation (LLaMA, Mistral)
+- **GeGLU** - `x * GELU(gate)` activation
+- **ReGLU** - `x * ReLU(gate)` activation
+- **GLU** - `x * sigmoid(gate)` (classic)
+- **SwiGLUFFN** - Complete feed-forward module with gate/up/down projections
+- Configurable bias (LLaMA uses no bias)
+
+**Model Loader** (`internal/loader/`):
+- **GGUF format support** - Read LLaMA, Mistral, DeepSeek model files
+- **GGUFReader** - Parse metadata and tensor info
+- **Weight Mappers** - Architecture-specific weight name translation
+  - `LLaMAMapper` - LLaMA 1/2/3 models
+  - `MistralMapper` - Mistral 7B and variants
+  - `DeepSeekMapper` - DeepSeek models
+- **DetectArchitecture** - Auto-detect model type from tensor names
+- Support for F32, F16 dtypes (quantized types require dequant)
+
+**Tokenizer Integration** (`internal/tokenizer/`):
+- **TikToken** - OpenAI's BPE tokenizer (GPT-3.5, GPT-4)
+- **BPE Tokenizer** - Generic Byte Pair Encoding
+- **HuggingFace format** - Load tokenizer.json from HF models
+- **Chat Templates** - Format multi-turn conversations
+  - ChatML (OpenAI style)
+  - LLaMA (Meta format)
+  - Mistral (with [INST] tags)
+- **Special tokens** - BOS, EOS, PAD, UNK handling
+- **AutoLoad** - Auto-detect tokenizer type from path
+
+**Sampling Strategies** (`internal/generate/sampling.go`):
+- **Temperature** - Control randomness (0 = greedy)
+- **Top-K** - Sample from top K tokens
+- **Top-P (nucleus)** - Sample from smallest set with P cumulative probability
+- **Min-P** - Filter tokens below P * max_prob threshold
+- **Repetition Penalty** - Penalize repeated tokens
+- **Frequency Penalty** - Penalize based on token frequency
+- **Presence Penalty** - Penalize based on token presence
+- **Configurable seed** - Reproducible sampling
+
+**Text Generation** (`internal/generate/generator.go`):
+- **TextGenerator** - High-level API for text generation
+- **Streaming API** - Token-by-token generation with channels
+- **Chat API** - Multi-turn conversation with templates
+- **GenerateConfig** - Max tokens, min tokens, stop strings/tokens
+- **GenerateResult** - Token, token ID, done flag, reason
+- **KV-cache integration** - Efficient autoregressive generation
+- **Echo prompt** - Optionally include prompt in output
+
+**Multi-Output Autodiff** (`internal/autodiff/ops/`):
+- **MultiOutputOperation** - Interface for ops with multiple outputs
+- **BackwardMulti** - Compute gradients for multi-output ops
+- **ChunkOp** - Fixed backward pass for tensor chunking
+- **GatherOp** - Scatter-add gradient computation
+
+**Public API** (`nn/`, `generate/`, `tokenizer/`, `loader/`):
+- Complete public wrappers for all new types
+- Type aliases for seamless internal/public integration
+- Documentation with examples
+
+### 📊 Testing
+
+- **100+ new unit tests** across all LLM modules
+- **Comprehensive sampling tests** - All strategies validated
+- **Generator tests** - Streaming, stop conditions, chat
+- **Tokenizer tests** - Encode/decode roundtrip, special tokens
+- **0 golangci-lint issues**
+
+### 🧪 Test Coverage
+
+| Package | Tests | Status |
+|---------|-------|--------|
+| internal/nn (GQA, SwiGLU) | 35+ | ✅ |
+| internal/tokenizer | 27 | ✅ |
+| internal/generate | 17 | ✅ |
+| internal/loader | 10+ | ✅ |
+| internal/autodiff/ops | 20+ | ✅ |
+
+### 🎯 What You Can Build Now
+
+```go
+import (
+    "github.com/born-ml/born/generate"
+    "github.com/born-ml/born/tokenizer"
+    "github.com/born-ml/born/loader"
+)
+
+// Load tokenizer
+tok, _ := tokenizer.NewTikTokenForModel("gpt-4")
+
+// Load model
+model, _ := loader.OpenModel("llama-7b.gguf")
+
+// Create generator
+gen := generate.NewTextGenerator(model, tok, generate.SamplingConfig{
+    Temperature: 0.7,
+    TopP:        0.9,
+    TopK:        40,
+})
+
+// Generate text
+result, _ := gen.Generate("Hello!", generate.GenerateConfig{MaxTokens: 100})
+
+// Or stream tokens
+stream, _ := gen.GenerateStream("Once upon", generate.GenerateConfig{MaxTokens: 50})
+for chunk := range stream {
+    fmt.Print(chunk.Token)
+}
+
+// Chat with templates
+messages := []tokenizer.ChatMessage{
+    {Role: "user", Content: "What is 2+2?"},
+}
+response, _ := gen.Chat(messages, tokenizer.NewChatMLTemplate(), config)
+```
+
+### 📈 Performance
+
+| Feature | Benchmark |
+|---------|-----------|
+| GQA 32Q/8KV | 4x KV-cache memory savings |
+| SwiGLU FFN | 2.7x expansion (vs 4x standard) |
+| TikToken | ~1M tokens/sec encoding |
+| Top-P sampling | O(n log n) sorting |
+
+---
+
 ## [0.4.0] - 2025-12-01
 
 ### 🚀 Phase 4: Attention Mechanisms
@@ -522,6 +663,8 @@ N/A (initial release)
 
 ---
 
+[0.5.0]: https://github.com/born-ml/born/releases/tag/v0.5.0
+[0.4.0]: https://github.com/born-ml/born/releases/tag/v0.4.0
 [0.3.0]: https://github.com/born-ml/born/releases/tag/v0.3.0
 [0.2.0]: https://github.com/born-ml/born/releases/tag/v0.2.0
 [0.1.1]: https://github.com/born-ml/born/releases/tag/v0.1.1

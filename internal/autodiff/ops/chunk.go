@@ -20,10 +20,10 @@ import (
 //	gradOutputs: [[dL/d1, dL/d2], [dL/d3, dL/d4], [dL/d5, dL/d6]]
 //	gradInput: [dL/d1, dL/d2, dL/d3, dL/d4, dL/d5, dL/d6]
 type ChunkOp struct {
-	input   *tensor.RawTensor    // Input tensor that was chunked
-	n       int                   // Number of chunks
-	dim     int                   // Dimension along which chunking happened
-	outputs []*tensor.RawTensor   // Output chunk tensors
+	input   *tensor.RawTensor   // Input tensor that was chunked
+	n       int                 // Number of chunks
+	dim     int                 // Dimension along which chunking happened
+	outputs []*tensor.RawTensor // Output chunk tensors
 }
 
 // NewChunkOp creates a new chunk operation.
@@ -46,6 +46,11 @@ func (op *ChunkOp) Inputs() []*tensor.RawTensor {
 // We return the first chunk here, but the tape needs special handling for multi-output ops.
 func (op *ChunkOp) Output() *tensor.RawTensor {
 	return op.outputs[0]
+}
+
+// Outputs returns all output tensors (implements MultiOutputOperation).
+func (op *ChunkOp) Outputs() []*tensor.RawTensor {
+	return op.outputs
 }
 
 // Backward computes gradients for the input tensor.
