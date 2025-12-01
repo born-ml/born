@@ -302,6 +302,25 @@ func CausalMask[B tensor.Backend](seqLen int, backend B) *tensor.Tensor[float32,
 	return nn.CausalMask(seqLen, backend)
 }
 
+// MultiHeadAttention represents the multi-head attention mechanism.
+type MultiHeadAttention[B tensor.Backend] = nn.MultiHeadAttention[B]
+
+// NewMultiHeadAttention creates a new multi-head attention module.
+//
+// Parameters:
+//   - embedDim: Total embedding dimension (must be divisible by numHeads)
+//   - numHeads: Number of attention heads
+//   - backend: Computation backend
+//
+// Example:
+//
+//	backend := cpu.New()
+//	mha := nn.NewMultiHeadAttention[B](768, 12, backend)  // BERT-base config
+//	output := mha.Forward(x, x, x, nil)  // Self-attention
+func NewMultiHeadAttention[B tensor.Backend](embedDim, numHeads int, backend B) *MultiHeadAttention[B] {
+	return nn.NewMultiHeadAttention[B](embedDim, numHeads, backend)
+}
+
 // Utility functions
 
 // CrossEntropyBackward computes the backward pass for cross-entropy loss.
