@@ -19,6 +19,11 @@ type Backend interface {
 	// Matrix operations
 	MatMul(a, b *RawTensor) *RawTensor
 
+	// BatchMatMul performs batched matrix multiplication for 3D/4D tensors.
+	// For 3D: [B, M, K] @ [B, K, N] -> [B, M, N]
+	// For 4D: [B, H, M, K] @ [B, H, K, N] -> [B, H, M, N]
+	BatchMatMul(a, b *RawTensor) *RawTensor
+
 	// Convolutional operations
 	Conv2D(input, kernel *RawTensor, stride, padding int) *RawTensor
 	MaxPool2D(input *RawTensor, kernelSize, stride int) *RawTensor

@@ -46,6 +46,29 @@ func (t *Tensor[T, B]) MatMul(other *Tensor[T, B]) *Tensor[T, B] {
 	return New[T, B](result, t.backend)
 }
 
+// BatchMatMul performs batched matrix multiplication.
+//
+// For 3D tensors: [B, M, K] @ [B, K, N] -> [B, M, N]
+// For 4D tensors: [B, H, M, K] @ [B, H, K, N] -> [B, H, M, N]
+//
+// Example (Attention scores):
+//
+//	q := tensor.Randn[float32](tensor.Shape{2, 4, 64, 16}, backend) // [B, H, S, D]
+//	k := tensor.Randn[float32](tensor.Shape{2, 4, 64, 16}, backend)
+//	kT := k.Transpose(0, 1, 3, 2)
+//	scores := q.BatchMatMul(kT) // [2, 4, 64, 64]
+func (t *Tensor[T, B]) BatchMatMul(other *Tensor[T, B]) *Tensor[T, B] {
+	batchMatMulBackend, ok := any(t.backend).(interface {
+		BatchMatMul(*RawTensor, *RawTensor) *RawTensor
+	})
+	if !ok {
+		panic("BatchMatMul: backend does not support BatchMatMul")
+	}
+
+	result := batchMatMulBackend.BatchMatMul(t.raw, other.raw)
+	return &Tensor[T, B]{raw: result, backend: t.backend}
+}
+
 // Reshape returns a tensor with the same data but different shape.
 // The new shape must have the same number of elements.
 //

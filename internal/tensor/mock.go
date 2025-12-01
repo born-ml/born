@@ -123,6 +123,83 @@ func (m *MockBackend) MatMul(a, b *RawTensor) *RawTensor {
 	return result
 }
 
+// BatchMatMul performs batched matrix multiplication (naive implementation for testing).
+func (m *MockBackend) BatchMatMul(a, b *RawTensor) *RawTensor {
+	aShape := a.Shape()
+	bShape := b.Shape()
+	ndim := len(aShape)
+
+	// Validate dimensions
+	if ndim < 3 {
+		panic(fmt.Sprintf("BatchMatMul: inputs must be at least 3D, got %dD", ndim))
+	}
+	if len(bShape) != ndim {
+		panic(fmt.Sprintf("BatchMatMul: dimension mismatch, got %dD and %dD", ndim, len(bShape)))
+	}
+
+	// Validate batch dimensions match
+	for i := 0; i < ndim-2; i++ {
+		if aShape[i] != bShape[i] {
+			panic(fmt.Sprintf("BatchMatMul: batch dimension mismatch at dim %d: %d vs %d", i, aShape[i], bShape[i]))
+		}
+	}
+
+	// Extract matrix dimensions
+	rows := aShape[ndim-2]
+	k1 := aShape[ndim-1]
+	k2 := bShape[ndim-2]
+	cols := bShape[ndim-1]
+
+	if k1 != k2 {
+		panic(fmt.Sprintf("BatchMatMul: inner dimension mismatch: %d vs %d", k1, k2))
+	}
+
+	// Compute batch size (product of all batch dims)
+	batchSize := 1
+	for i := 0; i < ndim-2; i++ {
+		batchSize *= aShape[i]
+	}
+
+	// Output shape = batch dims + [M, N]
+	outShape := make(Shape, ndim)
+	copy(outShape, aShape[:ndim-2])
+	outShape[ndim-2] = rows
+	outShape[ndim-1] = cols
+
+	result, err := NewRaw(outShape, a.DType(), m.Device())
+	if err != nil {
+		panic(err)
+	}
+
+	aData := m.toFloat64Slice(a)
+	bData := m.toFloat64Slice(b)
+	resultData := m.toFloat64Slice(result)
+
+	matrixSizeA := rows * k1
+	matrixSizeB := k1 * cols
+	matrixSizeC := rows * cols
+
+	// Batched matrix multiplication
+	for batch := 0; batch < batchSize; batch++ {
+		aOffset := batch * matrixSizeA
+		bOffset := batch * matrixSizeB
+		cOffset := batch * matrixSizeC
+
+		for i := 0; i < rows; i++ {
+			for j := 0; j < cols; j++ {
+				sum := 0.0
+				for kIdx := 0; kIdx < k1; kIdx++ {
+					sum += aData[aOffset+i*k1+kIdx] * bData[bOffset+kIdx*cols+j]
+				}
+				resultData[cOffset+i*cols+j] = sum
+			}
+		}
+	}
+
+	m.fromFloat64Slice(resultData, result)
+	return result
+}
+
 // Conv2D performs 2D convolution (naive implementation for testing).
 func (m *MockBackend) Conv2D(input, kernel *RawTensor, stride, padding int) *RawTensor {
 	inputShape := input.Shape()

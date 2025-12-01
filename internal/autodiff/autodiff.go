@@ -152,6 +152,21 @@ func (b *AutodiffBackend[B]) MatMul(a, c *tensor.RawTensor) *tensor.RawTensor {
 	return result
 }
 
+// BatchMatMul performs batched matrix multiplication and records the operation.
+func (b *AutodiffBackend[B]) BatchMatMul(a, c *tensor.RawTensor) *tensor.RawTensor {
+	defer a.ForceNonUnique()()
+	defer c.ForceNonUnique()()
+
+	result := b.inner.BatchMatMul(a, c)
+
+	if b.tape.IsRecording() {
+		op := ops.NewBatchMatMulOp(a, c, result)
+		b.tape.Record(op)
+	}
+
+	return result
+}
+
 // Reshape reshapes a tensor and records the operation.
 //
 // CRITICAL: Like Transpose, Reshape must be recorded on tape!

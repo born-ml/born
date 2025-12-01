@@ -51,6 +51,12 @@ func (b *Backend) MatMul(a, other *tensor.RawTensor) *tensor.RawTensor {
 	return result
 }
 
+// BatchMatMul performs batched matrix multiplication on GPU.
+// TODO: Implement WGSL compute shader for batched matmul.
+func (b *Backend) BatchMatMul(_, _ *tensor.RawTensor) *tensor.RawTensor {
+	panic("webgpu: BatchMatMul not implemented yet - see TASK-026")
+}
+
 // Conv2D performs 2D convolution on GPU.
 // TODO: Implement WGSL compute shader for convolution.
 func (b *Backend) Conv2D(_, _ *tensor.RawTensor, _, _ int) *tensor.RawTensor {
