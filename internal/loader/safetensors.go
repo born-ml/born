@@ -120,7 +120,6 @@ func NewSafeTensorsReader(path string) (*SafeTensorsReader, error) {
 	}
 
 	// Calculate data offset
-	//nolint:gosec // G115: headerSize validated to be < 100MB, fits in int64
 	dataOffset := int64(8 + headerSize)
 
 	return &SafeTensorsReader{

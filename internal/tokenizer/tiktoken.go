@@ -63,7 +63,6 @@ func (t *TikToken) Encode(text string) ([]int32, error) {
 	// Convert []int to []int32.
 	result := make([]int32, len(tokens))
 	for i, tok := range tokens {
-		//nolint:gosec // Token IDs from tiktoken are guaranteed to fit in int32.
 		result[i] = int32(tok)
 	}
 

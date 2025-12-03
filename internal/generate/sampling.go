@@ -149,7 +149,7 @@ func (s *Sampler) argmax(logits []float32) int32 {
 			maxIdx = i + 1
 		}
 	}
-	return int32(maxIdx) //nolint:gosec // vocab size is bounded by model architecture
+	return int32(maxIdx)
 }
 
 // applyRepetitionPenalty penalizes tokens that appeared recently.
@@ -317,12 +317,12 @@ func (s *Sampler) multinomial(probs []float32) int32 {
 	for i, p := range probs {
 		cumSum += p
 		if r < cumSum {
-			return int32(i) //nolint:gosec // vocab size is bounded by model architecture
+			return int32(i)
 		}
 	}
 
 	// Return last token if rounding errors
-	return int32(len(probs) - 1) //nolint:gosec // vocab size is bounded by model architecture
+	return int32(len(probs) - 1)
 }
 
 // softmax converts logits to probabilities.

@@ -22,8 +22,7 @@ import (
 // - Chained operations can be batched.
 func (b *Backend) createLazyResult(buffer *wgpu.Buffer, bufferSize uint64, shape tensor.Shape, dtype tensor.DataType) (*tensor.RawTensor, error) {
 	// Create lazy GPU data with backend reference for later readBuffer()
-	//nolint:gosec // unsafe.Pointer for wgpu.Buffer to generic LazyGPUData
-	gpuData := tensor.NewLazyGPUData(unsafe.Pointer(buffer), bufferSize, b)
+	gpuData := tensor.NewLazyGPUData(unsafe.Pointer(buffer), bufferSize, b) //nolint:gosec // G103: Required for GPU buffer tracking
 
 	// Create lazy tensor - CPU buffer allocated but not filled
 	result, err := tensor.NewLazyRaw(shape, dtype, tensor.WebGPU, gpuData)
@@ -80,7 +79,6 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	bufferOther := b.createBufferFromTensor(other)
 	defer bufferOther.Release()
 
-	//nolint:gosec // G115: Safe conversion, ByteSize() returns non-negative int
 	resultSize := uint64(a.ByteSize())
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
@@ -109,7 +107,6 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion, workgroup count is non-negative
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -155,7 +152,6 @@ func (b *Backend) createBufferFromTensor(t *tensor.RawTensor) *wgpu.Buffer {
 // createParamsBuffer creates a uniform buffer with element count parameter.
 func (b *Backend) createParamsBuffer(numElements int) *wgpu.Buffer {
 	params := make([]byte, 16) // 16-byte aligned
-	//nolint:gosec // G115: Safe conversion, NumElements() returns non-negative int
 	putUint32LE(params[0:4], uint32(numElements))
 	return b.createUniformBuffer(params)
 }
@@ -204,11 +200,8 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 		return nil, &lazyError{msg: "matmul: requires 2D tensors"}
 	}
 
-	//nolint:gosec // G115: Safe conversions
 	M := uint32(a.Shape()[0])
-	//nolint:gosec // G115: Safe conversions
 	K := uint32(a.Shape()[1])
-	//nolint:gosec // G115: Safe conversions
 	N := uint32(other.Shape()[1])
 
 	if other.Shape()[0] != int(K) {
@@ -227,7 +220,6 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 	defer bufferOther.Release()
 
 	resultShape := tensor.Shape{int(M), int(N)}
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(int(M) * int(N) * 4)
 
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
@@ -246,7 +238,7 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	//nolint:gosec // G115: Safe conversions
+
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),
 		wgpu.BufferBindingEntry(1, bufferOther, 0, uint64(other.ByteSize())),
@@ -281,7 +273,6 @@ func (b *Backend) runUnaryOpLazy(x *tensor.RawTensor, shaderName, shaderCode str
 	}
 
 	numElements := x.NumElements()
-
 	// Compile shader
 	shader := b.compileShader(shaderName, shaderCode)
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
@@ -290,9 +281,7 @@ func (b *Backend) runUnaryOpLazy(x *tensor.RawTensor, shaderName, shaderCode str
 	bufferX := b.createBufferFromTensor(x)
 	defer bufferX.Release()
 
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(x.ByteSize())
-
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -318,7 +307,6 @@ func (b *Backend) runUnaryOpLazy(x *tensor.RawTensor, shaderName, shaderCode str
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -336,7 +324,6 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 	}
 
 	numElements := x.NumElements()
-
 	// Compile shader
 	shader := b.compileShader(shaderName, shaderCode)
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
@@ -345,9 +332,7 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 	bufferX := b.createBufferFromTensor(x)
 	defer bufferX.Release()
 
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(x.ByteSize())
-
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -356,7 +341,6 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 
 	// Create params buffer with scalar value
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversion
 	putUint32LE(params[0:4], uint32(numElements))
 	putFloat32LE(params[4:8], scalar)
 	bufferParams := b.createUniformBuffer(params)
@@ -377,7 +361,6 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -390,8 +373,7 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 
 // putFloat32LE writes a float32 to a byte slice in little-endian order.
 func putFloat32LE(b []byte, v float32) {
-	//nolint:gosec // G115: Safe math.Float32bits conversion
-	bits := *(*uint32)(unsafe.Pointer(&v))
+	bits := *(*uint32)(unsafe.Pointer(&v)) //nolint:gosec // G103: Required for float bit conversion
 	putUint32LE(b, bits)
 }
 
@@ -415,24 +397,16 @@ func (b *Backend) runBatchMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTen
 
 	if len(shapeA) == 3 {
 		// 3D: [batch, M, K] @ [batch, K, N]
-		//nolint:gosec // G115: Safe conversions
 		batch = uint32(shapeA[0])
-		//nolint:gosec // G115: Safe conversions
 		M = uint32(shapeA[1])
-		//nolint:gosec // G115: Safe conversions
 		K = uint32(shapeA[2])
-		//nolint:gosec // G115: Safe conversions
 		N = uint32(shapeB[2])
 		resultShape = tensor.Shape{int(batch), int(M), int(N)}
 	} else {
 		// 4D: [batch, heads, M, K] @ [batch, heads, K, N]
-		//nolint:gosec // G115: Safe conversions
 		batch = uint32(shapeA[0] * shapeA[1])
-		//nolint:gosec // G115: Safe conversions
 		M = uint32(shapeA[2])
-		//nolint:gosec // G115: Safe conversions
 		K = uint32(shapeA[3])
-		//nolint:gosec // G115: Safe conversions
 		N = uint32(shapeB[3])
 		resultShape = tensor.Shape{shapeA[0], shapeA[1], int(M), int(N)}
 	}
@@ -467,7 +441,7 @@ func (b *Backend) runBatchMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTen
 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	//nolint:gosec // G115: Safe conversions
+
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferA, 0, uint64(a.ByteSize())),
 		wgpu.BufferBindingEntry(1, bufferB, 0, uint64(other.ByteSize())),
@@ -505,9 +479,7 @@ func (b *Backend) runTransposeLazy(input *tensor.RawTensor) (*tensor.RawTensor, 
 		return nil, &lazyError{msg: "transpose: requires 2D tensor"}
 	}
 
-	//nolint:gosec // G115: Safe conversions
 	rows := uint32(input.Shape()[0])
-	//nolint:gosec // G115: Safe conversions
 	cols := uint32(input.Shape()[1])
 
 	// Compile shader
@@ -519,9 +491,7 @@ func (b *Backend) runTransposeLazy(input *tensor.RawTensor) (*tensor.RawTensor, 
 	defer bufferInput.Release()
 
 	resultShape := tensor.Shape{int(cols), int(rows)}
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(input.ByteSize())
-
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -572,9 +542,7 @@ func (b *Backend) runSoftmaxLazy(input *tensor.RawTensor) (*tensor.RawTensor, er
 		return nil, &lazyError{msg: "softmax: requires 2D tensor"}
 	}
 
-	//nolint:gosec // G115: Safe conversions
 	batchSize := uint32(input.Shape()[0])
-	//nolint:gosec // G115: Safe conversions
 	numClasses := uint32(input.Shape()[1])
 
 	// Compile shader
@@ -585,9 +553,7 @@ func (b *Backend) runSoftmaxLazy(input *tensor.RawTensor) (*tensor.RawTensor, er
 	bufferInput := b.createBufferFromTensor(input)
 	defer bufferInput.Release()
 
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(input.ByteSize())
-
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -690,7 +656,6 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	bufferInput := b.createBufferFromTensor(input)
 	defer bufferInput.Release()
 
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(input.ByteSize())
 
 	// Create result buffer - NO defer Release!
@@ -706,13 +671,11 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	outputStrides := newShape.ComputeStrides()
 
 	putUint32LE(params[0:4], uint32(ndim))
-	//nolint:gosec // G115: Safe conversion
 	putUint32LE(params[4:8], uint32(shape.NumElements()))
 
 	// Pack input shape (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(shape) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[8+i*4:12+i*4], uint32(shape[i]))
 		} else {
 			putUint32LE(params[8+i*4:12+i*4], 1)
@@ -722,7 +685,6 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[32+i*4:36+i*4], uint32(inputStrides[i]))
 		} else {
 			putUint32LE(params[32+i*4:36+i*4], 1)
@@ -732,7 +694,6 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[56+i*4:60+i*4], uint32(outputStrides[i]))
 		} else {
 			putUint32LE(params[56+i*4:60+i*4], 1)
@@ -742,7 +703,6 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack axes (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(axes) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[80+i*4:84+i*4], uint32(axes[i]))
 		} else {
 			putUint32LE(params[80+i*4:84+i*4], 0)
@@ -769,7 +729,6 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	computePass.SetBindGroup(0, bindGroup, nil)
 
 	// Calculate workgroup count (1D workgroups, 256 threads each)
-	//nolint:gosec // G115: Safe conversion
 	numElements := uint32(shape.NumElements())
 	workgroups := (numElements + 255) / 256
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
@@ -837,9 +796,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 
 	// Calculate result size
 	resultNumElements := newShape.NumElements()
-	//nolint:gosec // G115: Safe conversion
 	elementSize := uint64(input.DType().Size())
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(resultNumElements) * elementSize
 
 	// Create result buffer - NO defer Release!
@@ -853,15 +810,12 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	inputStrides := paddedShape.ComputeStrides()
 	outputStrides := newShape.ComputeStrides()
 
-	//nolint:gosec // G115: Safe conversions
 	putUint32LE(params[0:4], uint32(len(newShape)))
-	//nolint:gosec // G115: Safe conversions
 	putUint32LE(params[4:8], uint32(resultNumElements))
 
 	// Pack input shape (6 slots) - use paddedShape
 	for i := 0; i < 6; i++ {
 		if i < len(paddedShape) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[8+i*4:12+i*4], uint32(paddedShape[i]))
 		} else {
 			putUint32LE(params[8+i*4:12+i*4], 1)
@@ -871,7 +825,6 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[32+i*4:36+i*4], uint32(inputStrides[i]))
 		} else {
 			putUint32LE(params[32+i*4:36+i*4], 1)
@@ -881,7 +834,6 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			//nolint:gosec // G115: Safe conversions
 			putUint32LE(params[56+i*4:60+i*4], uint32(outputStrides[i]))
 		} else {
 			putUint32LE(params[56+i*4:60+i*4], 1)
@@ -893,7 +845,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	//nolint:gosec // G115: Safe conversion
+
 	inputSize := uint64(input.ByteSize())
 	paramsSize := uint64(len(params))
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
@@ -909,7 +861,6 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion
 	workgroups := uint32((resultNumElements + 255) / 256)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -968,9 +919,7 @@ func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tenso
 	bufferIndices := b.createBufferFromTensor(indices)
 	defer bufferIndices.Release()
 
-	//nolint:gosec // G115: Safe conversion
 	gatherResultSize := uint64(gatherBatchSize) * uint64(outputK) * 4
-
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -979,18 +928,15 @@ func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tenso
 
 	// Create uniform buffer
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversions
 	putUint32LE(params[0:4], uint32(gatherBatchSize))
-	//nolint:gosec // G115: Safe conversions
 	putUint32LE(params[4:8], uint32(inputDim))
-	//nolint:gosec // G115: Safe conversions
 	putUint32LE(params[8:12], uint32(outputK))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	//nolint:gosec // G115: Safe conversions
+
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),
 		wgpu.BufferBindingEntry(1, bufferIndices, 0, uint64(indices.ByteSize())),
@@ -1006,7 +952,6 @@ func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tenso
 	computePass.SetBindGroup(0, bindGroup, nil)
 
 	totalOutput := gatherBatchSize * outputK
-	//nolint:gosec // G115: Safe conversion
 	workgroups := uint32((totalOutput + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -1111,7 +1056,6 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 	bufferY := b.createBufferFromTensor(y)
 	defer bufferY.Release()
 
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(x.ByteSize())
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
@@ -1121,13 +1065,12 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 
 	// Create uniform buffer
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
 	// Create bind group
-	//nolint:gosec // G115: Safe conversion
 	condSize := uint64(condFloat32.ByteSize())
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
@@ -1145,7 +1088,7 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
-	//nolint:gosec // G115: Safe conversion
+
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -1196,7 +1139,6 @@ func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	defer bufferInput.Release()
 
 	// Calculate number of workgroups needed
-	//nolint:gosec // G115: Safe conversion
 	numWorkgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	partialSumsSize := uint64(numWorkgroups) * 4
 
@@ -1208,14 +1150,14 @@ func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error)
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
 	// Create bind group
 	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	//nolint:gosec // G115: Safe conversions
+
 	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
 		wgpu.BufferBindingEntry(0, bufferInput, 0, uint64(input.ByteSize())),
 		wgpu.BufferBindingEntry(1, bufferPartialSums, 0, partialSumsSize),
@@ -1260,7 +1202,6 @@ func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	case tensor.Int32:
 		var sum int32
 		for i := uint32(0); i < numWorkgroups; i++ {
-			//nolint:gosec // G115: Safe - reading int32 stored as uint32 bytes
 			sum += int32(binary.LittleEndian.Uint32(partialData[i*4 : i*4+4]))
 		}
 		result, err := tensor.NewRaw(tensor.Shape{}, tensor.Int32, tensor.WebGPU)

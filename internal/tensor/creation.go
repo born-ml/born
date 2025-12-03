@@ -89,8 +89,8 @@ func Randn[T DType, B Backend](shape Shape, b B) *Tensor[T, B] {
 	case float32:
 		dataF32 := any(data).([]float32)
 		for i := 0; i < len(dataF32); i += 2 {
-			u1 := rand.Float64() //nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			u2 := rand.Float64() //nolint:gosec // math/rand is appropriate for ML/statistical purposes
+			u1 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
+			u2 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
 			z0 := math.Sqrt(-2.0*math.Log(u1)) * math.Cos(2.0*math.Pi*u2)
 			z1 := math.Sqrt(-2.0*math.Log(u1)) * math.Sin(2.0*math.Pi*u2)
 			dataF32[i] = float32(z0)
@@ -101,8 +101,8 @@ func Randn[T DType, B Backend](shape Shape, b B) *Tensor[T, B] {
 	case float64:
 		dataF64 := any(data).([]float64)
 		for i := 0; i < len(dataF64); i += 2 {
-			u1 := rand.Float64() //nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			u2 := rand.Float64() //nolint:gosec // math/rand is appropriate for ML/statistical purposes
+			u1 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
+			u2 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
 			z0 := math.Sqrt(-2.0*math.Log(u1)) * math.Cos(2.0*math.Pi*u2)
 			z1 := math.Sqrt(-2.0*math.Log(u1)) * math.Sin(2.0*math.Pi*u2)
 			dataF64[i] = z0
@@ -131,12 +131,12 @@ func Rand[T DType, B Backend](shape Shape, b B) *Tensor[T, B] {
 	case float32:
 		dataF32 := any(data).([]float32)
 		for i := range dataF32 {
-			dataF32[i] = float32(rand.Float64()) //nolint:gosec // math/rand is appropriate for ML
+			dataF32[i] = float32(rand.Float64()) //nolint:gosec // G404: ML uses math/rand intentionally
 		}
 	case float64:
 		dataF64 := any(data).([]float64)
 		for i := range dataF64 {
-			dataF64[i] = rand.Float64() //nolint:gosec // math/rand is appropriate for ML
+			dataF64[i] = rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally
 		}
 	default:
 		panic("Rand only supports float32 and float64 types")
@@ -195,7 +195,7 @@ func Arange[T DType, B Backend](start, end T, b B) *Tensor[T, B] {
 		dataI32 := any(data).([]int32)
 		startI32 := any(start).(int32)
 		for i := range dataI32 {
-			dataI32[i] = startI32 + int32(i) //nolint:gosec // i is within valid range (< numElements)
+			dataI32[i] = startI32 + int32(i)
 		}
 	case int64:
 		dataI64 := any(data).([]int64)
@@ -207,7 +207,7 @@ func Arange[T DType, B Backend](start, end T, b B) *Tensor[T, B] {
 		dataU8 := any(data).([]uint8)
 		startU8 := any(start).(uint8)
 		for i := range dataU8 {
-			dataU8[i] = startU8 + uint8(i) //nolint:gosec // i is within valid range (< numElements)
+			dataU8[i] = startU8 + uint8(i)
 		}
 	}
 	return t

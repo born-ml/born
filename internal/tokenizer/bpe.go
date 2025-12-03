@@ -206,8 +206,7 @@ type HuggingFaceTokenizerConfig struct {
 //
 // This is a simplified loader that handles the most common HuggingFace format.
 func LoadBPEFromHuggingFace(path string) (*BPETokenizer, error) {
-	//nolint:gosec // Loading tokenizer from user-specified path is intentional.
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: Path comes from trusted caller
 	if err != nil {
 		return nil, fmt.Errorf("failed to read tokenizer.json: %w", err)
 	}
@@ -220,7 +219,6 @@ func LoadBPEFromHuggingFace(path string) (*BPETokenizer, error) {
 	// Build vocab.
 	vocab := make(map[string]int32, len(config.Model.Vocab))
 	for token, id := range config.Model.Vocab {
-		//nolint:gosec // Token IDs from HuggingFace are guaranteed to fit in int32.
 		vocab[token] = int32(id)
 	}
 
@@ -237,7 +235,6 @@ func LoadBPEFromHuggingFace(path string) (*BPETokenizer, error) {
 
 	// Configure special tokens from added_tokens.
 	for _, addedToken := range config.AddedTokens {
-		//nolint:gosec // Token IDs from HuggingFace are guaranteed to fit in int32.
 		id := int32(addedToken.ID)
 		if addedToken.Special {
 			tokenizer.specialTokens[id] = true

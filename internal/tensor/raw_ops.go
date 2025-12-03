@@ -1905,7 +1905,7 @@ func castFromFloat64(in []float64, out *RawTensor, dtype DataType) {
 
 // castFromInt32 converts int32 slice to target dtype.
 //
-//nolint:gosec // G115: Type narrowing is expected in cast operations
+
 func castFromInt32(in []int32, out *RawTensor, dtype DataType) {
 	switch dtype {
 	case Float32:
@@ -1940,7 +1940,7 @@ func castFromInt32(in []int32, out *RawTensor, dtype DataType) {
 
 // castFromInt64 converts int64 slice to target dtype.
 //
-//nolint:gosec // G115: Type narrowing is expected in cast operations
+
 func castFromInt64(in []int64, out *RawTensor, dtype DataType) {
 	switch dtype {
 	case Float32:

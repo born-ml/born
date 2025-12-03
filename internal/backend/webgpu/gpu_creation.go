@@ -20,7 +20,7 @@ func (b *Backend) FromRawTensor(t *tensor.RawTensor) *GPUTensor {
 	}
 
 	// Ensure buffer size is at least 4 bytes and aligned to COPY_BUFFER_ALIGNMENT (4 bytes)
-	//nolint:gosec // G115: ByteSize() returns non-negative value, safe to convert to uint64
+
 	byteSize := uint64(t.ByteSize())
 	if byteSize < 4 {
 		byteSize = 4
@@ -61,7 +61,7 @@ func (b *Backend) ZerosGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor
 
 	// Create zero-filled data with alignment
 	numElements := shape.NumElements()
-	//nolint:gosec // G115: numElements and dtype.Size() are non-negative, safe conversion
+
 	byteSize := uint64(numElements * dtype.Size())
 	if byteSize < 4 {
 		byteSize = 4
@@ -100,7 +100,7 @@ func (b *Backend) OnesGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 	}
 
 	numElements := shape.NumElements()
-	//nolint:gosec // G115: numElements and dtype.Size() are non-negative, safe conversion
+
 	byteSize := uint64(numElements * dtype.Size())
 	if byteSize < 4 {
 		byteSize = 4
@@ -164,7 +164,7 @@ func (b *Backend) RandGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 	}
 
 	numElements := shape.NumElements()
-	//nolint:gosec // G115: numElements and dtype.Size() are non-negative, safe conversion
+
 	byteSize := uint64(numElements * dtype.Size())
 	if byteSize < 4 {
 		byteSize = 4
@@ -178,36 +178,27 @@ func (b *Backend) RandGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 	switch dtype {
 	case tensor.Float32:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			val := rand.Float32()
-			//nolint:gosec // unsafe.Pointer for float32 to uint32 reinterpretation
-			binary.LittleEndian.PutUint32(data[i*4:(i+1)*4], *(*uint32)(unsafe.Pointer(&val)))
+			val := rand.Float32()                                                              //nolint:gosec // G404: ML uses math/rand for reproducibility
+			binary.LittleEndian.PutUint32(data[i*4:(i+1)*4], *(*uint32)(unsafe.Pointer(&val))) //nolint:gosec // G103: Required for float bit conversion
 		}
 	case tensor.Float64:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			val := rand.Float64()
-			//nolint:gosec // unsafe.Pointer for float64 to uint64 reinterpretation
-			binary.LittleEndian.PutUint64(data[i*8:(i+1)*8], *(*uint64)(unsafe.Pointer(&val)))
+			val := rand.Float64()                                                              //nolint:gosec // G404: ML uses math/rand for reproducibility
+			binary.LittleEndian.PutUint64(data[i*8:(i+1)*8], *(*uint64)(unsafe.Pointer(&val))) //nolint:gosec // G103: Required for float bit conversion
 		}
 	case tensor.Int32:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			val := rand.Int31()
-			//nolint:gosec // G115: rand.Int31() returns non-negative int32, safe conversion
+			val := rand.Int31() //nolint:gosec // G404: ML uses math/rand for reproducibility
 			binary.LittleEndian.PutUint32(data[i*4:(i+1)*4], uint32(val))
 		}
 	case tensor.Int64:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			val := rand.Int63()
-			//nolint:gosec // G115: rand.Int63() returns non-negative int64, safe conversion
+			val := rand.Int63() //nolint:gosec // G404: ML uses math/rand for reproducibility
 			binary.LittleEndian.PutUint64(data[i*8:(i+1)*8], uint64(val))
 		}
 	case tensor.Uint8:
 		for i := 0; i < numElements; i++ {
-			//nolint:gosec // math/rand is appropriate for ML/statistical purposes
-			data[i] = uint8(rand.Intn(256))
+			data[i] = uint8(rand.Intn(256)) //nolint:gosec // G404: ML uses math/rand for reproducibility
 		}
 	default:
 		panic(fmt.Sprintf("webgpu: RandGPU: unsupported dtype: %v", dtype))

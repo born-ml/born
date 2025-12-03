@@ -233,7 +233,7 @@ func (b *Backend) ReLUBackwardGPU(input, grad *GPUTensor) *GPUTensor {
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -255,7 +255,6 @@ func (b *Backend) ReLUBackwardGPU(input, grad *GPUTensor) *GPUTensor {
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -346,9 +345,9 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -370,7 +369,6 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion
 	computePass.DispatchWorkgroups(uint32(batchSize), 1, 1)
 	computePass.End()
 
@@ -432,7 +430,6 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 		}
 	}
 
-	//nolint:gosec // G115: Safe conversion
 	resultSize := uint64(batchSize * t.dtype.Size())
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -441,9 +438,9 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
-	//nolint:gosec // G115: Safe conversion
+
 	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -464,7 +461,6 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bindGroup, nil)
 
-	//nolint:gosec // G115: Safe conversion
 	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()

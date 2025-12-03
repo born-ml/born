@@ -89,7 +89,7 @@ func (b *Backend) runBinaryOpGPU(a, c *GPUTensor, opName, shaderCode string) *GP
 
 	// Create uniform buffer for params (size: u32)
 	params := make([]byte, 16) // 16-byte aligned
-	//nolint:gosec // G115: Safe conversion, NumElements() returns non-negative int
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -112,7 +112,7 @@ func (b *Backend) runBinaryOpGPU(a, c *GPUTensor, opName, shaderCode string) *GP
 	computePass.SetBindGroup(0, bindGroup, nil)
 
 	// Calculate workgroup count: ceil(numElements / workgroupSize)
-	//nolint:gosec // G115: Safe conversion, workgroup count is non-negative
+
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -158,7 +158,7 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 	pipeline := b.getOrCreatePipeline("matmul", shader)
 
 	// Create output buffer (stays on GPU!)
-	//nolint:gosec // G115: Safe conversion, ByteSize() returns non-negative int
+
 	resultSize := uint64(m * n * a.dtype.Size())
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -167,11 +167,11 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 
 	// Create uniform buffer for dimensions
 	params := make([]byte, 16) // 16-byte aligned
-	//nolint:gosec // G115: Safe conversion for matrix dimensions
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(m))
-	//nolint:gosec // G115: Safe conversion for matrix dimensions
+
 	binary.LittleEndian.PutUint32(params[4:8], uint32(k))
-	//nolint:gosec // G115: Safe conversion for matrix dimensions
+
 	binary.LittleEndian.PutUint32(params[8:12], uint32(n))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -195,9 +195,9 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 
 	// Dispatch 2D workgroups: (m / tileSize, n / tileSize)
 	const tileSize = 16
-	//nolint:gosec // G115: Safe conversion for workgroup calculation
+
 	workgroupsX := uint32((m + tileSize - 1) / tileSize)
-	//nolint:gosec // G115: Safe conversion for workgroup calculation
+
 	workgroupsY := uint32((n + tileSize - 1) / tileSize)
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, 1)
 	computePass.End()
@@ -244,7 +244,7 @@ func (b *Backend) TransposeGPU(t *GPUTensor, axes ...int) *GPUTensor {
 	pipeline := b.getOrCreatePipeline("transpose", shader)
 
 	// Create output buffer (stays on GPU!)
-	//nolint:gosec // G115: Safe conversion, ByteSize() returns non-negative int
+
 	resultSize := uint64(m * n * t.dtype.Size())
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
@@ -253,9 +253,9 @@ func (b *Backend) TransposeGPU(t *GPUTensor, axes ...int) *GPUTensor {
 
 	// Create uniform buffer for dimensions
 	params := make([]byte, 16) // 16-byte aligned
-	//nolint:gosec // G115: Safe conversion for matrix dimensions
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(m))
-	//nolint:gosec // G115: Safe conversion for matrix dimensions
+
 	binary.LittleEndian.PutUint32(params[4:8], uint32(n))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -278,9 +278,9 @@ func (b *Backend) TransposeGPU(t *GPUTensor, axes ...int) *GPUTensor {
 
 	// Dispatch 2D workgroups: (n / tileSize, m / tileSize)
 	const tileSize = 16
-	//nolint:gosec // G115: Safe conversion for workgroup calculation
+
 	workgroupsX := uint32((n + tileSize - 1) / tileSize)
-	//nolint:gosec // G115: Safe conversion for workgroup calculation
+
 	workgroupsY := uint32((m + tileSize - 1) / tileSize)
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, 1)
 	computePass.End()
@@ -359,9 +359,9 @@ func (b *Backend) SoftmaxGPU(t *GPUTensor, dim int) *GPUTensor {
 
 	// Create uniform buffer for params
 	params := make([]byte, 16) // 16-byte aligned
-	//nolint:gosec // G115: Safe conversion for batch and feature sizes
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
-	//nolint:gosec // G115: Safe conversion for batch and feature sizes
+
 	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -383,7 +383,7 @@ func (b *Backend) SoftmaxGPU(t *GPUTensor, dim int) *GPUTensor {
 	computePass.SetBindGroup(0, bindGroup, nil)
 
 	// Dispatch workgroups: one per batch element
-	//nolint:gosec // G115: Safe conversion for workgroup calculation
+
 	workgroups := uint32(batchSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()
@@ -410,7 +410,7 @@ func (b *Backend) UploadTensor(raw *tensor.RawTensor) *GPUTensor {
 	numElements := raw.NumElements()
 	bytesPerElement := raw.DType().Size()
 	actualByteSize := numElements * bytesPerElement
-	//nolint:gosec // G115: Safe conversion, actualByteSize is non-negative
+
 	alignedSize := uint64((actualByteSize + 3) &^ 3) // Round up to 4-byte boundary
 
 	// Create GPU buffer
@@ -422,8 +422,7 @@ func (b *Backend) UploadTensor(raw *tensor.RawTensor) *GPUTensor {
 
 	// Copy data to GPU
 	mappedPtr := buffer.GetMappedRange(0, alignedSize)
-	//nolint:gosec // unsafe.Slice for zero-copy conversion from unsafe.Pointer
-	mappedSlice := unsafe.Slice((*byte)(mappedPtr), alignedSize)
+	mappedSlice := unsafe.Slice((*byte)(mappedPtr), alignedSize) //nolint:gosec // G103: Required for GPU buffer access
 	copy(mappedSlice, raw.Data()[:actualByteSize])
 	buffer.Unmap()
 
@@ -457,7 +456,7 @@ func (b *Backend) runUnaryOpGPU(t *GPUTensor, opName, shaderCode string) *GPUTen
 
 	// Create uniform buffer for params (size: u32)
 	params := make([]byte, 16) // 16-byte aligned
-	//nolint:gosec // G115: Safe conversion, NumElements() returns non-negative int
+
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements))
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -479,7 +478,7 @@ func (b *Backend) runUnaryOpGPU(t *GPUTensor, opName, shaderCode string) *GPUTen
 	computePass.SetBindGroup(0, bindGroup, nil)
 
 	// Calculate workgroup count: ceil(numElements / workgroupSize)
-	//nolint:gosec // G115: Safe conversion, workgroup count is non-negative
+
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize)
 	computePass.DispatchWorkgroups(workgroups, 1, 1)
 	computePass.End()

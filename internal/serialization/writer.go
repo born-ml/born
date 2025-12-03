@@ -21,8 +21,7 @@ type BornWriter struct {
 
 // NewBornWriter creates a new .born file writer.
 func NewBornWriter(path string) (*BornWriter, error) {
-	//nolint:gosec // G304: File path comes from user input, which is expected for model saving
-	file, err := os.Create(path)
+	file, err := os.Create(path) //nolint:gosec // G304: Path comes from trusted caller
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
@@ -109,7 +108,6 @@ func (w *BornWriter) WriteStateDictWithHeader(stateDict map[string]*tensor.RawTe
 	}
 
 	// Calculate padding
-	//nolint:gosec // G115: headerSize is small (< 100MB max), conversion is safe
 	currentPos := int64(4+4+4+8) + int64(headerSize)
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
@@ -211,7 +209,7 @@ func (w *BornWriter) WriteStateDict(stateDict map[string]*tensor.RawTensor, mode
 	}
 
 	// Calculate padding to align tensor data to HeaderAlignment
-	//nolint:gosec // G115: headerSize is small (< 100MB max), conversion is safe
+
 	currentPos := int64(4+4+4+8) + int64(headerSize) // magic + version + flags + headerSize + header
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
@@ -336,7 +334,7 @@ func (w *BornWriter) WriteStateDictV2(stateDict map[string]*tensor.RawTensor, mo
 	}
 
 	// Calculate padding to align tensor data to 64-byte boundary
-	//nolint:gosec // G115: headerSize is small (< 100MB max), conversion is safe
+
 	currentPos := int64(FixedHeaderSizeV2) + int64(headerSize)
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
@@ -454,7 +452,7 @@ func (w *BornWriter) WriteStateDictWithHeaderV2(stateDict map[string]*tensor.Raw
 	}
 
 	// Calculate padding
-	//nolint:gosec // G115: headerSize is small (< 100MB max), conversion is safe
+
 	currentPos := int64(FixedHeaderSizeV2) + int64(headerSize)
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
@@ -555,7 +553,7 @@ func WriteTo(writer io.Writer, stateDict map[string]*tensor.RawTensor, modelType
 	}
 
 	// Calculate padding to align tensor data
-	//nolint:gosec // G115: headerSize is small (< 100MB max), conversion is safe
+
 	currentPos := int64(4+4+4+8) + int64(headerSize)
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {

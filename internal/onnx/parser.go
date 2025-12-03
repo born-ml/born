@@ -320,7 +320,7 @@ func (p *parser) readNodeProto(m *NodeProto) error {
 
 // readTensorProto reads TensorProto message.
 //
-//nolint:gocognit,gocyclo,cyclop,funlen,gosec // Protobuf parsing; int conversions are safe for tensor dimensions
+//nolint:gocognit,gocyclo,cyclop,funlen // Protobuf parsing; int conversions are safe for tensor dimensions
 func (p *parser) readTensorProto(m *TensorProto) error {
 	for p.pos < len(p.data) {
 		fieldNum, wireType, err := p.readTag()
@@ -650,7 +650,7 @@ func (p *parser) readAttributeProto(m *AttributeProto) error {
 			if err2 != nil {
 				return err2
 			}
-			m.Type = int32(v) //nolint:gosec // Safe: attribute type is small enum value
+			m.Type = int32(v)
 			continue
 		default:
 			err = p.skipField(wireType)
@@ -762,7 +762,7 @@ func (p *parser) readVarint() (int64, error) {
 			return 0, errors.New("varint overflow")
 		}
 	}
-	return int64(result), nil //nolint:gosec // Safe: converting uint64 to int64 for protobuf
+	return int64(result), nil
 }
 
 // readInt32 reads a varint-encoded int32.
@@ -771,7 +771,7 @@ func (p *parser) readInt32() (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	return int32(v), nil //nolint:gosec // Safe: ONNX int32 fields fit in int32
+	return int32(v), nil
 }
 
 // readBytes reads a length-delimited byte slice.

@@ -165,7 +165,6 @@ func scatterAddAlongDim(dst, src, index *tensor.RawTensor, dim int) {
 		src64 := index.AsInt64()
 		indices = make([]int32, len(src64))
 		for i, v := range src64 {
-			//nolint:gosec // G115: Safe - index values are within int32 range for ML operations
 			indices[i] = int32(v)
 		}
 	case tensor.Float32:

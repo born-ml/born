@@ -155,7 +155,6 @@ func (m *ggufModel) LoadTensor(name string, backend tensor.Backend) (*tensor.Raw
 		// Convert dims (GGUF uses reversed order)
 		shape := make(tensor.Shape, len(info.Dims))
 		for i, dim := range info.Dims {
-			//nolint:gosec // G115: dim is tensor dimension, typically < int max
 			shape[len(shape)-1-i] = int(dim)
 		}
 
