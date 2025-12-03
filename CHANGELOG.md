@@ -5,6 +5,65 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-04
+
+### 🚀 ONNX Import & Lazy GPU Mode
+
+Major release adding ONNX model import and GPU-resident lazy evaluation for dramatically improved performance.
+
+**ONNX Import API** (`internal/onnx/`):
+- **ONNX Parser** - Parse `.onnx` model files (protobuf format)
+- **Model Loader** - Load weights and construct computation graph
+- **30+ Operators** - Standard ONNX operator support:
+  - Activations: ReLU, Sigmoid, Tanh, Softmax, GELU, LeakyReLU
+  - Math: MatMul, Add, Mul, Div, Sub, Sqrt, Pow, Exp, Log
+  - Shape: Reshape, Transpose, Squeeze, Unsqueeze, Concat, Split
+  - Utility: Gather, Slice, Cast, Constant, Identity, Flatten
+- **Operator Registry** - Extensible operator registration system
+
+**Lazy GPU Evaluation** (`internal/tensor/lazy_gpu.go`):
+- **GPU-Resident Tensors** - Data stays on GPU until explicitly needed
+- **LazyGPUData** - Reference to GPU buffer with lazy CPU transfer
+- **Automatic Memory Management** - `runtime.SetFinalizer` for GPU buffer cleanup
+- **Zero CPU Round-trips** - Chained operations stay entirely on GPU
+
+**Command Batching** (`internal/backend/webgpu/`):
+- **Batch GPU Commands** - Accumulate commands instead of immediate submit
+- **Reduced Sync Overhead** - ~200 submits → 1-2 per operation chain
+- **FlushCommands()** - Explicit synchronization when needed
+- **Performance Impact**: ~90s/step → <5s/step for model training
+
+**GPU-to-GPU Copy**:
+- **CopyBufferToBuffer** - Direct GPU memory transfer
+- **No CPU Round-trip** - Eliminated GPU→CPU→GPU transfers in lazy chains
+- **~100x Speedup** - Per-operation transfer overhead eliminated
+
+**Raw Tensor Operations** (`internal/tensor/raw_ops.go`):
+- **50+ Operations** - Comprehensive tensor manipulation
+- **Argmax, TopK** - Selection operations
+- **Type Conversions** - Float32, Int32, Bool conversions
+- **Broadcasting** - NumPy-style shape broadcasting
+- **Advanced Indexing** - Gather, Scatter operations
+
+**Bug Fixes**:
+- Fixed GPU memory leak when lazy tensors go out of scope
+- Fixed typed accessors (AsInt32, AsInt64, etc.) bypassing lazy realization
+- Fixed Where and Sum operations missing lazy mode support
+
+**Tests**:
+- 15+ new ONNX tests (parser, loader, operators)
+- Lazy mode chain tests
+- Command batching tests
+
+**Files Added**:
+- `internal/onnx/` - Complete ONNX import package
+- `internal/tensor/lazy_gpu.go` - Lazy GPU data structures
+- `internal/tensor/raw_ops.go` - Raw tensor operations
+- `internal/backend/webgpu/lazy_compute.go` - Lazy GPU operations
+- `internal/backend/webgpu/gpu_*.go` - GPU tensor and autodiff support
+
+---
+
 ## [0.5.5] - 2025-12-03
 
 ### ⚡ WebGPU Performance Hotfix

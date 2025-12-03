@@ -18,8 +18,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🚀 **v0.5.5 Ready!** (WebGPU Performance - Multi-dim Transpose/Expand on GPU!)
-**Latest**: ⚡ GPU-accelerated multi-dimensional operations for transformer training
+**Project Status**: 🚀 **v0.6.0 Released!** (ONNX Import + Lazy GPU Mode!)
+**Latest**: 🔥 ONNX model import, GPU-resident tensors, command batching (~90s → <5s/step)
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -72,7 +72,19 @@ prediction := model.Predict(image)
 - **Optimizer State** - SGD/Adam momentum and moments preserved in checkpoints
 - **Metadata Support** - Custom metadata in model files
 
-### WebGPU Performance (v0.5.5) 🆕
+### ONNX Import (v0.6.0) 🆕
+- **ONNX Parser** - Load `.onnx` model files directly
+- **30+ Operators** - ReLU, MatMul, Reshape, Softmax, Gather, etc.
+- **Model Inference** - Run PyTorch/TensorFlow models in Go
+- **Operator Registry** - Extensible operator system
+
+### Lazy GPU Mode (v0.6.0) 🆕
+- **GPU-Resident Tensors** - Data stays on GPU until explicitly needed
+- **Command Batching** - ~200 submits → 1-2 per chain (~90s → <5s/step!)
+- **Zero CPU Round-trips** - GPU→GPU copy for chained operations
+- **Automatic Memory Management** - `runtime.SetFinalizer` for cleanup
+
+### WebGPU Performance (v0.5.5)
 - **Multi-dim Transpose** - GPU-accelerated 3D/4D/5D/6D tensor transpose
 - **Expand on GPU** - NumPy-style broadcasting with WGSL shaders
 - **~60x Speedup** - Eliminated CPU fallback for transformer training
@@ -426,11 +438,13 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 
 **Status**: All 6 LLM tasks complete. 100+ new tests, 0 linter issues. **Ready for LLM inference!**
 
-### Phase 6: ONNX & Cross-Platform (v0.6.0) - Q1 2026
-- [ ] Linux/macOS WebGPU support
-- [ ] ONNX import/export
-- [ ] Model quantization (INT8, FP16)
-- [ ] Pre-trained model hub integration
+### Phase 6: ONNX & Lazy GPU (v0.6.0) - ✅ COMPLETE (Dec 2025)
+- [x] ONNX model import (parser, loader, 30+ operators)
+- [x] Lazy GPU evaluation (GPU-resident tensors)
+- [x] Command batching (90s → <5s/step performance)
+- [x] GPU memory management (automatic cleanup)
+- [ ] Linux/macOS WebGPU support (planned)
+- [ ] Model quantization (INT8, FP16) (planned)
 
 ### Long-Term: v1.0 LTS - 2026
 - [ ] Distributed training

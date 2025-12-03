@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2025-12-03 | **Current Version**: v0.5.5 | **Strategy**: Core Features → GPU Support → LLM Support → ONNX → v1.0.0 LTS | **Milestone**: v0.5.5 RELEASED! (2025-12-03) → v1.0.0 LTS (2027-2028)
+**Last Updated**: 2025-12-04 | **Current Version**: v0.6.0 | **Strategy**: Core Features → GPU Support → LLM Support → ONNX → v1.0.0 LTS | **Milestone**: v0.6.0 RELEASED! (2025-12-04) → v1.0.0 LTS (2027-2028)
 
 ---
 
@@ -50,9 +50,9 @@ v0.5.0 (LLM Support) ✅ RELEASED (2025-12-01)
        ↓ (model serialization)
 v0.5.4 (Model Serialization) ✅ RELEASED (2025-12-03)
        ↓ (WebGPU performance)
-v0.5.5 (WebGPU Performance) ✅ CURRENT (2025-12-03)
-       ↓ (ONNX interoperability)
-v0.6.0 (ONNX Import/Export + Quantization) → Q1 2026
+v0.5.5 (WebGPU Performance) ✅ RELEASED (2025-12-03)
+       ↓ (ONNX import + lazy GPU)
+v0.6.0 (ONNX Import + Lazy GPU Mode) ✅ CURRENT (2025-12-04)
        ↓ (production optimization)
 v0.7.0-v0.9.0 (Metal backend, Flash Attention, Distributed)
        ↓ (production validation period - 12+ months)
@@ -112,16 +112,24 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - Checkpoint API for training resume
 - SafeTensors export for HuggingFace
 
-**v0.5.5** = WebGPU Performance ✅ CURRENT
+**v0.5.5** = WebGPU Performance ✅ RELEASED
 - Multi-dimensional Transpose on GPU (3D/4D/5D/6D)
 - Expand (broadcasting) on GPU
 - ~60x speedup for attention operations
 - Eliminated CPU fallback for transformer training
 
-**v0.6.0** = ONNX Import/Export + Quantization → Q1 2026
-- ONNX model import (PyTorch/TensorFlow)
-- ONNX export for interoperability
+**v0.6.0** = ONNX Import + Lazy GPU Mode ✅ CURRENT
+- ONNX model import (parser, loader, 30+ operators)
+- Lazy GPU evaluation (GPU-resident tensors)
+- Command batching (~90s → <5s/step for training)
+- GPU-to-GPU copy (no CPU round-trips)
+- GPU memory management (automatic cleanup)
+- 50+ raw tensor operations
+
+**v0.7.0** = Production Optimization → Q1 2026
 - INT8/FP16 quantization
+- Linux/macOS WebGPU support
+- ONNX export for interoperability
 - Model Zoo with pre-trained models
 
 **v1.0.0** = Production LTS
@@ -134,10 +142,10 @@ v1.0.0 LTS → Long-term support (2027-2028)
 
 ---
 
-## 📊 Current Status (v0.3.0)
+## 📊 Current Status (v0.6.0)
 
-**Phase**: 🚀 Transformer Primitives Release
-**Focus**: Modern LLM Architecture Support
+**Phase**: 🚀 ONNX Import + Lazy GPU Mode Release
+**Focus**: Production Performance & Interoperability
 **Quality**: Production-ready
 
 **What Works**:
@@ -164,11 +172,20 @@ v1.0.0 LTS → Long-term support (2027-2028)
 - ✅ Buffer pool for GPU memory management
 - ✅ Batch processing
 - ✅ Float32/Float64 support
+- ✅ **ONNX Import**: Parser, loader, 30+ operators (v0.6.0)
+- ✅ **Lazy GPU Mode**: GPU-resident tensors, deferred CPU transfer (v0.6.0)
+- ✅ **Command Batching**: Reduced GPU sync overhead (v0.6.0)
+- ✅ **50+ Raw Ops**: Argmax, TopK, type conversions, broadcasting (v0.6.0)
 
 **Performance** (v0.2.0):
 - ✅ **MatMul 1024×1024**: 123x speedup (GPU vs CPU)
 - ✅ **MNIST Inference**: 10.9x speedup (batch=256)
 - ✅ **Throughput**: 62,000+ samples/sec (GPU)
+
+**Performance** (v0.6.0 - Lazy GPU Mode):
+- ✅ **Training Step**: ~90s → <5s (~18x speedup)
+- ✅ **GPU Submits**: ~200 → 1-2 per chain (~100x reduction)
+- ✅ **GPU Memory**: Automatic cleanup via finalizers
 
 **Transformer Support** (v0.3.0):
 - ✅ **LLaMA** architectures ready
