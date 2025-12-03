@@ -13,7 +13,13 @@ import (
 // MulScalar multiplies tensor elements by a scalar on GPU.
 func (b *Backend) MulScalar(x *tensor.RawTensor, scalar any) *tensor.RawTensor {
 	s := toFloat32(scalar)
-	result, err := b.runScalarOp(x, s, "scalarMul", scalarMulShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runScalarOpLazy(x, s, "scalarMul", scalarMulShader)
+	} else {
+		result, err = b.runScalarOp(x, s, "scalarMul", scalarMulShader)
+	}
 	if err != nil {
 		panic("webgpu: MulScalar: " + err.Error())
 	}
@@ -23,7 +29,13 @@ func (b *Backend) MulScalar(x *tensor.RawTensor, scalar any) *tensor.RawTensor {
 // AddScalar adds a scalar to tensor elements on GPU.
 func (b *Backend) AddScalar(x *tensor.RawTensor, scalar any) *tensor.RawTensor {
 	s := toFloat32(scalar)
-	result, err := b.runScalarOp(x, s, "scalarAdd", scalarAddShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runScalarOpLazy(x, s, "scalarAdd", scalarAddShader)
+	} else {
+		result, err = b.runScalarOp(x, s, "scalarAdd", scalarAddShader)
+	}
 	if err != nil {
 		panic("webgpu: AddScalar: " + err.Error())
 	}
@@ -33,7 +45,13 @@ func (b *Backend) AddScalar(x *tensor.RawTensor, scalar any) *tensor.RawTensor {
 // SubScalar subtracts a scalar from tensor elements on GPU.
 func (b *Backend) SubScalar(x *tensor.RawTensor, scalar any) *tensor.RawTensor {
 	s := toFloat32(scalar)
-	result, err := b.runScalarOp(x, -s, "scalarAdd", scalarAddShader) // x - s = x + (-s)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runScalarOpLazy(x, -s, "scalarAdd", scalarAddShader) // x - s = x + (-s)
+	} else {
+		result, err = b.runScalarOp(x, -s, "scalarAdd", scalarAddShader)
+	}
 	if err != nil {
 		panic("webgpu: SubScalar: " + err.Error())
 	}
@@ -46,7 +64,13 @@ func (b *Backend) DivScalar(x *tensor.RawTensor, scalar any) *tensor.RawTensor {
 	if s == 0 {
 		panic("webgpu: DivScalar: division by zero")
 	}
-	result, err := b.runScalarOp(x, 1.0/s, "scalarMul", scalarMulShader) // x / s = x * (1/s)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runScalarOpLazy(x, 1.0/s, "scalarMul", scalarMulShader) // x / s = x * (1/s)
+	} else {
+		result, err = b.runScalarOp(x, 1.0/s, "scalarMul", scalarMulShader)
+	}
 	if err != nil {
 		panic("webgpu: DivScalar: " + err.Error())
 	}
@@ -75,7 +99,13 @@ func toFloat32(v any) float32 {
 
 // Log computes natural logarithm element-wise on GPU.
 func (b *Backend) Log(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "log", logShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "log", logShader)
+	} else {
+		result, err = b.runUnaryOp(x, "log", logShader)
+	}
 	if err != nil {
 		panic("webgpu: Log: " + err.Error())
 	}
@@ -102,7 +132,13 @@ func (b *Backend) Softmax(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 
 	// For 2D tensors, use GPU softmax directly
 	if ndim == 2 {
-		result, err := b.runSoftmax(x)
+		var result *tensor.RawTensor
+		var err error
+		if b.LazyMode {
+			result, err = b.runSoftmaxLazy(x)
+		} else {
+			result, err = b.runSoftmax(x)
+		}
 		if err != nil {
 			panic("webgpu: Softmax: " + err.Error())
 		}
@@ -121,7 +157,13 @@ func (b *Backend) Softmax(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 	flat := b.Reshape(x, tensor.Shape{batchSize, lastDim})
 
 	// Apply 2D softmax
-	result2D, err := b.runSoftmax(flat)
+	var result2D *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result2D, err = b.runSoftmaxLazy(flat)
+	} else {
+		result2D, err = b.runSoftmax(flat)
+	}
 	if err != nil {
 		panic("webgpu: Softmax: " + err.Error())
 	}
@@ -247,7 +289,13 @@ func (b *Backend) Not(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Sum computes the sum of all elements on GPU.
 func (b *Backend) Sum(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runSum(x)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runSumLazy(x)
+	} else {
+		result, err = b.runSum(x)
+	}
 	if err != nil {
 		panic("webgpu: Sum: " + err.Error())
 	}
@@ -268,8 +316,13 @@ func (b *Backend) Argmax(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 // Expand broadcasts tensor to new shape.
 // GPU-accelerated for up to 6D tensors.
 func (b *Backend) Expand(x *tensor.RawTensor, newShape tensor.Shape) *tensor.RawTensor {
-	// Use GPU-accelerated expand
-	result, err := b.runExpand(x, newShape)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runExpandLazy(x, newShape)
+	} else {
+		result, err = b.runExpand(x, newShape)
+	}
 	if err != nil {
 		panic("webgpu: Expand: " + err.Error())
 	}

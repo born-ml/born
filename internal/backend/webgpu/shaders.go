@@ -1402,6 +1402,95 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 `
 
+// reluBackwardShader computes ReLU gradient: grad * (input > 0).
+// d(ReLU(x))/dx = 1 if x > 0, else 0.
+const reluBackwardShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read> grad: array<f32>;
+@group(0) @binding(2) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    size: u32,
+}
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let idx = global_id.x;
+    if (idx < params.size) {
+        result[idx] = select(0.0, grad[idx], input[idx] > 0.0);
+    }
+}
+`
+
+// sumDimShader performs sum reduction along the last dimension.
+// Input: [batch, dim], Output: [batch].
+const sumDimShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    batch_size: u32,
+    dim_size: u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let batch_idx = global_id.x;
+    if (batch_idx >= params.batch_size) {
+        return;
+    }
+
+    let offset = batch_idx * params.dim_size;
+    var sum: f32 = 0.0;
+
+    for (var i: u32 = 0u; i < params.dim_size; i = i + 1u) {
+        sum = sum + input[offset + i];
+    }
+
+    result[batch_idx] = sum;
+}
+`
+
+// softmaxBackwardShader computes softmax gradient.
+// d_input[i] = s[i] * (grad[i] - sum(s * grad))
+// where s = softmax output.
+const softmaxBackwardShader = `
+@group(0) @binding(0) var<storage, read> output: array<f32>;
+@group(0) @binding(1) var<storage, read> grad: array<f32>;
+@group(0) @binding(2) var<storage, read_write> result: array<f32>;
+
+struct Params {
+    batch_size: u32,
+    dim_size: u32,
+}
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let batch_idx = global_id.x;
+    if (batch_idx >= params.batch_size) {
+        return;
+    }
+
+    let offset = batch_idx * params.dim_size;
+
+    // Compute sum(s * grad)
+    var dot_product: f32 = 0.0;
+    for (var i: u32 = 0u; i < params.dim_size; i = i + 1u) {
+        dot_product = dot_product + output[offset + i] * grad[offset + i];
+    }
+
+    // Compute d_input = s * (grad - dot_product)
+    for (var i: u32 = 0u; i < params.dim_size; i = i + 1u) {
+        let s = output[offset + i];
+        let g = grad[offset + i];
+        result[offset + i] = s * (g - dot_product);
+    }
+}
+`
+
 // expandShaderInt32 performs broadcasting for int32 tensors.
 const expandShaderInt32 = `
 @group(0) @binding(0) var<storage, read> input: array<i32>;

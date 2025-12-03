@@ -7,6 +7,7 @@ package webgpu
 import (
 	"fmt"
 	"sync"
+	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
@@ -30,6 +31,12 @@ type Backend struct {
 	// Buffer pool for memory management
 	bufferPool *BufferPool
 
+	// Lazy mode: when true, operations return lazy tensors that keep data on GPU
+	// until Data() is explicitly called. This is the key optimization for
+	// Phase 3 Integration - eliminates readBuffer() bottleneck.
+	// Default: true for optimal performance.
+	LazyMode bool
+
 	// Memory tracking
 	memoryStats struct {
 		totalAllocatedBytes uint64
@@ -37,6 +44,12 @@ type Backend struct {
 		activeBuffers       int64
 		mu                  sync.RWMutex
 	}
+
+	// Command batching for lazy mode performance optimization.
+	// Commands are accumulated and submitted together to reduce GPU sync overhead.
+	pendingCommands []*wgpu.CommandBuffer
+	pendingMu       sync.Mutex
+	maxBatchSize    int // Maximum commands before auto-flush (0 = no limit)
 }
 
 // New creates a new WebGPU backend.
@@ -95,14 +108,75 @@ func New() (backend *Backend, err error) {
 		pipelines:   make(map[string]*wgpu.ComputePipeline),
 		adapterInfo: adapterInfo,
 		bufferPool:  NewBufferPool(device),
+		LazyMode:    true, // Default: lazy mode enabled for optimal performance
 	}
 
 	return b, nil
 }
 
+// SetLazyMode enables or disables lazy evaluation mode.
+// When enabled (default), operations return lazy tensors that keep data on GPU
+// until Data() is explicitly called. This dramatically improves performance
+// by eliminating unnecessary GPU→CPU transfers.
+// When disabled, operations immediately transfer results to CPU (slower).
+func (b *Backend) SetLazyMode(enabled bool) {
+	b.LazyMode = enabled
+}
+
+// queueCommand adds a command buffer to the pending queue for batch submission.
+// This reduces GPU sync overhead by submitting multiple commands at once.
+// Commands are automatically flushed when reading data or when batch size limit is reached.
+func (b *Backend) queueCommand(cmdBuffer *wgpu.CommandBuffer) {
+	b.pendingMu.Lock()
+	defer b.pendingMu.Unlock()
+
+	b.pendingCommands = append(b.pendingCommands, cmdBuffer)
+
+	// Auto-flush if batch size limit is reached (0 = no limit)
+	if b.maxBatchSize > 0 && len(b.pendingCommands) >= b.maxBatchSize {
+		b.flushCommandsLocked()
+	}
+}
+
+// flushCommands submits all pending command buffers to the GPU queue.
+// This is called automatically before reading data from GPU.
+func (b *Backend) flushCommands() {
+	b.pendingMu.Lock()
+	defer b.pendingMu.Unlock()
+	b.flushCommandsLocked()
+}
+
+// flushCommandsLocked submits all pending command buffers (must hold pendingMu lock).
+func (b *Backend) flushCommandsLocked() {
+	if len(b.pendingCommands) == 0 {
+		return
+	}
+	b.queue.Submit(b.pendingCommands...)
+	b.pendingCommands = b.pendingCommands[:0]
+}
+
+// FlushCommands submits all pending command buffers to the GPU queue.
+// Call this when you need to ensure all queued operations are executed.
+// Note: This is called automatically before reading data from GPU buffers.
+func (b *Backend) FlushCommands() {
+	b.flushCommands()
+}
+
+// SetMaxBatchSize sets the maximum number of commands to accumulate before auto-flush.
+// Set to 0 (default) to disable auto-flush limit.
+// Typical values: 32-128 for balanced latency/throughput.
+func (b *Backend) SetMaxBatchSize(size int) {
+	b.pendingMu.Lock()
+	defer b.pendingMu.Unlock()
+	b.maxBatchSize = size
+}
+
 // Release releases all WebGPU resources.
 // Must be called when the backend is no longer needed.
 func (b *Backend) Release() {
+	// Flush any pending commands before releasing resources
+	b.flushCommands()
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -284,7 +358,13 @@ func (b *Backend) trackBufferRelease(size uint64) {
 
 // Gather selects elements along dim using index tensor on GPU.
 func (b *Backend) Gather(input *tensor.RawTensor, dim int, indices *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runGather(input, dim, indices)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runGatherLazy(input, dim, indices)
+	} else {
+		result, err = b.runGather(input, dim, indices)
+	}
 	if err != nil {
 		panic("webgpu: Gather: " + err.Error())
 	}
@@ -294,7 +374,13 @@ func (b *Backend) Gather(input *tensor.RawTensor, dim int, indices *tensor.RawTe
 // Where performs conditional element selection on GPU.
 // result[i] = condition[i] != 0 ? x[i] : y[i].
 func (b *Backend) Where(condition, x, y *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runWhere(condition, x, y)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runWhereLazy(condition, x, y)
+	} else {
+		result, err = b.runWhere(condition, x, y)
+	}
 	if err != nil {
 		panic("webgpu: Where: " + err.Error())
 	}
@@ -310,4 +396,22 @@ func (b *Backend) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor
 		panic("webgpu: Embedding: " + err.Error())
 	}
 	return result
+}
+
+// ReadGPUBuffer implements tensor.LazyBackend interface.
+// Reads data from a GPU buffer to CPU memory.
+// bufferPtr must be *wgpu.Buffer.
+func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, error) {
+	buffer := (*wgpu.Buffer)(bufferPtr)
+	return b.readBuffer(buffer, size)
+}
+
+// ReleaseGPUBuffer implements tensor.LazyBackend interface.
+// Releases a GPU buffer when no longer needed.
+// bufferPtr must be *wgpu.Buffer.
+func (b *Backend) ReleaseGPUBuffer(bufferPtr unsafe.Pointer) {
+	buffer := (*wgpu.Buffer)(bufferPtr)
+	if buffer != nil {
+		buffer.Release()
+	}
 }

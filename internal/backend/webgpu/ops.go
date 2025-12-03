@@ -8,9 +8,19 @@ import (
 
 // Add performs element-wise addition on GPU.
 // Supports float32 and int32 dtypes.
+// In LazyMode (default), returns a lazy tensor that keeps data on GPU.
 func (b *Backend) Add(a, other *tensor.RawTensor) *tensor.RawTensor {
 	shaderName, shaderCode := selectBinaryShader(a.DType(), "add", addShader, addShaderInt32)
-	result, err := b.runBinaryOp(a, other, shaderName, shaderCode)
+
+	var result *tensor.RawTensor
+	var err error
+
+	if b.LazyMode {
+		result, err = b.runBinaryOpLazy(a, other, shaderName, shaderCode)
+	} else {
+		result, err = b.runBinaryOp(a, other, shaderName, shaderCode)
+	}
+
 	if err != nil {
 		panic("webgpu: Add: " + err.Error())
 	}
@@ -19,9 +29,19 @@ func (b *Backend) Add(a, other *tensor.RawTensor) *tensor.RawTensor {
 
 // Sub performs element-wise subtraction on GPU.
 // Supports float32 and int32 dtypes.
+// In LazyMode (default), returns a lazy tensor that keeps data on GPU.
 func (b *Backend) Sub(a, other *tensor.RawTensor) *tensor.RawTensor {
 	shaderName, shaderCode := selectBinaryShader(a.DType(), "sub", subShader, subShaderInt32)
-	result, err := b.runBinaryOp(a, other, shaderName, shaderCode)
+
+	var result *tensor.RawTensor
+	var err error
+
+	if b.LazyMode {
+		result, err = b.runBinaryOpLazy(a, other, shaderName, shaderCode)
+	} else {
+		result, err = b.runBinaryOp(a, other, shaderName, shaderCode)
+	}
+
 	if err != nil {
 		panic("webgpu: Sub: " + err.Error())
 	}
@@ -30,9 +50,19 @@ func (b *Backend) Sub(a, other *tensor.RawTensor) *tensor.RawTensor {
 
 // Mul performs element-wise multiplication on GPU.
 // Supports float32 and int32 dtypes.
+// In LazyMode (default), returns a lazy tensor that keeps data on GPU.
 func (b *Backend) Mul(a, other *tensor.RawTensor) *tensor.RawTensor {
 	shaderName, shaderCode := selectBinaryShader(a.DType(), "mul", mulShader, mulShaderInt32)
-	result, err := b.runBinaryOp(a, other, shaderName, shaderCode)
+
+	var result *tensor.RawTensor
+	var err error
+
+	if b.LazyMode {
+		result, err = b.runBinaryOpLazy(a, other, shaderName, shaderCode)
+	} else {
+		result, err = b.runBinaryOp(a, other, shaderName, shaderCode)
+	}
+
 	if err != nil {
 		panic("webgpu: Mul: " + err.Error())
 	}
@@ -41,9 +71,19 @@ func (b *Backend) Mul(a, other *tensor.RawTensor) *tensor.RawTensor {
 
 // Div performs element-wise division on GPU.
 // Supports float32 and int32 dtypes.
+// In LazyMode (default), returns a lazy tensor that keeps data on GPU.
 func (b *Backend) Div(a, other *tensor.RawTensor) *tensor.RawTensor {
 	shaderName, shaderCode := selectBinaryShader(a.DType(), "div", divShader, divShaderInt32)
-	result, err := b.runBinaryOp(a, other, shaderName, shaderCode)
+
+	var result *tensor.RawTensor
+	var err error
+
+	if b.LazyMode {
+		result, err = b.runBinaryOpLazy(a, other, shaderName, shaderCode)
+	} else {
+		result, err = b.runBinaryOp(a, other, shaderName, shaderCode)
+	}
+
 	if err != nil {
 		panic("webgpu: Div: " + err.Error())
 	}
@@ -64,7 +104,15 @@ func selectBinaryShader(dtype tensor.DataType, baseName, float32Shader, int32Sha
 
 // MatMul performs matrix multiplication on GPU.
 func (b *Backend) MatMul(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runMatMul(a, other)
+	var result *tensor.RawTensor
+	var err error
+
+	if b.LazyMode {
+		result, err = b.runMatMulLazy(a, other)
+	} else {
+		result, err = b.runMatMul(a, other)
+	}
+
 	if err != nil {
 		panic("webgpu: MatMul: " + err.Error())
 	}
@@ -75,7 +123,13 @@ func (b *Backend) MatMul(a, other *tensor.RawTensor) *tensor.RawTensor {
 // Supports 3D tensors [batch, M, K] @ [batch, K, N] -> [batch, M, N]
 // and 4D tensors [batch, heads, M, K] @ [batch, heads, K, N].
 func (b *Backend) BatchMatMul(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runBatchMatMul(a, other)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runBatchMatMulLazy(a, other)
+	} else {
+		result, err = b.runBatchMatMul(a, other)
+	}
 	if err != nil {
 		panic("webgpu: BatchMatMul: " + err.Error())
 	}
@@ -139,7 +193,13 @@ func (b *Backend) Transpose(t *tensor.RawTensor, axes ...int) *tensor.RawTensor 
 	// 2D transpose (matrix): use optimized 2D shader
 	if ndim == 2 {
 		validate2DTransposeAxes(axes)
-		result, err := b.runTranspose(t)
+		var result *tensor.RawTensor
+		var err error
+		if b.LazyMode {
+			result, err = b.runTransposeLazy(t)
+		} else {
+			result, err = b.runTranspose(t)
+		}
 		if err != nil {
 			panic("webgpu: Transpose: " + err.Error())
 		}
@@ -147,7 +207,13 @@ func (b *Backend) Transpose(t *tensor.RawTensor, axes ...int) *tensor.RawTensor 
 	}
 
 	// Multi-dimensional (3D, 4D, etc.): use GPU-accelerated ND transpose
-	result, err := b.runTransposeND(t, axes)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runTransposeNDLazy(t, axes)
+	} else {
+		result, err = b.runTransposeND(t, axes)
+	}
 	if err != nil {
 		panic("webgpu: Transpose: " + err.Error())
 	}
@@ -211,7 +277,13 @@ func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Exp computes element-wise exponential on GPU.
 func (b *Backend) Exp(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "exp", expShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "exp", expShader)
+	} else {
+		result, err = b.runUnaryOp(x, "exp", expShader)
+	}
 	if err != nil {
 		panic("webgpu: Exp: " + err.Error())
 	}
@@ -220,7 +292,13 @@ func (b *Backend) Exp(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Sqrt computes element-wise square root on GPU.
 func (b *Backend) Sqrt(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "sqrt", sqrtShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "sqrt", sqrtShader)
+	} else {
+		result, err = b.runUnaryOp(x, "sqrt", sqrtShader)
+	}
 	if err != nil {
 		panic("webgpu: Sqrt: " + err.Error())
 	}
@@ -229,7 +307,13 @@ func (b *Backend) Sqrt(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Rsqrt computes element-wise reciprocal square root on GPU.
 func (b *Backend) Rsqrt(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "rsqrt", rsqrtShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "rsqrt", rsqrtShader)
+	} else {
+		result, err = b.runUnaryOp(x, "rsqrt", rsqrtShader)
+	}
 	if err != nil {
 		panic("webgpu: Rsqrt: " + err.Error())
 	}
@@ -238,7 +322,13 @@ func (b *Backend) Rsqrt(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Cos computes element-wise cosine on GPU.
 func (b *Backend) Cos(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "cos", cosShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "cos", cosShader)
+	} else {
+		result, err = b.runUnaryOp(x, "cos", cosShader)
+	}
 	if err != nil {
 		panic("webgpu: Cos: " + err.Error())
 	}
@@ -247,7 +337,13 @@ func (b *Backend) Cos(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Sin computes element-wise sine on GPU.
 func (b *Backend) Sin(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "sin", sinShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "sin", sinShader)
+	} else {
+		result, err = b.runUnaryOp(x, "sin", sinShader)
+	}
 	if err != nil {
 		panic("webgpu: Sin: " + err.Error())
 	}

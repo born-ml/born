@@ -100,6 +100,11 @@ func (b *Backend) createUniformBuffer(data []byte) *wgpu.Buffer {
 // readBuffer reads data back from a GPU buffer to CPU memory.
 // Uses a staging buffer since storage buffers can't be mapped directly.
 func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error) {
+	// Flush all pending commands first to ensure GPU operations are complete.
+	// This is critical for command batching - we need all compute passes to finish
+	// before we can read their results.
+	b.flushCommands()
+
 	// Create staging buffer for reading (MAP_READ | COPY_DST)
 	stagingBuffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: wgpu.BufferUsageMapRead | wgpu.BufferUsageCopyDst,
