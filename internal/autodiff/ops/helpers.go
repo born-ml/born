@@ -66,6 +66,7 @@ func reduceBroadcast(grad *tensor.RawTensor, targetShape tensor.Shape, backend t
 	// Now sum along dimensions where target is 1
 	result := grad
 	for i := 0; i < targetDims; i++ {
+		//nolint:gosec // G602: i < targetDims ensures safe index access, targetDims = len(targetShape).
 		if targetShape[i] == 1 && gradShape[i] > 1 {
 			result = sumAlongDimension(result, i, backend)
 		}

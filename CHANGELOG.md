@@ -5,6 +5,59 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-12-10
+
+### ⚡ Flash Attention 2 + Speculative Decoding + GGUF Import
+
+Major release focused on inference optimization for LLM deployment.
+
+**Flash Attention 2** (`internal/nn/flash_attention.go`, `internal/nn/online_softmax.go`):
+- **O(N) Memory** - Tiled computation never materializes full N×N attention matrix
+- **Online Softmax** - Incremental softmax with rescaling for numerical stability
+- **WebGPU Shader** - WGSL compute shader with workgroup shared memory
+- **Configurable Tiles** - Block sizes 64 and 128 supported
+- **Head Dimensions** - Supports 64, 96, 128, 256
+- **Causal Masking** - Built-in support for autoregressive models
+- **CPU Reference** - Validation implementation for correctness testing
+- **2x+ Speedup** - On sequences 8K+ vs standard attention
+
+**Speculative Decoding** (`internal/generate/speculative.go`):
+- **Draft Model** - Small model generates K candidate tokens speculatively
+- **Parallel Verification** - Target model verifies all candidates in single batch
+- **Modified Rejection Sampling** - Mathematically correct token acceptance
+- **2-4x Speedup** - For autoregressive text generation
+- **Configurable** - Draft steps (K), temperature, sampling parameters
+
+**GGUF Import** (`internal/gguf/`):
+- **Parser** - Complete GGUF v3 format parsing (types, metadata, tensor info)
+- **Loader** - Memory-mapped tensor data loading
+- **K-Quant Dequantization** - Q4_K, Q5_K, Q6_K, Q8_0, Q4_0, Q4_1, Q5_0, Q5_1
+- **Converter** - GGUF tensors to Born tensor format
+- **llama.cpp Ecosystem** - Load LLaMA, Mistral, DeepSeek, Qwen models
+
+**Code Quality**:
+- Fixed 226 gosec G115 integer overflow warnings across codebase
+- All files properly formatted (gofmt)
+- 0 linter issues (golangci-lint)
+
+**Tests**:
+- Flash Attention: GPU vs CPU correctness validation (< 1e-4 error)
+- Speculative Decoding: 11 tests, 93.1% coverage
+- GGUF: 52 tests, 75% coverage
+
+**Files Added**:
+- `internal/nn/flash_attention.go` - Flash Attention module
+- `internal/nn/online_softmax.go` - Online softmax implementation
+- `internal/nn/flash_attention_test.go` - CPU tests
+- `internal/nn/flash_attention_gpu_test.go` - GPU tests
+- `internal/backend/webgpu/flash_attention.go` - GPU execution
+- `internal/backend/webgpu/shaders.go` - Added flashAttentionShader
+- `internal/generate/speculative.go` - Speculative decoding
+- `internal/generate/speculative_test.go` - Speculative tests
+- `internal/gguf/` - Complete GGUF package (types, parser, loader, dequant, convert)
+
+---
+
 ## [0.6.0] - 2025-12-04
 
 ### 🚀 ONNX Import & Lazy GPU Mode

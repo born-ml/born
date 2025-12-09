@@ -308,6 +308,7 @@ func argmaxFloat32(data []float32, result []int32, shape tensor.Shape, dim int) 
 			idx := baseIdx + i*dimStride
 			if data[idx] > maxVal {
 				maxVal = data[idx]
+				//nolint:gosec // G115: Dimension size < 2^31, safe conversion to int32.
 				maxIdx = int32(i)
 			}
 		}
@@ -348,6 +349,7 @@ func argmaxFloat64(data []float64, result []int32, shape tensor.Shape, dim int) 
 			idx := baseIdx + i*dimStride
 			if data[idx] > maxVal {
 				maxVal = data[idx]
+				//nolint:gosec // G115: Dimension size < 2^31, safe conversion to int32.
 				maxIdx = int32(i)
 			}
 		}
@@ -388,6 +390,7 @@ func argmaxInt32(data, result []int32, shape tensor.Shape, dim int) {
 			idx := baseIdx + i*dimStride
 			if data[idx] > maxVal {
 				maxVal = data[idx]
+				//nolint:gosec // G115: Dimension size < 2^31, safe conversion to int32.
 				maxIdx = int32(i)
 			}
 		}
@@ -428,6 +431,7 @@ func argmaxInt64(data []int64, result []int32, shape tensor.Shape, dim int) {
 			idx := baseIdx + i*dimStride
 			if data[idx] > maxVal {
 				maxVal = data[idx]
+				//nolint:gosec // G115: Dimension size < 2^31, safe conversion to int32.
 				maxIdx = int32(i)
 			}
 		}

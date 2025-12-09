@@ -120,7 +120,7 @@ func NewSafeTensorsReader(path string) (*SafeTensorsReader, error) {
 	}
 
 	// Calculate data offset
-	dataOffset := int64(8 + headerSize)
+	dataOffset := int64(8 + headerSize) //nolint:gosec // G115: File offset conversion safe - file size within int64 range.
 
 	return &SafeTensorsReader{
 		file:       file,

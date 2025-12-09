@@ -18,8 +18,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🚀 **v0.6.0 Released!** (ONNX Import + Lazy GPU Mode!)
-**Latest**: 🔥 ONNX model import, GPU-resident tensors, command batching (~90s → <5s/step)
+**Project Status**: 🚀 **v0.7.0 Released!** (Flash Attention 2 + Speculative Decoding + GGUF!)
+**Latest**: 🔥 Flash Attention 2 (WebGPU), Speculative Decoding (2-4x speedup), GGUF Import (K-quants)
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
@@ -72,6 +72,8 @@ prediction := model.Predict(image)
 - **Automatic Memory** - `runtime.SetFinalizer` for GPU buffer cleanup
 
 ### LLM & Transformers
+- **Flash Attention 2** - O(N) memory, WebGPU WGSL shader, 2x+ speedup on long sequences
+- **Speculative Decoding** - Draft model + verification, 2-4x inference speedup
 - **Multi-Head Attention** - MHA, SDPA, Grouped Query Attention (GQA)
 - **KV-Cache** - Efficient autoregressive generation (3.94x speedup)
 - **Positional Encodings** - RoPE, ALiBi, Sinusoidal, Learned
@@ -83,7 +85,7 @@ prediction := model.Predict(image)
 
 ### Model Import & Export
 - **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (30+ operators)
-- **GGUF Loading** - Direct llama.cpp model support (LLaMA, Mistral, DeepSeek)
+- **GGUF Import** - llama.cpp format with K-quant dequantization (Q4_K, Q5_K, Q6_K, Q8_0)
 - **Native Format** - `.born` format with `nn.Save()` / `nn.Load()`
 - **Checkpoints** - Resume training with optimizer state preservation
 - **SafeTensors** - HuggingFace compatible export

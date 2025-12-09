@@ -166,7 +166,7 @@ func (t *GPUTensor) NumElements() int {
 
 // ByteSize returns the total memory size in bytes.
 func (t *GPUTensor) ByteSize() uint64 {
-	return uint64(t.NumElements() * t.dtype.Size())
+	return uint64(t.NumElements() * t.dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 }
 
 // Buffer returns the underlying GPU buffer.

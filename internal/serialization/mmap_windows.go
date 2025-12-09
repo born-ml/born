@@ -20,8 +20,8 @@ func mmapFile(f *os.File, size int64) ([]byte, error) {
 		syscall.Handle(f.Fd()),
 		nil,
 		syscall.PAGE_READONLY,
-		uint32(size>>32),
-		uint32(size),
+		uint32(size>>32), //nolint:gosec // G115: Windows API requires uint32 for high DWORD.
+		uint32(size),     //nolint:gosec // G115: Windows API requires uint32 for low DWORD.
 		nil,
 	)
 	if err != nil {

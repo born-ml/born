@@ -21,7 +21,7 @@ func (b *Backend) FromRawTensor(t *tensor.RawTensor) *GPUTensor {
 
 	// Ensure buffer size is at least 4 bytes and aligned to COPY_BUFFER_ALIGNMENT (4 bytes)
 
-	byteSize := uint64(t.ByteSize())
+	byteSize := uint64(t.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	if byteSize < 4 {
 		byteSize = 4
 	}
@@ -62,7 +62,7 @@ func (b *Backend) ZerosGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor
 	// Create zero-filled data with alignment
 	numElements := shape.NumElements()
 
-	byteSize := uint64(numElements * dtype.Size())
+	byteSize := uint64(numElements * dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	if byteSize < 4 {
 		byteSize = 4
 	}
@@ -101,7 +101,7 @@ func (b *Backend) OnesGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 
 	numElements := shape.NumElements()
 
-	byteSize := uint64(numElements * dtype.Size())
+	byteSize := uint64(numElements * dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	if byteSize < 4 {
 		byteSize = 4
 	}
@@ -165,7 +165,7 @@ func (b *Backend) RandGPU(shape tensor.Shape, dtype tensor.DataType) *GPUTensor 
 
 	numElements := shape.NumElements()
 
-	byteSize := uint64(numElements * dtype.Size())
+	byteSize := uint64(numElements * dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	if byteSize < 4 {
 		byteSize = 4
 	}

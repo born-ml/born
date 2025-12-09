@@ -219,7 +219,7 @@ func LoadBPEFromHuggingFace(path string) (*BPETokenizer, error) {
 	// Build vocab.
 	vocab := make(map[string]int32, len(config.Model.Vocab))
 	for token, id := range config.Model.Vocab {
-		vocab[token] = int32(id)
+		vocab[token] = int32(id) //nolint:gosec // G115: Token ID fits in int32 - vocab size < 2^31.
 	}
 
 	// Parse merges.
@@ -235,7 +235,7 @@ func LoadBPEFromHuggingFace(path string) (*BPETokenizer, error) {
 
 	// Configure special tokens from added_tokens.
 	for _, addedToken := range config.AddedTokens {
-		id := int32(addedToken.ID)
+		id := int32(addedToken.ID) //nolint:gosec // G115: Token ID fits in int32 - vocab size < 2^31.
 		if addedToken.Special {
 			tokenizer.specialTokens[id] = true
 

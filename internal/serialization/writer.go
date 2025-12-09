@@ -108,7 +108,7 @@ func (w *BornWriter) WriteStateDictWithHeader(stateDict map[string]*tensor.RawTe
 	}
 
 	// Calculate padding
-	currentPos := int64(4+4+4+8) + int64(headerSize)
+	currentPos := int64(4+4+4+8) + int64(headerSize) //nolint:gosec // G115: Header size fits in int64.
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
@@ -210,7 +210,7 @@ func (w *BornWriter) WriteStateDict(stateDict map[string]*tensor.RawTensor, mode
 
 	// Calculate padding to align tensor data to HeaderAlignment
 
-	currentPos := int64(4+4+4+8) + int64(headerSize) // magic + version + flags + headerSize + header
+	currentPos := int64(4+4+4+8) + int64(headerSize) //nolint:gosec // G115: Header size fits in int64.
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
@@ -335,7 +335,7 @@ func (w *BornWriter) WriteStateDictV2(stateDict map[string]*tensor.RawTensor, mo
 
 	// Calculate padding to align tensor data to 64-byte boundary
 
-	currentPos := int64(FixedHeaderSizeV2) + int64(headerSize)
+	currentPos := int64(FixedHeaderSizeV2) + int64(headerSize) //nolint:gosec // G115: Header size fits in int64.
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
@@ -453,7 +453,7 @@ func (w *BornWriter) WriteStateDictWithHeaderV2(stateDict map[string]*tensor.Raw
 
 	// Calculate padding
 
-	currentPos := int64(FixedHeaderSizeV2) + int64(headerSize)
+	currentPos := int64(FixedHeaderSizeV2) + int64(headerSize) //nolint:gosec // G115: Header size fits in int64.
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
@@ -554,7 +554,7 @@ func WriteTo(writer io.Writer, stateDict map[string]*tensor.RawTensor, modelType
 
 	// Calculate padding to align tensor data
 
-	currentPos := int64(4+4+4+8) + int64(headerSize)
+	currentPos := int64(4+4+4+8) + int64(headerSize) //nolint:gosec // G115: Header size fits in int64.
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)

@@ -148,3 +148,109 @@ func CausalMask[B tensor.Backend](seqLen int, backend B) *tensor.Tensor[float32,
 
 	return mask
 }
+
+// StandardAttention computes attention the traditional way.
+//
+// Memory: O(N²) - materializes full attention matrix.
+// This implementation is used for correctness validation of Flash Attention.
+//
+// Implements: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) * V
+//
+// Parameters:
+//   - q: Query tensor [batch * seqLen * numHeads * headDim] (flattened).
+//   - k: Key tensor [batch * kvLen * numHeads * headDim] (flattened).
+//   - v: Value tensor [batch * kvLen * numHeads * headDim] (flattened).
+//   - batch: Batch size.
+//   - seqLen: Query sequence length.
+//   - kvLen: Key/Value sequence length.
+//   - numHeads: Number of attention heads.
+//   - headDim: Dimension of each head.
+//   - scale: Scaling factor (typically 1/sqrt(headDim)).
+//   - causal: Whether to apply causal masking.
+//
+// Returns:
+//   - []float32: Output tensor [batch * seqLen * numHeads * headDim] (flattened).
+//
+// Example:
+//
+//	output := nn.StandardAttention(q, k, v, 2, 128, 128, 8, 64, 0.125, false)
+//
+//nolint:gocognit // High complexity is inherent to standard attention with nested loops for batch/head/query/key positions
+func StandardAttention(
+	q, k, v []float32,
+	batch, seqLen, kvLen, numHeads, headDim int,
+	scale float32,
+	causal bool,
+) []float32 {
+	// Output: [batch, seqLen, numHeads, headDim]
+	output := make([]float32, batch*seqLen*numHeads*headDim)
+
+	// Process each batch and head independently
+	for b := 0; b < batch; b++ {
+		for h := 0; h < numHeads; h++ {
+			// For each query position
+			for i := 0; i < seqLen; i++ {
+				// 1. Compute attention scores: Q @ K^T
+				scores := make([]float32, kvLen)
+				for j := 0; j < kvLen; j++ {
+					score := float32(0)
+					for d := 0; d < headDim; d++ {
+						qIdx := b*seqLen*numHeads*headDim + i*numHeads*headDim + h*headDim + d
+						kIdx := b*kvLen*numHeads*headDim + j*numHeads*headDim + h*headDim + d
+						score += q[qIdx] * k[kIdx]
+					}
+					scores[j] = score * scale
+				}
+
+				// 2. Apply causal mask if needed
+				if causal {
+					for j := i + 1; j < kvLen; j++ {
+						scores[j] = float32(math.Inf(-1))
+					}
+				}
+
+				// 3. Softmax
+				weights := attentionSoftmax(scores)
+
+				// 4. Compute weighted sum of values
+				for d := 0; d < headDim; d++ {
+					sum := float32(0)
+					for j := 0; j < kvLen; j++ {
+						vIdx := b*kvLen*numHeads*headDim + j*numHeads*headDim + h*headDim + d
+						sum += weights[j] * v[vIdx]
+					}
+					outIdx := b*seqLen*numHeads*headDim + i*numHeads*headDim + h*headDim + d
+					output[outIdx] = sum
+				}
+			}
+		}
+	}
+
+	return output
+}
+
+// softmax computes softmax over a 1D array.
+func attentionSoftmax(x []float32) []float32 {
+	// Find max for numerical stability
+	maxVal := x[0]
+	for _, val := range x[1:] {
+		if val > maxVal {
+			maxVal = val
+		}
+	}
+
+	// Compute exp(x - max) and sum
+	exp := make([]float32, len(x))
+	sum := float32(0)
+	for i, val := range x {
+		exp[i] = float32(math.Exp(float64(val - maxVal)))
+		sum += exp[i]
+	}
+
+	// Normalize
+	result := make([]float32, len(x))
+	for i := range result {
+		result[i] = exp[i] / sum
+	}
+	return result
+}

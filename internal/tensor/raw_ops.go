@@ -1928,7 +1928,7 @@ func castFromInt32(in []int32, out *RawTensor, dtype DataType) {
 	case Uint8:
 		dst := out.AsUint8()
 		for i, v := range in {
-			dst[i] = uint8(v)
+			dst[i] = uint8(v) //nolint:gosec // G115: Cast operation - truncation is expected behavior.
 		}
 	case Bool:
 		dst := out.AsBool()
@@ -1956,14 +1956,14 @@ func castFromInt64(in []int64, out *RawTensor, dtype DataType) {
 	case Int32:
 		dst := out.AsInt32()
 		for i, v := range in {
-			dst[i] = int32(v)
+			dst[i] = int32(v) //nolint:gosec // G115: Cast operation - truncation is expected behavior.
 		}
 	case Int64:
 		copy(out.AsInt64(), in)
 	case Uint8:
 		dst := out.AsUint8()
 		for i, v := range in {
-			dst[i] = uint8(v)
+			dst[i] = uint8(v) //nolint:gosec // G115: Cast operation - truncation is expected behavior.
 		}
 	case Bool:
 		dst := out.AsBool()

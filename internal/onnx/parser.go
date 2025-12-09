@@ -378,7 +378,7 @@ func (p *parser) readTensorProto(m *TensorProto) error {
 				if err3 != nil {
 					break
 				}
-				m.Int32Data = append(m.Int32Data, int32(v))
+				m.Int32Data = append(m.Int32Data, int32(v)) //nolint:gosec // G115: ONNX protobuf varint fits in int32.
 			}
 			continue
 		case 7: // int64_data (packed)
@@ -650,7 +650,7 @@ func (p *parser) readAttributeProto(m *AttributeProto) error {
 			if err2 != nil {
 				return err2
 			}
-			m.Type = int32(v)
+			m.Type = int32(v) //nolint:gosec // G115: ONNX protobuf varint fits in int32.
 			continue
 		default:
 			err = p.skipField(wireType)
@@ -762,7 +762,7 @@ func (p *parser) readVarint() (int64, error) {
 			return 0, errors.New("varint overflow")
 		}
 	}
-	return int64(result), nil
+	return int64(result), nil //nolint:gosec // G115: Protobuf varint fits in int64.
 }
 
 // readInt32 reads a varint-encoded int32.
@@ -771,7 +771,7 @@ func (p *parser) readInt32() (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	return int32(v), nil
+	return int32(v), nil //nolint:gosec // G115: Protobuf varint fits in int32.
 }
 
 // readBytes reads a length-delimited byte slice.

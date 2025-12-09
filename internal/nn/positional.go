@@ -212,7 +212,7 @@ func (l *LearnedPositionalEmbedding[B]) Forward(seqLen int) *tensor.Tensor[float
 	// seqLen is bounded by MaxLen (typically 2048-8192), safe for int32
 	indices := make([]int32, seqLen)
 	for i := 0; i < seqLen; i++ {
-		indices[i] = int32(i)
+		indices[i] = int32(i) //nolint:gosec // G115: seqLen bounded by MaxLen, fits in int32.
 	}
 
 	indicesTensor, err := tensor.FromSlice[int32, B](indices, tensor.Shape{seqLen}, l.backend)

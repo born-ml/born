@@ -195,7 +195,7 @@ func Arange[T DType, B Backend](start, end T, b B) *Tensor[T, B] {
 		dataI32 := any(data).([]int32)
 		startI32 := any(start).(int32)
 		for i := range dataI32 {
-			dataI32[i] = startI32 + int32(i)
+			dataI32[i] = startI32 + int32(i) //nolint:gosec // G115: i is within valid range.
 		}
 	case int64:
 		dataI64 := any(data).([]int64)
@@ -207,7 +207,7 @@ func Arange[T DType, B Backend](start, end T, b B) *Tensor[T, B] {
 		dataU8 := any(data).([]uint8)
 		startU8 := any(start).(uint8)
 		for i := range dataU8 {
-			dataU8[i] = startU8 + uint8(i)
+			dataU8[i] = startU8 + uint8(i) //nolint:gosec // G115: i is within valid range.
 		}
 	}
 	return t

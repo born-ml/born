@@ -153,7 +153,7 @@ func (r *GGUFReader) parseHeader() error {
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %w", err)
 	}
-	r.dataOffset = alignOffset(uint64(currentPos), ggufAlignment)
+	r.dataOffset = alignOffset(uint64(currentPos), ggufAlignment) //nolint:gosec // G115: File offset conversion safe - file size within int64 range.
 
 	return nil
 }
@@ -334,7 +334,7 @@ func (r *GGUFReader) ReadTensorData(name string) ([]byte, error) {
 	size := r.calculateTensorSize(info)
 
 	// Seek to tensor data
-	offset := int64(r.dataOffset + info.Offset)
+	offset := int64(r.dataOffset + info.Offset) //nolint:gosec // G115: File offset conversion safe - file size within int64 range.
 	if _, err := r.file.Seek(offset, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("failed to seek to tensor data: %w", err)
 	}
