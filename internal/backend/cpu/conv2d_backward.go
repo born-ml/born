@@ -40,20 +40,34 @@ func (cpu *CPUBackend) Conv2DInputBackward(input, kernel, grad *tensor.RawTensor
 		panic(fmt.Sprintf("Conv2DInputBackward: failed to create gradient tensor: %v", err))
 	}
 
-	// Dispatch by dtype
+	// Dispatch by dtype and stride (stride specialization for compiler optimization)
 	switch grad.DType() {
 	case tensor.Float32:
-		conv2dInputBackwardFloat32(
-			inputGrad, grad, kernel,
-			N, CIn, H, W, COut, KH, KW, HOut, WOut,
-			stride, padding,
-		)
+		if stride == 1 && padding == 0 {
+			conv2dInputBackwardFloat32Stride1NoPad(
+				inputGrad, grad, kernel,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+			)
+		} else {
+			conv2dInputBackwardFloat32(
+				inputGrad, grad, kernel,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+				stride, padding,
+			)
+		}
 	case tensor.Float64:
-		conv2dInputBackwardFloat64(
-			inputGrad, grad, kernel,
-			N, CIn, H, W, COut, KH, KW, HOut, WOut,
-			stride, padding,
-		)
+		if stride == 1 && padding == 0 {
+			conv2dInputBackwardFloat64Stride1NoPad(
+				inputGrad, grad, kernel,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+			)
+		} else {
+			conv2dInputBackwardFloat64(
+				inputGrad, grad, kernel,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+				stride, padding,
+			)
+		}
 	default:
 		panic("Conv2DInputBackward: unsupported dtype")
 	}
@@ -193,6 +207,128 @@ func conv2dInputBackwardFloat64(
 	}
 }
 
+// conv2dInputBackwardFloat32Stride1NoPad is optimized for stride=1, padding=0.
+// Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
+//
+//nolint:dupl,gocognit // Intentional duplication for float32/float64; high complexity inherent to convolution backprop.
+func conv2dInputBackwardFloat32Stride1NoPad(
+	inputGrad, grad, kernel *tensor.RawTensor,
+	n, cIn, h, w, cOut, kH, kW, hOut, wOut int,
+) {
+	inputGradData := inputGrad.AsFloat32()
+	gradData := grad.AsFloat32()
+	kernelData := kernel.AsFloat32()
+
+	// Initialize to zero
+	for i := range inputGradData {
+		inputGradData[i] = 0.0
+	}
+
+	// For each batch
+	for batch := 0; batch < n; batch++ {
+		inputGradBatchOffset := batch * cIn * h * w
+		inputGradBatch := inputGradData[inputGradBatchOffset : inputGradBatchOffset+cIn*h*w]
+
+		gradBatchOffset := batch * cOut * hOut * wOut
+		gradBatch := gradData[gradBatchOffset : gradBatchOffset+cOut*hOut*wOut]
+
+		// For each output gradient position
+		for outH := 0; outH < hOut; outH++ {
+			for outW := 0; outW < wOut; outW++ {
+				// For each output channel
+				for outChan := 0; outChan < cOut; outChan++ {
+					gradIdx := outChan*hOut*wOut + outH*wOut + outW
+					gradVal := gradBatch[gradIdx]
+
+					kernelCOutOffset := outChan * cIn * kH * kW
+					kernelCOut := kernelData[kernelCOutOffset : kernelCOutOffset+cIn*kH*kW]
+
+					// Distribute this gradient to all input positions
+					for inChan := 0; inChan < cIn; inChan++ {
+						inputGradCInOffset := inChan * h * w
+						inputGradCIn := inputGradBatch[inputGradCInOffset : inputGradCInOffset+h*w]
+
+						kernelCInOffset := inChan * kH * kW
+						kernelCIn := kernelCOut[kernelCInOffset : kernelCInOffset+kH*kW]
+
+						for kh := 0; kh < kH; kh++ {
+							for kw := 0; kw < kW; kw++ {
+								// With stride=1, padding=0: hPos = outH + kh
+								hPos := outH + kh
+								wPos := outW + kw
+
+								// No bounds check needed (padding=0, stride=1)
+								kernelIdx := kh*kW + kw
+								inputGradIdx := hPos*w + wPos
+
+								inputGradCIn[inputGradIdx] += gradVal * kernelCIn[kernelIdx]
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// conv2dInputBackwardFloat64Stride1NoPad is optimized for stride=1, padding=0.
+// Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
+//
+//nolint:dupl,gocognit,gocritic // Intentional duplication for float32/float64; high complexity inherent to convolution backprop.
+func conv2dInputBackwardFloat64Stride1NoPad(
+	inputGrad, grad, kernel *tensor.RawTensor,
+	N, CIn, H, W, COut, KH, KW, HOut, WOut int,
+) {
+	inputGradData := inputGrad.AsFloat64()
+	gradData := grad.AsFloat64()
+	kernelData := kernel.AsFloat64()
+
+	for i := range inputGradData {
+		inputGradData[i] = 0.0
+	}
+
+	for n := 0; n < N; n++ {
+		inputGradBatchOffset := n * CIn * H * W
+		inputGradBatch := inputGradData[inputGradBatchOffset : inputGradBatchOffset+CIn*H*W]
+
+		gradBatchOffset := n * COut * HOut * WOut
+		gradBatch := gradData[gradBatchOffset : gradBatchOffset+COut*HOut*WOut]
+
+		for outH := 0; outH < HOut; outH++ {
+			for outW := 0; outW < WOut; outW++ {
+				for cOut := 0; cOut < COut; cOut++ {
+					gradIdx := cOut*HOut*WOut + outH*WOut + outW
+					gradVal := gradBatch[gradIdx]
+
+					kernelCOutOffset := cOut * CIn * KH * KW
+					kernelCOut := kernelData[kernelCOutOffset : kernelCOutOffset+CIn*KH*KW]
+
+					for cIn := 0; cIn < CIn; cIn++ {
+						inputGradCInOffset := cIn * H * W
+						inputGradCIn := inputGradBatch[inputGradCInOffset : inputGradCInOffset+H*W]
+
+						kernelCInOffset := cIn * KH * KW
+						kernelCIn := kernelCOut[kernelCInOffset : kernelCInOffset+KH*KW]
+
+						for kh := 0; kh < KH; kh++ {
+							for kw := 0; kw < KW; kw++ {
+								// With stride=1, padding=0: h = outH + kh
+								h := outH + kh
+								w := outW + kw
+
+								// No bounds check needed (padding=0, stride=1)
+								kernelIdx := kh*KW + kw
+								inputGradIdx := h*W + w
+								inputGradCIn[inputGradIdx] += gradVal * kernelCIn[kernelIdx]
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // Conv2DKernelBackward computes gradient w.r.t. kernel.
 //
 // Algorithm: Convolution of input with grad.
@@ -225,19 +361,34 @@ func (cpu *CPUBackend) Conv2DKernelBackward(input, kernel, grad *tensor.RawTenso
 		panic(fmt.Sprintf("Conv2DKernelBackward: failed to create gradient tensor: %v", err))
 	}
 
+	// Dispatch by dtype and stride (stride specialization for compiler optimization)
 	switch grad.DType() {
 	case tensor.Float32:
-		conv2dKernelBackwardFloat32(
-			kernelGrad, grad, input,
-			N, CIn, H, W, COut, KH, KW, HOut, WOut,
-			stride, padding,
-		)
+		if stride == 1 && padding == 0 {
+			conv2dKernelBackwardFloat32Stride1NoPad(
+				kernelGrad, grad, input,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+			)
+		} else {
+			conv2dKernelBackwardFloat32(
+				kernelGrad, grad, input,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+				stride, padding,
+			)
+		}
 	case tensor.Float64:
-		conv2dKernelBackwardFloat64(
-			kernelGrad, grad, input,
-			N, CIn, H, W, COut, KH, KW, HOut, WOut,
-			stride, padding,
-		)
+		if stride == 1 && padding == 0 {
+			conv2dKernelBackwardFloat64Stride1NoPad(
+				kernelGrad, grad, input,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+			)
+		} else {
+			conv2dKernelBackwardFloat64(
+				kernelGrad, grad, input,
+				N, CIn, H, W, COut, KH, KW, HOut, WOut,
+				stride, padding,
+			)
+		}
 	default:
 		panic("Conv2DKernelBackward: unsupported dtype")
 	}
@@ -327,6 +478,100 @@ func conv2dKernelBackwardFloat64(
 									gradIdx := n*COut*HOut*WOut + cOut*HOut*WOut + outH*WOut + outW
 									sum += inputData[inputIdx] * gradData[gradIdx]
 								}
+							}
+						}
+					}
+
+					kernelIdx := cOut*CIn*KH*KW + cIn*KH*KW + kh*KW + kw
+					kernelGradData[kernelIdx] = sum
+				}
+			}
+		}
+	}
+}
+
+// conv2dKernelBackwardFloat32Stride1NoPad is optimized for stride=1, padding=0.
+// Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
+//
+//nolint:dupl,gocritic,gocognit // Intentional duplication for float32/float64; high complexity inherent to convolution backprop.
+func conv2dKernelBackwardFloat32Stride1NoPad(
+	kernelGrad, grad, input *tensor.RawTensor,
+	N, CIn, H, W, COut, KH, KW, HOut, WOut int,
+) {
+	kernelGradData := kernelGrad.AsFloat32()
+	gradData := grad.AsFloat32()
+	inputData := input.AsFloat32()
+
+	// Initialize to zero
+	for i := range kernelGradData {
+		kernelGradData[i] = 0.0
+	}
+
+	// For each kernel weight
+	for cOut := 0; cOut < COut; cOut++ {
+		for cIn := 0; cIn < CIn; cIn++ {
+			for kh := 0; kh < KH; kh++ {
+				for kw := 0; kw < KW; kw++ {
+					sum := float32(0.0)
+
+					// Accumulate gradient over all batch and output positions
+					for n := 0; n < N; n++ {
+						for outH := 0; outH < HOut; outH++ {
+							for outW := 0; outW < WOut; outW++ {
+								// With stride=1, padding=0: h = outH + kh
+								h := outH + kh
+								w := outW + kw
+
+								// No bounds check needed (padding=0, stride=1)
+								inputIdx := n*CIn*H*W + cIn*H*W + h*W + w
+								gradIdx := n*COut*HOut*WOut + cOut*HOut*WOut + outH*WOut + outW
+
+								sum += inputData[inputIdx] * gradData[gradIdx]
+							}
+						}
+					}
+
+					kernelIdx := cOut*CIn*KH*KW + cIn*KH*KW + kh*KW + kw
+					kernelGradData[kernelIdx] = sum
+				}
+			}
+		}
+	}
+}
+
+// conv2dKernelBackwardFloat64Stride1NoPad is optimized for stride=1, padding=0.
+// Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
+//
+//nolint:dupl,gocritic,gocognit // Intentional duplication for float32/float64; high complexity inherent to convolution backprop.
+func conv2dKernelBackwardFloat64Stride1NoPad(
+	kernelGrad, grad, input *tensor.RawTensor,
+	N, CIn, H, W, COut, KH, KW, HOut, WOut int,
+) {
+	kernelGradData := kernelGrad.AsFloat64()
+	gradData := grad.AsFloat64()
+	inputData := input.AsFloat64()
+
+	for i := range kernelGradData {
+		kernelGradData[i] = 0.0
+	}
+
+	for cOut := 0; cOut < COut; cOut++ {
+		for cIn := 0; cIn < CIn; cIn++ {
+			for kh := 0; kh < KH; kh++ {
+				for kw := 0; kw < KW; kw++ {
+					sum := float64(0.0)
+
+					for n := 0; n < N; n++ {
+						for outH := 0; outH < HOut; outH++ {
+							for outW := 0; outW < WOut; outW++ {
+								// With stride=1, padding=0: h = outH + kh
+								h := outH + kh
+								w := outW + kw
+
+								// No bounds check needed (padding=0, stride=1)
+								inputIdx := n*CIn*H*W + cIn*H*W + h*W + w
+								gradIdx := n*COut*HOut*WOut + cOut*HOut*WOut + outH*WOut + outW
+								sum += inputData[inputIdx] * gradData[gradIdx]
 							}
 						}
 					}

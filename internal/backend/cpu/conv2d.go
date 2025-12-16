@@ -93,7 +93,63 @@ func (cpu *CPUBackend) Conv2D(input, kernel *tensor.RawTensor, stride, padding i
 //  2. Reshape kernel: [C_out, C, K_h, K_w] -> [C_out, C * K_h * K_w]
 //  3. MatMul: [C_out, C*K_h*K_w] @ [C*K_h*K_w, N*H_out*W_out] -> [C_out, N*H_out*W_out]
 //  4. Reshape: [C_out, N*H_out*W_out] -> [N, C_out, H_out, W_out]
+//
+// Stride specialization: separate path for stride=1 enables compiler optimizations (SIMD).
 func conv2dFloat32(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
+	// Dispatch to specialized implementation for common case
+	if stride == 1 && padding == 0 {
+		conv2dFloat32Stride1NoPad(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut)
+		return
+	}
+
+	// General case (stride > 1 or padding > 0)
+	conv2dFloat32General(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding)
+}
+
+// conv2dFloat32Stride1NoPad is optimized for stride=1, padding=0 (most common case).
+// Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
+func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut int) {
+	inputData := input.AsFloat32()
+	kernelData := kernel.AsFloat32()
+	outputData := output.AsFloat32()
+
+	// Step 1: Im2col with stride=1, padding=0
+	colWidth := CIn * KH * KW
+	colHeight := N * HOut * WOut
+	colBuf := make([]float32, colHeight*colWidth)
+
+	im2colFloat32Stride1NoPad(colBuf, inputData, N, CIn, H, W, KH, KW, HOut, WOut)
+
+	// Step 2: Matrix multiplication
+	for i := 0; i < COut; i++ {
+		for j := 0; j < colHeight; j++ {
+			sum := float32(0.0)
+			for k := 0; k < colWidth; k++ {
+				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
+			}
+			outputData[i*colHeight+j] = sum
+		}
+	}
+
+	// Step 3: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out]
+	tempBuf := make([]float32, len(outputData))
+	copy(tempBuf, outputData)
+
+	for n := 0; n < N; n++ {
+		for c := 0; c < COut; c++ {
+			for h := 0; h < HOut; h++ {
+				for w := 0; w < WOut; w++ {
+					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
+					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
+					outputData[dstIdx] = tempBuf[srcIdx]
+				}
+			}
+		}
+	}
+}
+
+// conv2dFloat32General handles arbitrary stride and padding.
+func conv2dFloat32General(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
 	inputData := input.AsFloat32()
 	kernelData := kernel.AsFloat32()
 	outputData := output.AsFloat32()
@@ -151,7 +207,45 @@ func conv2dFloat32(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, 
 	}
 }
 
-// im2colFloat32 transforms input tensor into column matrix.
+// im2colFloat32Stride1NoPad is optimized for stride=1, padding=0.
+// Compiler can better optimize with hardcoded stride=1 (no bounds checks for padding).
+func im2colFloat32Stride1NoPad(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut int) {
+	colWidth := C * KH * KW
+	colIdx := 0
+
+	for n := 0; n < N; n++ {
+		batchOffset := n * C * H * W
+		batchData := inputData[batchOffset : batchOffset+C*H*W]
+
+		for outH := 0; outH < HOut; outH++ {
+			for outW := 0; outW < WOut; outW++ {
+				// With stride=1, padding=0: hStart = outH, wStart = outW
+				rowOffset := colIdx * colWidth
+				rowData := colBuf[rowOffset : rowOffset+colWidth]
+
+				bufIdx := 0
+				for c := 0; c < C; c++ {
+					channelOffset := c * H * W
+					channelData := batchData[channelOffset : channelOffset+H*W]
+
+					for kh := 0; kh < KH; kh++ {
+						h := outH + kh // stride=1: no multiplication
+						for kw := 0; kw < KW; kw++ {
+							w := outW + kw // stride=1: no multiplication
+							// No padding check needed (padding=0 guaranteed)
+							rowData[bufIdx] = channelData[h*W+w]
+							bufIdx++
+						}
+					}
+				}
+
+				colIdx++
+			}
+		}
+	}
+}
+
+// im2colFloat32 transforms input tensor into column matrix (general case).
 //
 // Input: [N, C, H, W]
 // Output: colBuf [N * H_out * W_out, C * K_h * K_w]
@@ -213,7 +307,60 @@ func im2colFloat32(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut, 
 }
 
 // conv2dFloat64 performs Conv2D for float64 using im2col.
+// Stride specialization: separate path for stride=1 enables compiler optimizations (SIMD).
 func conv2dFloat64(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
+	// Dispatch to specialized implementation for common case
+	if stride == 1 && padding == 0 {
+		conv2dFloat64Stride1NoPad(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut)
+		return
+	}
+
+	// General case (stride > 1 or padding > 0)
+	conv2dFloat64General(output, input, kernel, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding)
+}
+
+// conv2dFloat64Stride1NoPad is optimized for stride=1, padding=0 (most common case).
+// Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
+func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut int) {
+	inputData := input.AsFloat64()
+	kernelData := kernel.AsFloat64()
+	outputData := output.AsFloat64()
+
+	// Im2col with stride=1, padding=0
+	colWidth := CIn * KH * KW
+	colHeight := N * HOut * WOut
+	colBuf := make([]float64, colHeight*colWidth)
+	im2colFloat64Stride1NoPad(colBuf, inputData, N, CIn, H, W, KH, KW, HOut, WOut)
+
+	// MatMul
+	for i := 0; i < COut; i++ {
+		for j := 0; j < colHeight; j++ {
+			sum := float64(0.0)
+			for k := 0; k < colWidth; k++ {
+				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
+			}
+			outputData[i*colHeight+j] = sum
+		}
+	}
+
+	// Rearrange
+	tempBuf := make([]float64, len(outputData))
+	copy(tempBuf, outputData)
+	for n := 0; n < N; n++ {
+		for c := 0; c < COut; c++ {
+			for h := 0; h < HOut; h++ {
+				for w := 0; w < WOut; w++ {
+					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
+					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
+					outputData[dstIdx] = tempBuf[srcIdx]
+				}
+			}
+		}
+	}
+}
+
+// conv2dFloat64General handles arbitrary stride and padding.
+func conv2dFloat64General(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, KH, KW, HOut, WOut, stride, padding int) {
 	inputData := input.AsFloat64()
 	kernelData := kernel.AsFloat64()
 	outputData := output.AsFloat64()
@@ -246,6 +393,44 @@ func conv2dFloat64(output, input, kernel *tensor.RawTensor, N, CIn, H, W, COut, 
 					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
 					outputData[dstIdx] = tempBuf[srcIdx]
 				}
+			}
+		}
+	}
+}
+
+// im2colFloat64Stride1NoPad is optimized for stride=1, padding=0.
+// Compiler can better optimize with hardcoded stride=1 (no bounds checks for padding).
+func im2colFloat64Stride1NoPad(colBuf, inputData []float64, N, C, H, W, KH, KW, HOut, WOut int) {
+	colWidth := C * KH * KW
+	colIdx := 0
+
+	for n := 0; n < N; n++ {
+		batchOffset := n * C * H * W
+		batchData := inputData[batchOffset : batchOffset+C*H*W]
+
+		for outH := 0; outH < HOut; outH++ {
+			for outW := 0; outW < WOut; outW++ {
+				// With stride=1, padding=0: hStart = outH, wStart = outW
+				rowOffset := colIdx * colWidth
+				rowData := colBuf[rowOffset : rowOffset+colWidth]
+
+				bufIdx := 0
+				for c := 0; c < C; c++ {
+					channelOffset := c * H * W
+					channelData := batchData[channelOffset : channelOffset+H*W]
+
+					for kh := 0; kh < KH; kh++ {
+						h := outH + kh // stride=1: no multiplication
+						for kw := 0; kw < KW; kw++ {
+							w := outW + kw // stride=1: no multiplication
+							// No padding check needed (padding=0 guaranteed)
+							rowData[bufIdx] = channelData[h*W+w]
+							bufIdx++
+						}
+					}
+				}
+
+				colIdx++
 			}
 		}
 	}
