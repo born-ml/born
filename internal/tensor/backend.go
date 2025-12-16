@@ -28,6 +28,11 @@ type Backend interface {
 	Conv2D(input, kernel *RawTensor, stride, padding int) *RawTensor
 	MaxPool2D(input *RawTensor, kernelSize, stride int) *RawTensor
 
+	// Convolutional backward operations
+	Conv2DInputBackward(input, kernel, grad *RawTensor, stride, padding int) *RawTensor
+	Conv2DKernelBackward(input, kernel, grad *RawTensor, stride, padding int) *RawTensor
+	MaxPool2DBackward(input, grad *RawTensor, maxIndices []int, kernelSize, stride int) *RawTensor
+
 	// Shape operations
 	Reshape(t *RawTensor, newShape Shape) *RawTensor
 	Transpose(t *RawTensor, axes ...int) *RawTensor

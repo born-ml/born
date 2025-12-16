@@ -970,3 +970,22 @@ func (b *AutodiffBackend[B]) Embedding(weight, indices *tensor.RawTensor) *tenso
 
 	return result
 }
+
+
+// Conv2DInputBackward computes gradient w.r.t. input for Conv2D.
+// Delegates to inner backend (no recording needed - used during backward pass only).
+func (b *AutodiffBackend[B]) Conv2DInputBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
+	return b.inner.Conv2DInputBackward(input, kernel, grad, stride, padding)
+}
+
+// Conv2DKernelBackward computes gradient w.r.t. kernel for Conv2D.
+// Delegates to inner backend (no recording needed - used during backward pass only).
+func (b *AutodiffBackend[B]) Conv2DKernelBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
+	return b.inner.Conv2DKernelBackward(input, kernel, grad, stride, padding)
+}
+
+// MaxPool2DBackward computes gradient w.r.t. input for MaxPool2D.
+// Delegates to inner backend (no recording needed - used during backward pass only).
+func (b *AutodiffBackend[B]) MaxPool2DBackward(input, grad *tensor.RawTensor, maxIndices []int, kernelSize, stride int) *tensor.RawTensor {
+	return b.inner.MaxPool2DBackward(input, grad, maxIndices, kernelSize, stride)
+}

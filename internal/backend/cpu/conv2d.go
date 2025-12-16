@@ -167,6 +167,10 @@ func im2colFloat32(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut, 
 	colIdx := 0 // Current row in colBuf
 
 	for n := 0; n < N; n++ {
+		// Pre-slice batch: eliminates n*C*H*W bounds check
+		batchOffset := n * C * H * W
+		batchData := inputData[batchOffset : batchOffset+C*H*W]
+
 		for outH := 0; outH < HOut; outH++ {
 			for outW := 0; outW < WOut; outW++ {
 				// For this output position, extract the input patch
@@ -174,24 +178,28 @@ func im2colFloat32(colBuf, inputData []float32, N, C, H, W, KH, KW, HOut, WOut, 
 				hStart := outH*stride - padding
 				wStart := outW*stride - padding
 
-				// Fill one row of colBuf
-				bufIdx := colIdx * colWidth
+				// Pre-slice output row: eliminates colIdx*colWidth bounds check
+				rowOffset := colIdx * colWidth
+				rowData := colBuf[rowOffset : rowOffset+colWidth]
 
+				bufIdx := 0
 				for c := 0; c < C; c++ {
+					// Pre-slice channel: eliminates c*H*W bounds check
+					channelOffset := c * H * W
+					channelData := batchData[channelOffset : channelOffset+H*W]
+
 					for kh := 0; kh < KH; kh++ {
+						h := hStart + kh
 						for kw := 0; kw < KW; kw++ {
-							// Input position
-							h := hStart + kh
 							w := wStart + kw
 
 							// Check bounds (padding)
 							if h >= 0 && h < H && w >= 0 && w < W {
-								// Valid input position
-								inputIdx := n*C*H*W + c*H*W + h*W + w
-								colBuf[bufIdx] = inputData[inputIdx]
+								// Valid input position: single bounds check via pre-slice
+								rowData[bufIdx] = channelData[h*W+w]
 							} else {
 								// Out of bounds (padding with zero)
-								colBuf[bufIdx] = 0.0
+								rowData[bufIdx] = 0.0
 							}
 							bufIdx++
 						}
@@ -248,23 +256,35 @@ func im2colFloat64(colBuf, inputData []float64, N, C, H, W, KH, KW, HOut, WOut, 
 	colIdx := 0
 
 	for n := 0; n < N; n++ {
+		// Pre-slice batch: eliminates n*C*H*W bounds check
+		batchOffset := n * C * H * W
+		batchData := inputData[batchOffset : batchOffset+C*H*W]
+
 		for outH := 0; outH < HOut; outH++ {
 			for outW := 0; outW < WOut; outW++ {
 				hStart := outH*stride - padding
 				wStart := outW*stride - padding
-				bufIdx := colIdx * colWidth
 
+				// Pre-slice output row: eliminates colIdx*colWidth bounds check
+				rowOffset := colIdx * colWidth
+				rowData := colBuf[rowOffset : rowOffset+colWidth]
+
+				bufIdx := 0
 				for c := 0; c < C; c++ {
+					// Pre-slice channel: eliminates c*H*W bounds check
+					channelOffset := c * H * W
+					channelData := batchData[channelOffset : channelOffset+H*W]
+
 					for kh := 0; kh < KH; kh++ {
+						h := hStart + kh
 						for kw := 0; kw < KW; kw++ {
-							h := hStart + kh
 							w := wStart + kw
 
 							if h >= 0 && h < H && w >= 0 && w < W {
-								inputIdx := n*C*H*W + c*H*W + h*W + w
-								colBuf[bufIdx] = inputData[inputIdx]
+								// Valid input position: single bounds check via pre-slice
+								rowData[bufIdx] = channelData[h*W+w]
 							} else {
-								colBuf[bufIdx] = 0.0
+								rowData[bufIdx] = 0.0
 							}
 							bufIdx++
 						}

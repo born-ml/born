@@ -1430,3 +1430,21 @@ func (m *MockBackend) anyToFloat64(v any) float64 {
 		panic(fmt.Sprintf("anyToFloat64: unsupported type %T", v))
 	}
 }
+
+// Conv2DInputBackward computes gradient w.r.t. input for Conv2D.
+// Stub implementation for MockBackend (test-only).
+func (m *MockBackend) Conv2DInputBackward(_, _, _ *RawTensor, _, _ int) *RawTensor {
+	panic("MockBackend.Conv2DInputBackward: not implemented (test-only backend)")
+}
+
+// Conv2DKernelBackward computes gradient w.r.t. kernel for Conv2D.
+// Stub implementation for MockBackend (test-only).
+func (m *MockBackend) Conv2DKernelBackward(_, _, _ *RawTensor, _, _ int) *RawTensor {
+	panic("MockBackend.Conv2DKernelBackward: not implemented (test-only backend)")
+}
+
+// MaxPool2DBackward computes gradient w.r.t. input for MaxPool2D.
+// Stub implementation for MockBackend (test-only).
+func (m *MockBackend) MaxPool2DBackward(_, _ *RawTensor, _ []int, _, _ int) *RawTensor {
+	panic("MockBackend.MaxPool2DBackward: not implemented (test-only backend)")
+}

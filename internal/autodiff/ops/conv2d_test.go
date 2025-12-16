@@ -4,12 +4,13 @@ import (
 	"math"
 	"testing"
 
+	"github.com/born-ml/born/internal/backend/cpu"
 	"github.com/born-ml/born/internal/tensor"
 )
 
 // TestConv2DOp_BackwardGradients tests Conv2D backward pass gradients.
 func TestConv2DOp_BackwardGradients(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [1, 1, 3, 3]
 	input, _ := tensor.NewRaw(tensor.Shape{1, 1, 3, 3}, tensor.Float32, tensor.CPU)
@@ -88,7 +89,7 @@ func TestConv2DOp_BackwardGradients(t *testing.T) {
 
 // TestConv2DOp_NumericalGradient verifies gradients using finite differences.
 func TestConv2DOp_NumericalGradient(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 	epsilon := float32(1e-4)
 	tolerance := float32(0.05) // 5% tolerance for numerical gradients
 
@@ -201,7 +202,7 @@ func TestConv2DOp_NumericalGradient(t *testing.T) {
 
 // TestConv2DOp_WithPaddingAndStride tests gradients with padding and stride.
 func TestConv2DOp_WithPaddingAndStride(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [1, 1, 4, 4]
 	input, _ := tensor.NewRaw(tensor.Shape{1, 1, 4, 4}, tensor.Float32, tensor.CPU)

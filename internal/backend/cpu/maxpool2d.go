@@ -93,23 +93,31 @@ func maxpool2dFloat32(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, k
 	for n := 0; n < N; n++ {
 		// For each channel
 		for c := 0; c < C; c++ {
+			// Pre-slice channel plane: eliminates (n*C+c)*H*W bounds check
+			channelOffset := (n*C + c) * H * W
+			channelData := inputData[channelOffset : channelOffset+H*W]
+
 			// For each output position
 			for outH := 0; outH < HOut; outH++ {
+				// Compute pooling window start positions
+				hStart := outH * stride
+
 				for outW := 0; outW < WOut; outW++ {
-					// Compute pooling window start positions
-					hStart := outH * stride
 					wStart := outW * stride
 
 					// Find max value in pooling window
 					maxVal := float32(-1e38) // Negative infinity approximation
-					for kh := 0; kh < kernelSize; kh++ {
-						for kw := 0; kw < kernelSize; kw++ {
-							h := hStart + kh
-							w := wStart + kw
 
-							// Get input value
-							inputIdx := ((n*C+c)*H+h)*W + w
-							val := inputData[inputIdx]
+					for kh := 0; kh < kernelSize; kh++ {
+						h := hStart + kh
+						// Pre-slice row: eliminates h*W bounds check
+						rowStart := h * W
+						rowData := channelData[rowStart : rowStart+W]
+
+						for kw := 0; kw < kernelSize; kw++ {
+							w := wStart + kw
+							// Single bounds check via pre-slice
+							val := rowData[w]
 
 							if val > maxVal {
 								maxVal = val
@@ -135,23 +143,31 @@ func maxpool2dFloat64(output, input *tensor.RawTensor, N, C, H, W, HOut, WOut, k
 	for n := 0; n < N; n++ {
 		// For each channel
 		for c := 0; c < C; c++ {
+			// Pre-slice channel plane: eliminates (n*C+c)*H*W bounds check
+			channelOffset := (n*C + c) * H * W
+			channelData := inputData[channelOffset : channelOffset+H*W]
+
 			// For each output position
 			for outH := 0; outH < HOut; outH++ {
+				// Compute pooling window start positions
+				hStart := outH * stride
+
 				for outW := 0; outW < WOut; outW++ {
-					// Compute pooling window start positions
-					hStart := outH * stride
 					wStart := outW * stride
 
 					// Find max value in pooling window
 					maxVal := float64(-1e308) // Negative infinity approximation
-					for kh := 0; kh < kernelSize; kh++ {
-						for kw := 0; kw < kernelSize; kw++ {
-							h := hStart + kh
-							w := wStart + kw
 
-							// Get input value
-							inputIdx := ((n*C+c)*H+h)*W + w
-							val := inputData[inputIdx]
+					for kh := 0; kh < kernelSize; kh++ {
+						h := hStart + kh
+						// Pre-slice row: eliminates h*W bounds check
+						rowStart := h * W
+						rowData := channelData[rowStart : rowStart+W]
+
+						for kw := 0; kw < kernelSize; kw++ {
+							w := wStart + kw
+							// Single bounds check via pre-slice
+							val := rowData[w]
 
 							if val > maxVal {
 								maxVal = val

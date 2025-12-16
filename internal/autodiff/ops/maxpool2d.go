@@ -173,54 +173,14 @@ func (op *MaxPool2DOp) Output() *tensor.RawTensor {
 // This implements the subgradient of the max function:
 //
 //	∂max(x_i)/∂x_j = 1 if j = argmax(x_i), else 0
+//
+// This is pure orchestration - delegates computation to backend.
+//
+// References:
+//   - Burn framework: crates/burn-autodiff/src/ops/module.rs (max_pool2d_backward)
 func (op *MaxPool2DOp) Backward(outputGrad *tensor.RawTensor, backend tensor.Backend) []*tensor.RawTensor {
-	// Create input gradient (initialized to zeros)
-	inputGrad, err := tensor.NewRaw(op.input.Shape(), op.input.DType(), backend.Device())
-	if err != nil {
-		panic(err)
-	}
-
-	// Route gradients based on dtype
-	switch op.input.DType() {
-	case tensor.Float32:
-		backwardFloat32(inputGrad, outputGrad, op.maxIndices)
-	case tensor.Float64:
-		backwardFloat64(inputGrad, outputGrad, op.maxIndices)
-	default:
-		panic("MaxPool2D backward: unsupported dtype")
-	}
+	// Orchestration: delegate to backend
+	inputGrad := backend.MaxPool2DBackward(op.input, outputGrad, op.maxIndices, op.kernelSize, op.stride)
 
 	return []*tensor.RawTensor{inputGrad}
-}
-
-// backwardFloat32 routes gradients for float32 tensors.
-func backwardFloat32(inputGrad, outputGrad *tensor.RawTensor, maxIndices []int) {
-	inputGradData := inputGrad.AsFloat32()
-	outputGradData := outputGrad.AsFloat32()
-
-	// Initialize to zeros
-	for i := range inputGradData {
-		inputGradData[i] = 0.0
-	}
-
-	// Route output gradients to max positions
-	for outIdx, maxPos := range maxIndices {
-		inputGradData[maxPos] += outputGradData[outIdx]
-	}
-}
-
-// backwardFloat64 routes gradients for float64 tensors.
-func backwardFloat64(inputGrad, outputGrad *tensor.RawTensor, maxIndices []int) {
-	inputGradData := inputGrad.AsFloat64()
-	outputGradData := outputGrad.AsFloat64()
-
-	// Initialize to zeros
-	for i := range inputGradData {
-		inputGradData[i] = 0.0
-	}
-
-	// Route output gradients to max positions
-	for outIdx, maxPos := range maxIndices {
-		inputGradData[maxPos] += outputGradData[outIdx]
-	}
 }

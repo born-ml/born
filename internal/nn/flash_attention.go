@@ -183,20 +183,191 @@ func (fa *FlashAttention[T, B]) Forward(
 	return outputTensor
 }
 
+// FlashDims holds dimension parameters for flash attention computation.
+//
+// Pre-computed base offsets and strides enable bounds check elimination
+// through slice pre-slicing (Burn-inspired optimization).
+type FlashDims struct {
+	HeadDim   int // Dimension per head.
+	KVLen     int // Length of key/value sequence.
+	QBase     int // Base offset for Q in flattened array.
+	QStride   int // Stride between consecutive Q positions.
+	KBase     int // Base offset for K in flattened array.
+	KStride   int // Stride between consecutive K positions.
+	VBase     int // Base offset for V in flattened array.
+	VStride   int // Stride between consecutive V positions.
+	OutBase   int // Base offset for output in flattened array.
+	OutStride int // Stride between consecutive output positions.
+}
+
+// FlashConfig holds configuration for flash attention algorithm.
+type FlashConfig struct {
+	Scale     float32 // Attention scale factor (1/sqrt(headDim)).
+	Causal    bool    // Whether to apply causal masking.
+	BlockSize int     // Tile size for blocked computation.
+}
+
+// flashAttentionScoreBlock computes Q[i] @ K[block]^T attention scores.
+//
+// Designed to be inlined. Uses pre-slicing to eliminate bounds checks.
+//
+// Parameters:
+//   - scores: Output buffer [kvBlockSize] for attention scores.
+//   - q: Pre-sliced query vector [headDim].
+//   - k: Full K buffer (will be sliced internally).
+//   - kBase: Base offset for K in flattened array.
+//   - kStride: Stride between K positions.
+//   - kvStart: Start index in KV sequence.
+//   - kvBlockSize: Number of KV positions in this block.
+//   - headDim: Dimension per head.
+//   - scale: Attention scale factor.
+//   - causal: Whether to apply causal masking.
+//   - queryPos: Current query position (for causal mask).
+func flashAttentionScoreBlock(
+	scores []float32,
+	q []float32,
+	k []float32,
+	kBase, kStride int,
+	kvStart, kvBlockSize int,
+	headDim int,
+	scale float32,
+	causal bool,
+	queryPos int,
+) {
+	negInf := float32(math.Inf(-1))
+
+	for kvIdx := 0; kvIdx < kvBlockSize; kvIdx++ {
+		j := kvStart + kvIdx
+
+		// Apply causal mask: future positions get -inf.
+		if causal && j > queryPos {
+			scores[kvIdx] = negInf
+			continue
+		}
+
+		// Pre-slice K vector for bounds check elimination.
+		kOffset := kBase + j*kStride
+		kVec := k[kOffset : kOffset+headDim]
+
+		// Compute dot product Q[i] @ K[j]^T.
+		var score float32
+		for d := 0; d < headDim; d++ {
+			score += q[d] * kVec[d]
+		}
+		scores[kvIdx] = score * scale
+	}
+}
+
+// flashAttentionExtractValues extracts V block values.
+//
+// Designed to be inlined (~30 AST nodes). Uses copy() for efficient
+// vectorized memory transfer.
+//
+// Parameters:
+//   - values: Output buffer [kvBlockSize * headDim].
+//   - v: Full V buffer (will be sliced internally).
+//   - vBase: Base offset for V in flattened array.
+//   - vStride: Stride between V positions.
+//   - kvStart: Start index in KV sequence.
+//   - kvBlockSize: Number of KV positions in this block.
+//   - headDim: Dimension per head.
+func flashAttentionExtractValues(
+	values []float32,
+	v []float32,
+	vBase, vStride int,
+	kvStart, kvBlockSize int,
+	headDim int,
+) {
+	for kvIdx := 0; kvIdx < kvBlockSize; kvIdx++ {
+		j := kvStart + kvIdx
+
+		// Pre-slice V vector.
+		vOffset := vBase + j*vStride
+		vVec := v[vOffset : vOffset+headDim]
+
+		// Copy to output buffer (vectorized by runtime).
+		outOffset := kvIdx * headDim
+		copy(values[outOffset:outOffset+headDim], vVec)
+	}
+}
+
+// flashAttentionProcessQuery processes a single query position.
+//
+// Orchestrates the Flash Attention algorithm for one query:
+//  1. Initialize online softmax accumulator
+//  2. Iterate over KV blocks
+//  3. Compute scores and extract values for each block
+//  4. Update online softmax incrementally
+//  5. Normalize and store final output
+//
+// Parameters:
+//   - output: Output buffer (will be written to).
+//   - q: Full Q buffer.
+//   - k: Full K buffer.
+//   - v: Full V buffer.
+//   - queryIdx: Current query position.
+//   - dims: Pre-computed dimension parameters.
+//   - config: Flash Attention configuration.
+func flashAttentionProcessQuery(
+	output []float32,
+	q, k, v []float32,
+	queryIdx int,
+	dims FlashDims,
+	config FlashConfig,
+) {
+	// Initialize online softmax for this query.
+	softmax := NewOnlineSoftmax(dims.HeadDim)
+
+	// Pre-compute Q offset for this query.
+	qOffset := dims.QBase + queryIdx*dims.QStride
+	qVec := q[qOffset : qOffset+dims.HeadDim]
+
+	// Iterate over KV blocks.
+	for kvStart := 0; kvStart < dims.KVLen; kvStart += config.BlockSize {
+		kvEnd := min(kvStart+config.BlockSize, dims.KVLen)
+		kvBlockSize := kvEnd - kvStart
+
+		// Allocate block buffers (could be pooled in future optimization).
+		scores := make([]float32, kvBlockSize)
+		values := make([]float32, kvBlockSize*dims.HeadDim)
+
+		// Compute scores for this KV block.
+		flashAttentionScoreBlock(
+			scores, qVec, k,
+			dims.KBase, dims.KStride,
+			kvStart, kvBlockSize, dims.HeadDim,
+			config.Scale, config.Causal, queryIdx,
+		)
+
+		// Extract V block values.
+		flashAttentionExtractValues(
+			values, v,
+			dims.VBase, dims.VStride,
+			kvStart, kvBlockSize, dims.HeadDim,
+		)
+
+		// Update online softmax with this block.
+		softmax.Update(scores, values)
+	}
+
+	// Normalize and store final output.
+	result := softmax.Normalize()
+	outOffset := dims.OutBase + queryIdx*dims.OutStride
+	copy(output[outOffset:outOffset+dims.HeadDim], result)
+}
+
 // flashAttentionCPU is the CPU reference implementation.
 //
 // Uses tiled computation with online softmax to achieve O(N) memory.
+// Orchestrates computation by dispatching to specialized helper functions.
 //
 // Algorithm outline:
 //
-//	For each query position i:
-//	  1. Initialize OnlineSoftmax accumulator
-//	  2. Divide K,V into blocks of size blockSize
-//	  3. For each block j:
-//	     - Compute scores[j] = Q[i] @ K[j]^T / sqrt(d)
-//	     - Apply causal mask if i < j (for causal attention)
-//	     - Update online softmax with (scores[j], V[j])
-//	  4. Normalize and store output[i]
+//	For each batch and head:
+//	  1. Compute dimension parameters (offsets, strides)
+//	  2. Process query positions in blocks
+//	  3. For each query, call flashAttentionProcessQuery
+//	     (which handles the tiled Flash Attention algorithm)
 //
 // Parameters:
 //   - q: [batch * seqLen * numHeads * headDim] flattened query.
@@ -209,8 +380,6 @@ func (fa *FlashAttention[T, B]) Forward(
 //
 // Returns:
 //   - []float32: [batch * seqLen * numHeads * headDim] flattened output.
-//
-//nolint:gocognit // High complexity is inherent to Flash Attention tiled algorithm with nested loops for batch/head/query/kv blocks
 func flashAttentionCPU(
 	q, k, v []float32,
 	batch, seqLen, kvLen, numHeads, headDim int,
@@ -220,67 +389,38 @@ func flashAttentionCPU(
 ) []float32 {
 	output := make([]float32, batch*seqLen*numHeads*headDim)
 
-	// Process each batch and head independently
+	config := FlashConfig{
+		Scale:     scale,
+		Causal:    causal,
+		BlockSize: blockSize,
+	}
+
+	// Compute strides between positions.
+	qStride := numHeads * headDim  // Between query positions.
+	kvStride := numHeads * headDim // Between KV positions.
+
+	// Process each batch and head independently.
 	for b := 0; b < batch; b++ {
 		for h := 0; h < numHeads; h++ {
-			// Process query positions in blocks
+			// Pre-compute dimension parameters for this batch+head.
+			dims := FlashDims{
+				HeadDim:   headDim,
+				KVLen:     kvLen,
+				QBase:     b*seqLen*numHeads*headDim + h*headDim,
+				QStride:   qStride,
+				KBase:     b*kvLen*numHeads*headDim + h*headDim,
+				KStride:   kvStride,
+				VBase:     b*kvLen*numHeads*headDim + h*headDim,
+				VStride:   kvStride,
+				OutBase:   b*seqLen*numHeads*headDim + h*headDim,
+				OutStride: qStride,
+			}
+
+			// Process query positions in blocks.
 			for qStart := 0; qStart < seqLen; qStart += blockSize {
 				qEnd := min(qStart+blockSize, seqLen)
-				qBlockSize := qEnd - qStart
-
-				// For each query in this block
-				for qIdx := 0; qIdx < qBlockSize; qIdx++ {
-					i := qStart + qIdx
-
-					// Initialize online softmax for this query
-					softmax := NewOnlineSoftmax(headDim)
-
-					// Iterate over K,V blocks
-					for kvStart := 0; kvStart < kvLen; kvStart += blockSize {
-						kvEnd := min(kvStart+blockSize, kvLen)
-						kvBlockSize := kvEnd - kvStart
-
-						// Compute attention scores for this K,V block
-						scores := make([]float32, kvBlockSize)
-						for kvIdx := 0; kvIdx < kvBlockSize; kvIdx++ {
-							j := kvStart + kvIdx
-
-							// Apply causal mask: future positions get -inf
-							if causal && j > i {
-								scores[kvIdx] = float32(math.Inf(-1))
-								continue
-							}
-
-							// Compute Q[i] @ K[j]^T
-							score := float32(0)
-							for d := 0; d < headDim; d++ {
-								qOffset := b*seqLen*numHeads*headDim + i*numHeads*headDim + h*headDim + d
-								kOffset := b*kvLen*numHeads*headDim + j*numHeads*headDim + h*headDim + d
-								score += q[qOffset] * k[kOffset]
-							}
-							scores[kvIdx] = score * scale
-						}
-
-						// Extract V block: [kvBlockSize, headDim]
-						values := make([]float32, kvBlockSize*headDim)
-						for kvIdx := 0; kvIdx < kvBlockSize; kvIdx++ {
-							j := kvStart + kvIdx
-							for d := 0; d < headDim; d++ {
-								vOffset := b*kvLen*numHeads*headDim + j*numHeads*headDim + h*headDim + d
-								values[kvIdx*headDim+d] = v[vOffset]
-							}
-						}
-
-						// Update online softmax with this block
-						softmax.Update(scores, values)
-					}
-
-					// Normalize and store output for this query
-					result := softmax.Normalize()
-					for d := 0; d < headDim; d++ {
-						outOffset := b*seqLen*numHeads*headDim + i*numHeads*headDim + h*headDim + d
-						output[outOffset] = result[d]
-					}
+				for qIdx := qStart; qIdx < qEnd; qIdx++ {
+					flashAttentionProcessQuery(output, q, k, v, qIdx, dims, config)
 				}
 			}
 		}

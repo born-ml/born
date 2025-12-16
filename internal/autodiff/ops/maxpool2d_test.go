@@ -3,12 +3,13 @@ package ops
 import (
 	"testing"
 
+	"github.com/born-ml/born/internal/backend/cpu"
 	"github.com/born-ml/born/internal/tensor"
 )
 
 // TestMaxPool2DOp_BackwardGradients tests MaxPool2D backward pass gradients.
 func TestMaxPool2DOp_BackwardGradients(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [1, 1, 4, 4] with sequential values
 	input, _ := tensor.NewRaw(tensor.Shape{1, 1, 4, 4}, tensor.Float32, tensor.CPU)
@@ -79,7 +80,7 @@ func TestMaxPool2DOp_BackwardGradients(t *testing.T) {
 
 // TestMaxPool2DOp_GradientAccumulation tests gradient accumulation for overlapping windows.
 func TestMaxPool2DOp_GradientAccumulation(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [1, 1, 5, 5] with all same values
 	// This tests gradient accumulation when same position is max in multiple windows
@@ -124,7 +125,7 @@ func TestMaxPool2DOp_GradientAccumulation(t *testing.T) {
 
 // TestMaxPool2DOp_MultiChannel tests gradients with multiple channels.
 func TestMaxPool2DOp_MultiChannel(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [1, 2, 4, 4] (2 channels)
 	input, _ := tensor.NewRaw(tensor.Shape{1, 2, 4, 4}, tensor.Float32, tensor.CPU)
@@ -185,7 +186,7 @@ func TestMaxPool2DOp_MultiChannel(t *testing.T) {
 
 // TestMaxPool2DOp_Batch tests gradients with batch processing.
 func TestMaxPool2DOp_Batch(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [2, 1, 4, 4] (batch size 2)
 	input, _ := tensor.NewRaw(tensor.Shape{2, 1, 4, 4}, tensor.Float32, tensor.CPU)
@@ -242,7 +243,7 @@ func TestMaxPool2DOp_Batch(t *testing.T) {
 
 // TestMaxPool2DOp_Float64 tests float64 support.
 func TestMaxPool2DOp_Float64(t *testing.T) {
-	backend := tensor.NewMockBackend()
+	backend := cpu.New()
 
 	// Input: [1, 1, 4, 4] float64
 	input, _ := tensor.NewRaw(tensor.Shape{1, 1, 4, 4}, tensor.Float64, tensor.CPU)

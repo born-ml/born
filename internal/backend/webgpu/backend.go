@@ -415,3 +415,27 @@ func (b *Backend) ReleaseGPUBuffer(bufferPtr unsafe.Pointer) {
 		buffer.Release()
 	}
 }
+
+// Conv2DInputBackward computes gradient with respect to input for Conv2D.
+// Not yet implemented for WebGPU backend.
+//
+//nolint:revive // Parameters unused in stub implementation.
+func (b *Backend) Conv2DInputBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
+	panic("webgpu: Conv2DInputBackward not implemented")
+}
+
+// Conv2DKernelBackward computes gradient with respect to kernel for Conv2D.
+// Not yet implemented for WebGPU backend.
+//
+//nolint:revive // Parameters unused in stub implementation.
+func (b *Backend) Conv2DKernelBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
+	panic("webgpu: Conv2DKernelBackward not implemented")
+}
+
+// MaxPool2DBackward computes gradient with respect to input for MaxPool2D.
+// Not yet implemented for WebGPU backend.
+//
+//nolint:revive // Parameters unused in stub implementation.
+func (b *Backend) MaxPool2DBackward(input, grad *tensor.RawTensor, maxIndices []int, kernelSize, stride int) *tensor.RawTensor {
+	panic("webgpu: MaxPool2DBackward not implemented")
+}
