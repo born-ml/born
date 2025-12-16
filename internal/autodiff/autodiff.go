@@ -971,7 +971,6 @@ func (b *AutodiffBackend[B]) Embedding(weight, indices *tensor.RawTensor) *tenso
 	return result
 }
 
-
 // Conv2DInputBackward computes gradient w.r.t. input for Conv2D.
 // Delegates to inner backend (no recording needed - used during backward pass only).
 func (b *AutodiffBackend[B]) Conv2DInputBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
