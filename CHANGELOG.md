@@ -5,6 +5,25 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2025-12-24
+
+### 🔧 Dependencies Update
+
+Hotfix release updating GPU backend dependencies for improved stability.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.1.0 → **v0.1.1**
+- `go-webgpu/goffi` v0.3.1 → **v0.3.3**
+
+**Documentation**:
+- Updated `.claude/CLAUDE.md` to v3.0 (optimized structure, accurate project info)
+- Added `TASK-110-backend-strategy-gogpu.md` for future GPU backend strategy planning
+
+**Links**:
+- PR: [#18](https://github.com/born-ml/born/pull/18)
+
+---
+
 ## [0.7.1] - 2025-12-16
 
 ### 🔧 Code Quality Refactoring (Issue #14)
@@ -919,6 +938,15 @@ N/A (initial release)
 
 ---
 
+[0.7.2]: https://github.com/born-ml/born/releases/tag/v0.7.2
+[0.7.1]: https://github.com/born-ml/born/releases/tag/v0.7.1
+[0.7.0]: https://github.com/born-ml/born/releases/tag/v0.7.0
+[0.6.0]: https://github.com/born-ml/born/releases/tag/v0.6.0
+[0.5.5]: https://github.com/born-ml/born/releases/tag/v0.5.5
+[0.5.4]: https://github.com/born-ml/born/releases/tag/v0.5.4
+[0.5.3]: https://github.com/born-ml/born/releases/tag/v0.5.3
+[0.5.2]: https://github.com/born-ml/born/releases/tag/v0.5.2
+[0.5.1]: https://github.com/born-ml/born/releases/tag/v0.5.1
 [0.5.0]: https://github.com/born-ml/born/releases/tag/v0.5.0
 [0.4.0]: https://github.com/born-ml/born/releases/tag/v0.4.0
 [0.3.0]: https://github.com/born-ml/born/releases/tag/v0.3.0
