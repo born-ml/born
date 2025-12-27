@@ -305,7 +305,7 @@ func TestSwiGLUFFN_DefaultFFNDim(t *testing.T) {
 func TestNewLinearNoBias(t *testing.T) {
 	backend := autodiff.New(cpu.New())
 
-	linear := newLinearNoBias[Backend](128, 256, backend)
+	linear := NewLinear[Backend](128, 256, backend, WithBias(false))
 
 	// Check parameters
 	params := linear.Parameters()

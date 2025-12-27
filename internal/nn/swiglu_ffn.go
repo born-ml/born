@@ -91,19 +91,12 @@ func NewSwiGLUFFN[B tensor.Backend](cfg SwiGLUFFNConfig, backend B) *SwiGLUFFN[B
 		panic(fmt.Sprintf("SwiGLUFFN: unknown GLUVariant %q, expected swiglu/geglu/reglu/glu", cfg.GLUVariant))
 	}
 
-	// Create projections
+	// Create projections using WithBias option
 	// Note: LLaMA doesn't use bias in FFN layers
-	var gateProj, upProj, downProj *Linear[B]
-
-	if cfg.UseBias {
-		gateProj = NewLinear[B](cfg.EmbedDim, cfg.FFNDim, backend)
-		upProj = NewLinear[B](cfg.EmbedDim, cfg.FFNDim, backend)
-		downProj = NewLinear[B](cfg.FFNDim, cfg.EmbedDim, backend)
-	} else {
-		gateProj = newLinearNoBias[B](cfg.EmbedDim, cfg.FFNDim, backend)
-		upProj = newLinearNoBias[B](cfg.EmbedDim, cfg.FFNDim, backend)
-		downProj = newLinearNoBias[B](cfg.FFNDim, cfg.EmbedDim, backend)
-	}
+	biasOpt := WithBias(cfg.UseBias)
+	gateProj := NewLinear[B](cfg.EmbedDim, cfg.FFNDim, backend, biasOpt)
+	upProj := NewLinear[B](cfg.EmbedDim, cfg.FFNDim, backend, biasOpt)
+	downProj := NewLinear[B](cfg.FFNDim, cfg.EmbedDim, backend, biasOpt)
 
 	return &SwiGLUFFN[B]{
 		gateProj: gateProj,
@@ -190,20 +183,4 @@ func (f *SwiGLUFFN[B]) UpProj() *Linear[B] {
 // DownProj returns the down projection layer.
 func (f *SwiGLUFFN[B]) DownProj() *Linear[B] {
 	return f.downProj
-}
-
-// newLinearNoBias creates a Linear layer without bias.
-func newLinearNoBias[B tensor.Backend](inFeatures, outFeatures int, backend B) *Linear[B] {
-	// Initialize weight with Xavier/Glorot
-	weightShape := tensor.Shape{outFeatures, inFeatures}
-	weightTensor := Xavier(inFeatures, outFeatures, weightShape, backend)
-	weight := NewParameter("weight", weightTensor)
-
-	return &Linear[B]{
-		weight:      weight,
-		bias:        nil, // No bias
-		inFeatures:  inFeatures,
-		outFeatures: outFeatures,
-		backend:     backend,
-	}
 }

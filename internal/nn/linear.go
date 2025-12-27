@@ -6,17 +6,49 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
+// LinearOption is a functional option for configuring a Linear layer.
+type LinearOption func(*linearConfig)
+
+// linearConfig holds configuration for Linear layer creation.
+type linearConfig struct {
+	useBias bool
+}
+
+// defaultLinearConfig returns the default configuration.
+func defaultLinearConfig() linearConfig {
+	return linearConfig{
+		useBias: true, // Default: use bias (backwards compatible)
+	}
+}
+
+// WithBias sets whether the Linear layer should use bias.
+//
+// Default is true. Set to false for architectures like LLaMA that don't use bias.
+//
+// Example:
+//
+//	// Linear layer without bias (LLaMA-style)
+//	lm_head := nn.NewLinear(hidden_size, vocab_size, backend, nn.WithBias(false))
+//
+//	// Linear layer with bias (default)
+//	layer := nn.NewLinear(784, 128, backend)  // same as WithBias(true)
+func WithBias(useBias bool) LinearOption {
+	return func(cfg *linearConfig) {
+		cfg.useBias = useBias
+	}
+}
+
 // Linear implements a fully connected (dense) layer.
 //
 // Performs the transformation: y = x @ W.T + b
 // where:
 //   - x is the input tensor with shape [batch_size, in_features]
 //   - W is the weight matrix with shape [out_features, in_features]
-//   - b is the bias vector with shape [out_features]
+//   - b is the bias vector with shape [out_features] (optional, see WithBias)
 //   - y is the output tensor with shape [batch_size, out_features]
 //
 // Weights are initialized using Xavier/Glorot initialization.
-// Biases are initialized to zeros.
+// Biases are initialized to zeros (if enabled).
 //
 // Example:
 //
@@ -25,6 +57,9 @@ import (
 //
 //	input := tensor.Randn[float32](tensor.Shape{32, 784}, backend)  // batch_size=32
 //	output := layer.Forward(input)  // shape: [32, 128]
+//
+//	// Without bias (for LLaMA-style models)
+//	lm_head := nn.NewLinear(512, vocab_size, backend, nn.WithBias(false))
 type Linear[B tensor.Backend] struct {
 	inFeatures  int
 	outFeatures int
@@ -36,24 +71,42 @@ type Linear[B tensor.Backend] struct {
 // NewLinear creates a new Linear layer.
 //
 // Weights are initialized using Xavier/Glorot uniform distribution.
-// Biases are initialized to zeros.
+// Biases are initialized to zeros (if enabled).
 //
 // Parameters:
 //   - inFeatures: Number of input features
 //   - outFeatures: Number of output features
 //   - backend: Backend to use for tensor operations
+//   - opts: Optional configuration (see WithBias)
 //
 // Returns a new Linear layer.
-func NewLinear[B tensor.Backend](inFeatures, outFeatures int, backend B) *Linear[B] {
+//
+// Example:
+//
+//	// With bias (default)
+//	layer := nn.NewLinear(784, 128, backend)
+//
+//	// Without bias (for LLaMA, attention projections, etc.)
+//	lm_head := nn.NewLinear(hidden_size, vocab_size, backend, nn.WithBias(false))
+func NewLinear[B tensor.Backend](inFeatures, outFeatures int, backend B, opts ...LinearOption) *Linear[B] {
+	// Apply options
+	cfg := defaultLinearConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	// Weight: [out_features, in_features]
 	weightShape := tensor.Shape{outFeatures, inFeatures}
 	weightTensor := Xavier(inFeatures, outFeatures, weightShape, backend)
 	weight := NewParameter("weight", weightTensor)
 
-	// Bias: [out_features]
-	biasShape := tensor.Shape{outFeatures}
-	biasTensor := Zeros(biasShape, backend)
-	bias := NewParameter("bias", biasTensor)
+	// Bias: [out_features] (optional)
+	var bias *Parameter[B]
+	if cfg.useBias {
+		biasShape := tensor.Shape{outFeatures}
+		biasTensor := Zeros(biasShape, backend)
+		bias = NewParameter("bias", biasTensor)
+	}
 
 	return &Linear[B]{
 		inFeatures:  inFeatures,
@@ -135,6 +188,11 @@ func (l *Linear[B]) InFeatures() int {
 // OutFeatures returns the number of output features.
 func (l *Linear[B]) OutFeatures() int {
 	return l.outFeatures
+}
+
+// HasBias returns true if this layer has a bias parameter.
+func (l *Linear[B]) HasBias() bool {
+	return l.bias != nil
 }
 
 // StateDict returns a map of parameter names to raw tensors.

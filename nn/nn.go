@@ -25,14 +25,35 @@ func NewParameter[B tensor.Backend](name string, t *tensor.Tensor[float32, B]) *
 // Linear represents a fully connected (dense) layer.
 type Linear[B tensor.Backend] = nn.Linear[B]
 
+// LinearOption is a functional option for configuring a Linear layer.
+type LinearOption = nn.LinearOption
+
+// WithBias sets whether the Linear layer should use bias.
+//
+// Default is true. Set to false for architectures like LLaMA that don't use bias.
+//
+// Example:
+//
+//	// Linear layer without bias (LLaMA-style)
+//	lm_head := nn.NewLinear(hidden_size, vocab_size, backend, nn.WithBias(false))
+//
+//	// Linear layer with bias (default)
+//	layer := nn.NewLinear(784, 128, backend)  // same as WithBias(true)
+func WithBias(useBias bool) LinearOption {
+	return nn.WithBias(useBias)
+}
+
 // NewLinear creates a new linear layer with Xavier initialization.
 //
 // Example:
 //
 //	backend := cpu.New()
 //	layer := nn.NewLinear(784, 128, backend)
-func NewLinear[B tensor.Backend](inFeatures, outFeatures int, backend B) *Linear[B] {
-	return nn.NewLinear(inFeatures, outFeatures, backend)
+//
+//	// Without bias (for LLaMA, attention projections, etc.)
+//	lm_head := nn.NewLinear(hidden_size, vocab_size, backend, nn.WithBias(false))
+func NewLinear[B tensor.Backend](inFeatures, outFeatures int, backend B, opts ...LinearOption) *Linear[B] {
+	return nn.NewLinear(inFeatures, outFeatures, backend, opts...)
 }
 
 // Conv2D represents a 2D convolutional layer.

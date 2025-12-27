@@ -163,6 +163,99 @@ func TestLinear_ForwardBatch(t *testing.T) {
 	}
 }
 
+// TestLinear_WithBias tests Linear layer WithBias option.
+func TestLinear_WithBias(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	// Test 1: Default (with bias)
+	layerWithBias := nn.NewLinear(10, 5, backend)
+	if !layerWithBias.HasBias() {
+		t.Error("Default Linear should have bias")
+	}
+	if layerWithBias.Bias() == nil {
+		t.Error("Bias() should not be nil for default Linear")
+	}
+	if len(layerWithBias.Parameters()) != 2 {
+		t.Errorf("Default Linear should have 2 parameters, got %d", len(layerWithBias.Parameters()))
+	}
+
+	// Test 2: Explicit WithBias(true)
+	layerExplicitBias := nn.NewLinear(10, 5, backend, nn.WithBias(true))
+	if !layerExplicitBias.HasBias() {
+		t.Error("Linear with WithBias(true) should have bias")
+	}
+	if len(layerExplicitBias.Parameters()) != 2 {
+		t.Errorf("Linear with bias should have 2 parameters, got %d", len(layerExplicitBias.Parameters()))
+	}
+
+	// Test 3: WithBias(false)
+	layerNoBias := nn.NewLinear(10, 5, backend, nn.WithBias(false))
+	if layerNoBias.HasBias() {
+		t.Error("Linear with WithBias(false) should not have bias")
+	}
+	if layerNoBias.Bias() != nil {
+		t.Error("Bias() should be nil for Linear without bias")
+	}
+	if len(layerNoBias.Parameters()) != 1 {
+		t.Errorf("Linear without bias should have 1 parameter, got %d", len(layerNoBias.Parameters()))
+	}
+
+	// Verify weight is still properly initialized
+	weight := layerNoBias.Weight().Tensor()
+	expectedShape := tensor.Shape{5, 10}
+	if !weight.Shape().Equal(expectedShape) {
+		t.Errorf("Weight shape = %v, want %v", weight.Shape(), expectedShape)
+	}
+}
+
+// TestLinear_NoBias_Forward tests forward pass of Linear without bias.
+func TestLinear_NoBias_Forward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	// Create linear layer without bias
+	layer := nn.NewLinear(2, 2, backend, nn.WithBias(false))
+
+	// Set known weights: [[1, 2], [3, 4]] (out=2, in=2)
+	weightData := []float32{1, 2, 3, 4}
+	copy(layer.Weight().Tensor().Raw().AsFloat32(), weightData)
+
+	// Input: [[1, 1]] (batch=1, in=2)
+	input, _ := tensor.FromSlice([]float32{1, 1}, tensor.Shape{1, 2}, backend)
+
+	// Forward pass
+	output := layer.Forward(input)
+
+	// Expected:
+	// y = x @ W.T (no bias)
+	// W.T = [[1, 3], [2, 4]]
+	// x @ W.T = [1, 1] @ [[1, 3], [2, 4]] = [3, 7]
+	expected := []float32{3.0, 7.0}
+	actual := output.Raw().AsFloat32()
+
+	for i, exp := range expected {
+		if !floatEqual(actual[i], exp, 1e-5) {
+			t.Errorf("Output[%d] = %f, want %f", i, actual[i], exp)
+		}
+	}
+}
+
+// TestLinear_NoBias_StateDict tests StateDict for Linear without bias.
+func TestLinear_NoBias_StateDict(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	layer := nn.NewLinear(4, 3, backend, nn.WithBias(false))
+
+	stateDict := layer.StateDict()
+
+	// Should have weight but no bias
+	if _, ok := stateDict["weight"]; !ok {
+		t.Error("StateDict should contain 'weight'")
+	}
+	if _, ok := stateDict["bias"]; ok {
+		t.Error("StateDict should not contain 'bias' for layer without bias")
+	}
+}
+
 // TestReLU_Forward tests ReLU activation.
 func TestReLU_Forward(t *testing.T) {
 	backend := autodiff.New(cpu.New())
