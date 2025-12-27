@@ -5,6 +5,21 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2025-12-27
+
+### 🔧 Dependencies Update
+
+Hotfix release updating GPU backend dependencies to latest versions.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.1.1 → **v0.1.2**
+- `go-webgpu/goffi` v0.3.3 → **v0.3.5**
+
+**Links**:
+- PR: [#21](https://github.com/born-ml/born/pull/21)
+
+---
+
 ## [0.7.2] - 2025-12-24
 
 ### 🔧 Dependencies Update

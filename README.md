@@ -18,8 +18,8 @@
 
 Born is a modern deep learning framework for Go, inspired by [Burn](https://github.com/tracel-ai/burn) (Rust). Build ML models in pure Go and deploy as single binaries - no Python runtime, no complex dependencies.
 
-**Project Status**: 🚀 **v0.7.2 Released!** (Dependencies Update)
-**Latest**: 🔧 Updated go-webgpu v0.1.1, goffi v0.3.3 for improved GPU stability
+**Project Status**: 🚀 **v0.7.3 Released!** (Dependencies Update)
+**Latest**: 🔧 Updated go-webgpu v0.1.2, goffi v0.3.5 for improved GPU stability
 
 *Pure Go ML with GPU acceleration - no CGO required!*
 
