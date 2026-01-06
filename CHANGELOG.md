@@ -5,6 +5,30 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7] - 2026-01-06
+
+### 🔧 Public API Improvements
+
+Refactored public API packages to use proper Go interfaces instead of type aliases where possible.
+
+**Improvements**:
+- `tensor/`: Added `Backend` interface with 40+ methods (was type alias)
+- `nn/`: Added `Module` interface with full method definitions
+- `onnx/`: Added `Model` interface for ONNX model operations
+- `optim/`: Now uses public `nn.Parameter` in function signatures
+- `autodiff/`: Now uses public `tensor` types
+- `backend/cpu`, `backend/webgpu`: Added compile-time interface checks
+
+**Technical Details**:
+- Improves [pkg.go.dev](https://pkg.go.dev/github.com/born-ml/born) documentation by hiding internal paths
+- External packages can now properly import and use the public API
+- Some interfaces (`Optimizer`, `ModelReader`) remain as type aliases due to Go's type system constraints
+
+**Fixed Issues**:
+- [#25](https://github.com/born-ml/born/issues/25) — ONNX package not accessible from external packages
+
+---
+
 ## [0.7.6] - 2026-01-03
 
 ### 🔧 ARM64 Darwin Enhancement
