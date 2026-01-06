@@ -5,12 +5,17 @@
 package optim
 
 import (
-	"github.com/born-ml/born/internal/nn"
 	"github.com/born-ml/born/internal/optim"
-	"github.com/born-ml/born/internal/tensor"
+	"github.com/born-ml/born/nn"
+	"github.com/born-ml/born/tensor"
 )
 
 // Optimizer interface defines the common interface for all optimizers.
+//
+// Optimizers update model parameters based on computed gradients.
+// All optimizers implement Step() for parameter updates and ZeroGrad() for clearing gradients.
+//
+// Note: This is a type alias because the Step method signature references internal tensor types.
 type Optimizer = optim.Optimizer
 
 // Config represents the base configuration for optimizers.

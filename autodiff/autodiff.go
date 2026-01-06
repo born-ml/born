@@ -31,7 +31,7 @@ package autodiff
 
 import (
 	"github.com/born-ml/born/internal/autodiff"
-	"github.com/born-ml/born/internal/tensor"
+	"github.com/born-ml/born/tensor"
 )
 
 // Backend is the autodiff-enabled backend.

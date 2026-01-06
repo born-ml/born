@@ -31,7 +31,6 @@ package loader
 
 import (
 	"github.com/born-ml/born/internal/loader"
-	"github.com/born-ml/born/internal/tensor"
 )
 
 // ModelFormat represents the model weight format.
@@ -47,32 +46,10 @@ const (
 // ModelReader provides a unified interface for loading model weights.
 // It abstracts away the underlying file format and provides consistent access
 // to model tensors.
-type ModelReader interface {
-	// Close closes the underlying file and releases resources.
-	Close() error
-
-	// Format returns the detected model format (SafeTensors, GGUF).
-	Format() ModelFormat
-
-	// Architecture returns the detected model architecture (llama, mistral, deepseek).
-	Architecture() string
-
-	// Metadata returns model metadata as key-value pairs.
-	// Contents vary by format but typically include architecture info, hyperparameters, etc.
-	Metadata() map[string]interface{}
-
-	// TensorNames returns all tensor names available in the model.
-	TensorNames() []string
-
-	// LoadTensor loads a tensor by name into Born tensor format.
-	// For quantized formats (GGUF Q4_0, Q8_0), this returns an error.
-	// Use ReadTensorData for manual dequantization.
-	LoadTensor(name string, backend tensor.Backend) (*tensor.RawTensor, error)
-
-	// ReadTensorData reads raw tensor bytes without conversion.
-	// Useful for custom dtype handling (F16, BF16, quantized types).
-	ReadTensorData(name string) ([]byte, error)
-}
+//
+// Note: This is a type alias because the LoadTensor method signature references
+// internal tensor types that cannot be abstracted without a wrapper layer.
+type ModelReader = loader.ModelReader
 
 // OpenModel opens a model file and auto-detects the format.
 //

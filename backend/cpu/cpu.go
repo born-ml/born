@@ -5,11 +5,18 @@
 package cpu
 
 import (
-	"github.com/born-ml/born/internal/backend/cpu"
+	internalcpu "github.com/born-ml/born/internal/backend/cpu"
+	"github.com/born-ml/born/tensor"
 )
 
 // Backend represents the CPU backend implementation.
-type Backend = cpu.CPUBackend
+//
+// CPU backend provides pure Go implementations of all tensor operations
+// with SIMD optimizations where available.
+type Backend = internalcpu.CPUBackend
+
+// Compile-time check that Backend implements tensor.Backend.
+var _ tensor.Backend = (*Backend)(nil)
 
 // New creates a new CPU backend.
 //
@@ -25,5 +32,5 @@ type Backend = cpu.CPUBackend
 //	    x := tensor.Zeros[float32](tensor.Shape{2, 3}, backend)
 //	}
 func New() *Backend {
-	return cpu.New()
+	return internalcpu.New()
 }

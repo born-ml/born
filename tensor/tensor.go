@@ -2,6 +2,20 @@
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
 
+// Package tensor provides the public API for tensor operations in the Born ML framework.
+//
+// The package defines core interfaces and types for type-safe tensor operations:
+//   - Tensor[T, B]: High-level generic tensor with type safety
+//   - RawTensor: Low-level tensor interface for advanced use cases
+//   - Backend: Interface for device-specific compute implementations
+//   - Shape, DataType, Device: Core type definitions
+//
+// Example:
+//
+//	backend := cpu.New()
+//	x := tensor.Zeros[float32](tensor.Shape{2, 3}, backend)
+//	y := tensor.Ones[float32](tensor.Shape{2, 3}, backend)
+//	z := x.Add(y)  // Element-wise addition
 package tensor
 
 import (
@@ -32,32 +46,37 @@ type Device = tensor.Device
 
 // Device constants.
 const (
-	CPU  Device = tensor.CPU
-	CUDA Device = tensor.CUDA
+	CPU    Device = tensor.CPU
+	CUDA   Device = tensor.CUDA
+	Vulkan Device = tensor.Vulkan
+	Metal  Device = tensor.Metal
+	WebGPU Device = tensor.WebGPU
 )
 
 // Shape represents the dimensions of a tensor.
 // Example: Shape{2, 3, 4} represents a 3D tensor with dimensions 2×3×4.
 type Shape = tensor.Shape
 
+// Backend is defined in backend.go as a proper interface.
+
 // Tensor is a generic type-safe tensor.
 //
 // T is the data type (float32, float64, int32, int64, uint8, bool).
-// B is the backend implementation (CPU, CUDA, etc.).
+// B is the backend implementation (CPU, WebGPU, etc.).
+//
+// Tensor provides a high-level API for tensor operations with:
+//   - Type safety via Go generics
+//   - Automatic differentiation support (via autodiff.Backend)
+//   - Multiple backend support (CPU, GPU)
+//   - Efficient memory management with copy-on-write
 //
 // Example:
 //
 //	backend := cpu.New()
 //	x := tensor.Zeros[float32](tensor.Shape{2, 3}, backend)
+//	y := tensor.Ones[float32](tensor.Shape{2, 3}, backend)
+//	z := x.Add(y)  // Element-wise addition
 type Tensor[T DType, B Backend] = tensor.Tensor[T, B]
-
-// RawTensor is the low-level tensor representation.
-// Most users should use the high-level Tensor type instead.
-type RawTensor = tensor.RawTensor
-
-// Backend interface for device-specific operations.
-// Implementations: cpu.Backend (current), cuda.Backend (planned).
-type Backend = tensor.Backend
 
 // Creation functions
 

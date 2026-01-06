@@ -2,6 +2,21 @@
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
 
+// Package nn provides neural network modules and layers for the Born ML Framework.
+//
+// This package offers building blocks for constructing neural networks:
+//   - Module interface: Base interface for all NN components
+//   - Parameter interface: Trainable parameters with gradient tracking
+//   - Linear: Fully connected layer
+//   - Conv2D: Convolutional layer
+//   - Activations: ReLU, Sigmoid, Tanh, SiLU
+//   - Normalization: RMSNorm, LayerNorm
+//   - Embedding: Token embeddings
+//   - Attention: Multi-head attention, causal masking
+//   - Loss functions: MSE, CrossEntropy
+//   - Sequential: Container for stacking layers
+//
+// Design inspired by PyTorch's nn.Module but adapted for Go generics and type safety.
 package nn
 
 import (
@@ -9,13 +24,22 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
-// Module interface defines the common interface for all neural network modules.
-type Module[B tensor.Backend] = nn.Module[B]
-
-// Parameter represents a trainable parameter in a neural network.
-type Parameter[B tensor.Backend] = nn.Parameter[B]
-
-// NewParameter creates a new parameter with the given name and tensor.
+// NewParameter creates a new trainable parameter.
+//
+// The parameter tensor should be initialized before creating the Parameter.
+// Gradient will be allocated during the first backward pass.
+//
+// Parameters:
+//   - name: Descriptive name for this parameter (e.g., "linear1.weight")
+//   - t: The initialized parameter tensor
+//
+// Returns a new Parameter.
+//
+// Example:
+//
+//	backend := cpu.New()
+//	weights := tensor.Randn[float32](tensor.Shape{128, 784}, backend)
+//	param := nn.NewParameter("layer1.weight", weights)
 func NewParameter[B tensor.Backend](name string, t *tensor.Tensor[float32, B]) *Parameter[B] {
 	return nn.NewParameter(name, t)
 }
@@ -231,7 +255,13 @@ type Sequential[B tensor.Backend] = nn.Sequential[B]
 //	    nn.NewLinear(128, 10, backend),
 //	)
 func NewSequential[B tensor.Backend](modules ...Module[B]) *Sequential[B] {
-	return nn.NewSequential(modules...)
+	// Convert public Module[B] slice to internal Module[B] slice.
+	// Go interfaces with same methods are not directly assignable.
+	internalModules := make([]nn.Module[B], len(modules))
+	for i, m := range modules {
+		internalModules[i] = m
+	}
+	return nn.NewSequential(internalModules...)
 }
 
 // Initialization functions

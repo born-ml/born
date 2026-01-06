@@ -33,12 +33,16 @@
 package webgpu
 
 import (
-	"github.com/born-ml/born/internal/backend/webgpu"
+	internalwebgpu "github.com/born-ml/born/internal/backend/webgpu"
+	"github.com/born-ml/born/tensor"
 )
 
 // Backend represents the WebGPU backend implementation for GPU-accelerated
 // tensor operations.
-type Backend = webgpu.Backend
+type Backend = internalwebgpu.Backend
+
+// Compile-time check that Backend implements tensor.Backend.
+var _ tensor.Backend = (*Backend)(nil)
 
 // New creates a new WebGPU backend.
 //
@@ -47,7 +51,7 @@ type Backend = webgpu.Backend
 //
 // Returns an error if WebGPU initialization fails (e.g., no compatible GPU).
 func New() (*Backend, error) {
-	return webgpu.New()
+	return internalwebgpu.New()
 }
 
 // IsAvailable checks if WebGPU is available on the current system.
@@ -65,5 +69,5 @@ func New() (*Backend, error) {
 //	    backend = autodiff.New(cpu.New())
 //	}
 func IsAvailable() bool {
-	return webgpu.IsAvailable()
+	return internalwebgpu.IsAvailable()
 }
