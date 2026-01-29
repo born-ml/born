@@ -10,6 +10,7 @@ import (
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // compileShader compiles WGSL shader code into a ShaderModule.
@@ -54,7 +55,7 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule) *w
 }
 
 // createBuffer creates a GPU buffer and optionally uploads initial data.
-func (b *Backend) createBuffer(data []byte, usage wgpu.BufferUsage) *wgpu.Buffer {
+func (b *Backend) createBuffer(data []byte, usage gputypes.BufferUsage) *wgpu.Buffer {
 	size := uint64(len(data))
 
 	// Create buffer with MappedAtCreation for initial data upload
@@ -82,7 +83,7 @@ func (b *Backend) createUniformBuffer(data []byte) *wgpu.Buffer {
 	alignedSize := (size + 15) &^ 15 // Round up to 16-byte boundary
 
 	buffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage:            wgpu.BufferUsageUniform | wgpu.BufferUsageCopyDst,
+		Usage:            gputypes.BufferUsageUniform | gputypes.BufferUsageCopyDst,
 		Size:             alignedSize,
 		MappedAtCreation: wgpu.True,
 	})
@@ -107,7 +108,7 @@ func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error
 
 	// Create staging buffer for reading (MAP_READ | COPY_DST)
 	stagingBuffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageMapRead | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
 		Size:  size,
 	})
 	defer stagingBuffer.Release()
@@ -175,15 +176,15 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferOther := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
 	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -289,15 +290,15 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferOther := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
 	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -367,12 +368,12 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -453,10 +454,10 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	pipeline := b.getOrCreatePipeline("matmul", shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferOther := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferOther := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferOther.Release()
 
 	resultShape := tensor.Shape{int(M), int(N)}
@@ -464,7 +465,7 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	//nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	resultSize := uint64(int(M) * int(N) * 4) // float32 = 4 bytes
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -541,12 +542,12 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 	pipeline := b.getOrCreatePipeline("transpose", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -617,12 +618,12 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -698,12 +699,12 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	pipeline := b.getOrCreatePipeline("softmax", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -804,15 +805,15 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	pipeline := b.getOrCreatePipeline("batchMatMul", shader)
 
 	// Create GPU buffers
-	bufferA := b.createBuffer(a.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferA := b.createBuffer(a.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferA.Release()
 
-	bufferB := b.createBuffer(other.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferB := b.createBuffer(other.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferB.Release()
 
 	resultSize := uint64(batch) * uint64(M) * uint64(N) * 4 // float32 = 4 bytes
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -910,15 +911,15 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	pipeline := b.getOrCreatePipeline("conv2d", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
-	bufferKernel := b.createBuffer(kernel.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferKernel := b.createBuffer(kernel.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferKernel.Release()
 
 	resultSize := uint64(batchSize) * uint64(outChannels) * uint64(outHeight) * uint64(outWidth) * 4
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1014,12 +1015,12 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	pipeline := b.getOrCreatePipeline("maxPool2d", shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(batchSize) * uint64(channels) * uint64(outHeight) * uint64(outWidth) * 4
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1156,7 +1157,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create input buffer
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	// Calculate number of workgroups needed
@@ -1165,7 +1166,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	partialSumsSize := uint64(numWorkgroups) * 4
 
 	bufferPartialSums := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  partialSumsSize,
 	})
 	defer bufferPartialSums.Release()
@@ -1275,12 +1276,12 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	pipeline := b.getOrCreatePipeline("argmax", shader)
 
 	// Create buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(batchSize) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1360,15 +1361,15 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	pipeline := b.getOrCreatePipeline("embedding", shader)
 
 	// Create buffers
-	bufferWeight := b.createBuffer(weight.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferWeight := b.createBuffer(weight.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferWeight.Release()
 
-	bufferIndices := b.createBuffer(indices.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferIndices := b.createBuffer(indices.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferIndices.Release()
 
 	resultSize := uint64(numIndices) * uint64(embeddingDim) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -1543,18 +1544,18 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create buffers
-	bufferCondition := b.createBuffer(condFloat32.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferCondition := b.createBuffer(condFloat32.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferCondition.Release()
 
-	bufferX := b.createBuffer(x.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferX := b.createBuffer(x.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferX.Release()
 
-	bufferY := b.createBuffer(y.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferY := b.createBuffer(y.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferY.Release()
 
 	resultSizeWhere := uint64(x.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResultWhere := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSizeWhere,
 	})
 	defer bufferResultWhere.Release()
@@ -1652,15 +1653,15 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	pipelineGather := b.getOrCreatePipeline("gather", shaderGather)
 
 	// Create buffers
-	bufferInputGather := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInputGather := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInputGather.Release()
 
-	bufferIndices := b.createBuffer(indices.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferIndices := b.createBuffer(indices.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferIndices.Release()
 
 	gatherResultSize := uint64(gatherBatchSize) * uint64(outputK) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResultGather := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  gatherResultSize,
 	})
 	defer bufferResultGather.Release()
@@ -1854,12 +1855,12 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()
@@ -2007,7 +2008,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	pipeline := b.getOrCreatePipeline(shaderName, shader)
 
 	// Create GPU buffers
-	bufferInput := b.createBuffer(input.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferInput := b.createBuffer(input.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferInput.Release()
 
 	// Calculate result size
@@ -2018,7 +2019,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	resultSize := uint64(resultNumElements) * elementSize //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 	defer bufferResult.Release()

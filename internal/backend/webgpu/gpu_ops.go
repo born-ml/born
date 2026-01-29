@@ -10,6 +10,7 @@ import (
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // AddGPU performs element-wise addition on GPU tensors.
@@ -83,7 +84,7 @@ func (b *Backend) runBinaryOpGPU(a, c *GPUTensor, opName, shaderCode string) *GP
 	// Create output buffer (stays on GPU!)
 	resultSize := a.ByteSize()
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -161,7 +162,7 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 
 	resultSize := uint64(m * n * a.dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -247,7 +248,7 @@ func (b *Backend) TransposeGPU(t *GPUTensor, axes ...int) *GPUTensor {
 
 	resultSize := uint64(m * n * t.dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -353,7 +354,7 @@ func (b *Backend) SoftmaxGPU(t *GPUTensor, dim int) *GPUTensor {
 	// Create output buffer (stays on GPU!)
 	resultSize := t.ByteSize()
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -417,7 +418,7 @@ func (b *Backend) UploadTensor(raw *tensor.RawTensor) *GPUTensor {
 	// Create GPU buffer
 	buffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Size:             alignedSize,
-		Usage:            wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage:            gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		MappedAtCreation: wgpu.True,
 	})
 
@@ -451,7 +452,7 @@ func (b *Backend) runUnaryOpGPU(t *GPUTensor, opName, shaderCode string) *GPUTen
 	// Create output buffer (stays on GPU!)
 	resultSize := t.ByteSize()
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 

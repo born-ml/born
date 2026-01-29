@@ -10,6 +10,7 @@ import (
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // createLazyResult creates a lazy RawTensor that keeps data on GPU.
@@ -82,7 +83,7 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	resultSize := uint64(a.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -123,7 +124,7 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 // This is critical for LazyMode performance - avoids GPU→CPU→GPU transfers.
 func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffer {
 	dstBuffer := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  size,
 	})
 
@@ -146,7 +147,7 @@ func (b *Backend) createBufferFromTensor(t *tensor.RawTensor) *wgpu.Buffer {
 	}
 
 	// CPU tensor - upload data to GPU
-	return b.createBuffer(t.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	return b.createBuffer(t.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 }
 
 // createParamsBuffer creates a uniform buffer with element count parameter.
@@ -224,7 +225,7 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -284,7 +285,7 @@ func (b *Backend) runUnaryOpLazy(x *tensor.RawTensor, shaderName, shaderCode str
 	resultSize := uint64(x.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -335,7 +336,7 @@ func (b *Backend) runScalarOpLazy(x *tensor.RawTensor, scalar float32, shaderNam
 	resultSize := uint64(x.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -426,7 +427,7 @@ func (b *Backend) runBatchMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTen
 
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -494,7 +495,7 @@ func (b *Backend) runTransposeLazy(input *tensor.RawTensor) (*tensor.RawTensor, 
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -556,7 +557,7 @@ func (b *Backend) runSoftmaxLazy(input *tensor.RawTensor) (*tensor.RawTensor, er
 	resultSize := uint64(input.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -660,7 +661,7 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -801,7 +802,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -922,7 +923,7 @@ func (b *Backend) runGatherLazy(input *tensor.RawTensor, dim int, indices *tenso
 	gatherResultSize := uint64(gatherBatchSize) * uint64(outputK) * 4 //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release!
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  gatherResultSize,
 	})
 
@@ -1059,7 +1060,7 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 	resultSize := uint64(x.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	// Create result buffer - NO defer Release! Ownership transfers to lazy tensor
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -1143,7 +1144,7 @@ func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error)
 	partialSumsSize := uint64(numWorkgroups) * 4
 
 	bufferPartialSums := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  partialSumsSize,
 	})
 	defer bufferPartialSums.Release()

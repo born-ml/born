@@ -67,7 +67,8 @@ func (m *MNISTNet[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor[f
 //
 // This is used by optimizers to update weights and biases during training.
 func (m *MNISTNet[B]) Parameters() []*nn.Parameter[B] {
-	params := make([]*nn.Parameter[B], 0)
+	// Preallocate: 2 layers × 2 params (weight + bias) = 4 params.
+	params := make([]*nn.Parameter[B], 0, 4)
 	params = append(params, m.fc1.Parameters()...)
 	params = append(params, m.fc2.Parameters()...)
 	return params

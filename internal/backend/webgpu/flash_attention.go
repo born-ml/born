@@ -9,6 +9,7 @@ import (
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // FlashAttentionGPU executes Flash Attention 2 on GPU using WebGPU.
@@ -75,18 +76,18 @@ func (b *Backend) FlashAttentionGPU(
 	pipeline := b.getOrCreatePipeline("flash_attention", shader)
 
 	// Create GPU buffers
-	bufferQ := b.createBuffer(q.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferQ := b.createBuffer(q.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferQ.Release()
 
-	bufferK := b.createBuffer(k.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferK := b.createBuffer(k.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferK.Release()
 
-	bufferV := b.createBuffer(v.Data(), wgpu.BufferUsageStorage|wgpu.BufferUsageCopySrc)
+	bufferV := b.createBuffer(v.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	defer bufferV.Release()
 
 	outputSize := uint64(q.ByteSize()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations
 	bufferOutput := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc,
 		Size:  outputSize,
 	})
 	defer bufferOutput.Release()

@@ -64,7 +64,8 @@ func (s *Sequential[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tensor
 //
 // Parameters are collected from all modules in the sequence.
 func (s *Sequential[B]) Parameters() []*Parameter[B] {
-	var params []*Parameter[B]
+	// Preallocate with estimate: ~2 params per module (weight + bias).
+	params := make([]*Parameter[B], 0, len(s.modules)*2)
 
 	for _, module := range s.modules {
 		params = append(params, module.Parameters()...)

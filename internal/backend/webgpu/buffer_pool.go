@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // BufferSize represents different buffer size categories for pooling.
@@ -31,7 +32,7 @@ const (
 type pooledBuffer struct {
 	buffer *wgpu.Buffer
 	size   uint64
-	usage  wgpu.BufferUsage
+	usage  gputypes.BufferUsage
 }
 
 // BufferPool manages GPU buffer reuse to reduce allocation overhead.
@@ -65,7 +66,7 @@ func NewBufferPool(device *wgpu.Device) *BufferPool {
 
 // Acquire gets a buffer from the pool or creates a new one.
 // Returns a buffer that matches or exceeds the requested size and usage.
-func (p *BufferPool) Acquire(size uint64, usage wgpu.BufferUsage) *wgpu.Buffer {
+func (p *BufferPool) Acquire(size uint64, usage gputypes.BufferUsage) *wgpu.Buffer {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -97,7 +98,7 @@ func (p *BufferPool) Acquire(size uint64, usage wgpu.BufferUsage) *wgpu.Buffer {
 
 // Release returns a buffer to the pool for reuse.
 // If the pool is full, the buffer is immediately released.
-func (p *BufferPool) Release(buffer *wgpu.Buffer, size uint64, usage wgpu.BufferUsage) {
+func (p *BufferPool) Release(buffer *wgpu.Buffer, size uint64, usage gputypes.BufferUsage) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

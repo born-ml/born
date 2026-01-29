@@ -8,6 +8,7 @@ import (
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // GPUTape records GPU operations for backward pass.
@@ -227,7 +228,7 @@ func (b *Backend) ReLUBackwardGPU(input, grad *GPUTensor) *GPUTensor {
 	// Create output buffer
 	resultSize := input.ByteSize()
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -339,7 +340,7 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 	// Create output buffer
 	resultSize := output.ByteSize()
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 
@@ -432,7 +433,7 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 
 	resultSize := uint64(batchSize * t.dtype.Size()) //nolint:gosec // G115: Buffer size fits in uint64 for GPU operations.
 	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: wgpu.BufferUsageStorage | wgpu.BufferUsageCopySrc | wgpu.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
 

@@ -5,6 +5,38 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.8] - 2026-01-29
+
+### 🔧 GoGPU Ecosystem Integration (Phase 1)
+
+Migrate WebGPU backend to use unified `gputypes` for future dual-backend support.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.1.4 → **v0.2.1**
+- `go-webgpu/goffi` v0.3.7 → **v0.3.8**
+- `dlclark/regexp2` v1.10.0 → **v1.11.5**
+- `google/uuid` v1.3.0 → **v1.6.0**
+- Added `gogpu/gputypes` **v0.2.0** (new dependency)
+
+**Changes**:
+- Migrated all WebGPU types from `wgpu.*` to `gputypes.*`:
+  - `BufferUsage`, `BufferUsageStorage`, `BufferUsageCopySrc`, `BufferUsageCopyDst`
+  - `PowerPreferenceHighPerformance`
+- Updated 10 files in `internal/backend/webgpu/`
+- Fixed 3 prealloc warnings in linter (examples + internal/nn)
+
+**Why This Matters**:
+- Prepares codebase for **Pure Go WebGPU backend** (`gogpu/wgpu`)
+- Unified type system enables future dual-backend architecture
+- Build tags will allow: `go build` (Rust FFI) vs `go build -tags purego` (Pure Go)
+
+**Links**:
+- Upstream release: [go-webgpu v0.2.0](https://github.com/go-webgpu/webgpu/releases/tag/v0.2.0)
+- GoGPU ecosystem: [github.com/gogpu](https://github.com/gogpu)
+- Integration plan: [TASK-110](docs/dev/kanban/backlog/TASK-110-backend-strategy-gogpu.md)
+
+---
+
 ## [0.7.7] - 2026-01-06
 
 ### 🔧 Public API Improvements

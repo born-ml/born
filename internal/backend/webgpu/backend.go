@@ -11,6 +11,7 @@ import (
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/go-webgpu/webgpu/wgpu"
+	"github.com/gogpu/gputypes"
 )
 
 // Backend implements tensor operations on GPU using WebGPU.
@@ -71,7 +72,7 @@ func New() (backend *Backend, err error) {
 
 	// Request adapter (GPU)
 	adapter, adapterErr := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
-		PowerPreference: wgpu.PowerPreferenceHighPerformance,
+		PowerPreference: gputypes.PowerPreferenceHighPerformance,
 	})
 	if adapterErr != nil {
 		instance.Release()

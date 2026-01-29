@@ -114,7 +114,8 @@ func (m *MNISTNetCNN[B]) Forward(input *tensor.Tensor[float32, B]) *tensor.Tenso
 
 // Parameters returns all trainable parameters.
 func (m *MNISTNetCNN[B]) Parameters() []*nn.Parameter[B] {
-	params := []*nn.Parameter[B]{}
+	// Preallocate: 5 layers × 2 params (weight + bias) = 10 params.
+	params := make([]*nn.Parameter[B], 0, 10)
 	params = append(params, m.conv1.Parameters()...)
 	params = append(params, m.conv2.Parameters()...)
 	params = append(params, m.fc1.Parameters()...)
