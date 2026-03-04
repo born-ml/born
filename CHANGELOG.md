@@ -5,6 +5,25 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.14] - 2026-03-04
+
+### 🎉 Community Contribution — ONNX Equal Operator
+
+First external contribution! Thanks to [@jsully1720](https://github.com/jsully1720).
+
+**Added**:
+- ONNX `Equal` operator — binary element-wise comparison returning bool tensor
+- New `comparison_ops.go` category for ONNX comparison operators
+- `registerComparisonOps()` wired into operator registry
+
+**ONNX operators**: 38 → 39
+
+**Links**:
+- PR: [#34](https://github.com/born-ml/born/pull/34) by @jsully1720
+- Issue: [#35](https://github.com/born-ml/born/issues/35)
+
+---
+
 ## [0.7.13] - 2026-03-02
 
 ### 🔧 Dependencies Update
@@ -1210,6 +1229,7 @@ N/A (initial release)
 [0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10
 [0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
 [0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8
+[0.7.14]: https://github.com/born-ml/born/releases/tag/v0.7.14
 [0.7.13]: https://github.com/born-ml/born/releases/tag/v0.7.13
 [0.7.12]: https://github.com/born-ml/born/releases/tag/v0.7.12
 [0.7.11]: https://github.com/born-ml/born/releases/tag/v0.7.11
