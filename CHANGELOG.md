@@ -5,6 +5,35 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.13] - 2026-03-02
+
+### 🔧 Dependencies Update
+
+Update WebGPU backend to v0.4.1 with critical ABI compliance fixes.
+
+**Updated Dependencies**:
+- `go-webgpu/webgpu` v0.4.0 → **v0.4.1**
+- `go-webgpu/goffi` v0.4.0 → **v0.4.1** (indirect)
+
+**Upstream Bug Fixes (ABI compliance)**:
+- Float32 encoding: correct XMM bit patterns via `math.Float32bits`
+- AMD64 Unix stack: arguments beyond 6 GP registers properly pushed to stack
+- ARM64 Unix stack: arguments beyond 8 GP registers correctly spilled to stack
+- AMD64 struct returns (9-16 bytes): RAX+RDX register pair properly assembled
+- AMD64 sret pointer: structs > 16 bytes use caller buffer as first argument (RDI)
+- ARM64 HFA spilling: Homogeneous Floating-Point Aggregate overflow follows AAPCS64
+
+**Upstream Enhancements**:
+- `runtime.KeepAlive` prevents GC of argument pointers during FFI calls
+- `ErrTooManyArguments` overflow detection for calls exceeding 15 arguments
+
+**Impact**: Critical ABI correctness fixes for multi-platform GPU backend reliability.
+
+**Links**:
+- Upstream release: [go-webgpu v0.4.1](https://github.com/go-webgpu/webgpu/releases/tag/v0.4.1)
+
+---
+
 ## [0.7.12] - 2026-02-27
 
 ### 🔧 Dependencies Update
@@ -1181,6 +1210,7 @@ N/A (initial release)
 [0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10
 [0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
 [0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8
+[0.7.13]: https://github.com/born-ml/born/releases/tag/v0.7.13
 [0.7.12]: https://github.com/born-ml/born/releases/tag/v0.7.12
 [0.7.11]: https://github.com/born-ml/born/releases/tag/v0.7.11
 [0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10

@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2026-02-27 | **Current Version**: v0.7.12 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.7.12 RELEASED! → v0.8.0 (Mar 2026) → v1.0.0 LTS (After API Freeze)
+**Last Updated**: 2026-03-02 | **Current Version**: v0.7.13 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.7.13 RELEASED! → v0.8.0 (Mar 2026) → v1.0.0 LTS (After API Freeze)
 
 ---
 
@@ -66,7 +66,9 @@ v0.7.10 (ARM64 Callback Fix) ✅ RELEASED (2026-02-18)
        ↓ (callback reliability)
 v0.7.11 (Crosscall2 Callback Integration) ✅ RELEASED (2026-02-27)
        ↓ (FFI hardening)
-v0.7.12 (FFI Hardening & Library Loading) ✅ CURRENT (2026-02-27)
+v0.7.12 (FFI Hardening & Library Loading) ✅ RELEASED (2026-02-27)
+       ↓ (ABI compliance fixes)
+v0.7.13 (ABI Compliance Fixes) ✅ CURRENT (2026-03-02)
        ↓ (quantization & efficiency)
 v0.8.0 (Quantization, Model Zoo, Jupyter) → Feb 2026
        ↓ (production serving)

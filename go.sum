@@ -2,10 +2,10 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZQ=
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
-github.com/go-webgpu/goffi v0.4.0 h1:KX/p9hd2n5uqTfDrsiQOU9dOPIsVl/RViY2foFq4r34=
-github.com/go-webgpu/goffi v0.4.0/go.mod h1:wfoxNsJkU+5RFbV1kNN1kunhc1lFHuJKK3zpgx08/uM=
-github.com/go-webgpu/webgpu v0.4.0 h1:ydg61863nHMCvwP/FuAVlf5fwYJIKGhkIprmJJN8aGw=
-github.com/go-webgpu/webgpu v0.4.0/go.mod h1:eyFh3WTUYDDu2Xv+4F9k+wP6nNoe4rMe28sfIJ20OG4=
+github.com/go-webgpu/goffi v0.4.1 h1:2hQH5XXloxTyTtIleYv+Rajlwzp6UOETURhSZ5+zJxU=
+github.com/go-webgpu/goffi v0.4.1/go.mod h1:wfoxNsJkU+5RFbV1kNN1kunhc1lFHuJKK3zpgx08/uM=
+github.com/go-webgpu/webgpu v0.4.1 h1:PT9Wb2947qQY1oR5itKWXgieCG/265tUg/762WR6mrU=
+github.com/go-webgpu/webgpu v0.4.1/go.mod h1:wFLIOZByL/XYk1zs6rKUK8WgyMPRf4EIwlcwYb1/BNo=
 github.com/gogpu/gputypes v0.2.0 h1:Quv3ekiU12zK4ZhBZsSZmalHYc+zj2gr9ZWRyzKgkKk=
 github.com/gogpu/gputypes v0.2.0/go.mod h1:cnXrDMwTpWTvJLW1Vreop3PcT6a2YP/i3s91rPaOavw=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
