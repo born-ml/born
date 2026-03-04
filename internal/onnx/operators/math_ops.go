@@ -20,7 +20,6 @@ func (r *Registry) registerMathOps() {
 	r.Register("Exp", handleExp)
 	r.Register("Log", handleLog)
 	r.Register("Sum", handleSum)
-	r.Register("Equal", handleEqual)
 }
 
 func handleAdd(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
@@ -137,17 +136,6 @@ func handleSum(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.Raw
 	result := inputs[0]
 	for i := 1; i < len(inputs); i++ {
 		result = ctx.Backend.Add(result, inputs[i])
-	}
-	return []*tensor.RawTensor{result}, nil
-}
-
-func handleEqual(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
-	if len(inputs) == 0 {
-		return nil, fmt.Errorf("sum requires at least 1 input")
-	}
-	result := inputs[0]
-	for i := 1; i < len(inputs); i++ {
-		result = ctx.Backend.Equal(result, inputs[i])
 	}
 	return []*tensor.RawTensor{result}, nil
 }

@@ -55,3 +55,11 @@ func TestRegisterCustomOp(t *testing.T) {
 		t.Error("Expected custom operator to be registered")
 	}
 }
+
+func TestRegisterEqualOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Equal"); !ok {
+		t.Error("Expected Equal operator to be registered")
+	}
+}
