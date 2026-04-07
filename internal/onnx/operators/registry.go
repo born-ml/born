@@ -34,6 +34,7 @@ func NewRegistry() *Registry {
 	r.registerShapeOps()
 	r.registerUtilityOps()
 	r.registerComparisonOps()
+	r.registerNormalizationOps()
 
 	return r
 }

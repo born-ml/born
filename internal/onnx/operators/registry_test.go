@@ -63,3 +63,11 @@ func TestRegisterEqualOp(t *testing.T) {
 		t.Error("Expected Equal operator to be registered")
 	}
 }
+
+func TestRegisterLayerNormalizationOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("LayerNormalization"); !ok {
+		t.Error("Expected LayerNormalization operator to be registered")
+	}
+}
