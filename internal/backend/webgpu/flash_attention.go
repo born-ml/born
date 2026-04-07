@@ -94,12 +94,12 @@ func (b *Backend) FlashAttentionGPU(
 
 	// Create uniform buffer for params
 	// struct Params { batch, seq_len, kv_len, num_heads, head_dim, block_size, scale (f32), causal }
-	params := make([]byte, 32) // 8 u32 fields = 32 bytes
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batch))
-	binary.LittleEndian.PutUint32(params[4:8], uint32(seqLen))
-	binary.LittleEndian.PutUint32(params[8:12], uint32(kvLen))
-	binary.LittleEndian.PutUint32(params[12:16], uint32(numHeads))
-	binary.LittleEndian.PutUint32(params[16:20], uint32(headDim))
+	params := make([]byte, 32)                                     // 8 u32 fields = 32 bytes
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batch))      //nolint:gosec // G115: safe, tensor dims are small positive ints
+	binary.LittleEndian.PutUint32(params[4:8], uint32(seqLen))     //nolint:gosec // G115: safe, tensor dims are small positive ints
+	binary.LittleEndian.PutUint32(params[8:12], uint32(kvLen))     //nolint:gosec // G115: safe, tensor dims are small positive ints
+	binary.LittleEndian.PutUint32(params[12:16], uint32(numHeads)) //nolint:gosec // G115: safe, tensor dims are small positive ints
+	binary.LittleEndian.PutUint32(params[16:20], uint32(headDim))  //nolint:gosec // G115: safe, tensor dims are small positive ints
 	binary.LittleEndian.PutUint32(params[20:24], uint32(blockSize))
 	binary.LittleEndian.PutUint32(params[24:28], math.Float32bits(scale))
 

@@ -437,11 +437,11 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 		return nil, fmt.Errorf("webgpu: matmul requires 2D tensors, got %v and %v", a.Shape(), other.Shape())
 	}
 
-	M := uint32(a.Shape()[0])
+	M := uint32(a.Shape()[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	K := uint32(a.Shape()[1])
+	K := uint32(a.Shape()[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	N := uint32(other.Shape()[1])
+	N := uint32(other.Shape()[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
 	if other.Shape()[0] != int(K) {
 		return nil, fmt.Errorf("webgpu: matmul shape mismatch: [%d,%d] @ [%d,%d]", M, K, other.Shape()[0], N)
@@ -530,9 +530,9 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 		return nil, fmt.Errorf("webgpu: transpose requires 2D tensor, got %v", input.Shape())
 	}
 
-	rows := uint32(input.Shape()[0])
+	rows := uint32(input.Shape()[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	cols := uint32(input.Shape()[1])
+	cols := uint32(input.Shape()[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
 	// Compile shader
 	shader := b.compileShader("transpose", transposeShader)
@@ -687,9 +687,9 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 		return nil, fmt.Errorf("webgpu: softmax requires 2D tensor, got %v", input.Shape())
 	}
 
-	batchSize := uint32(input.Shape()[0])
+	batchSize := uint32(input.Shape()[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	numClasses := uint32(input.Shape()[1])
+	numClasses := uint32(input.Shape()[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
 	// Compile shader
 	shader := b.compileShader("softmax", softmaxShader)
@@ -777,13 +777,13 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	if len(shapeA) == 3 {
 		// 3D: [batch, M, K] @ [batch, K, N]
 
-		batch = uint32(shapeA[0])
+		batch = uint32(shapeA[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-		M = uint32(shapeA[1])
+		M = uint32(shapeA[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-		K = uint32(shapeA[2])
+		K = uint32(shapeA[2]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-		N = uint32(shapeB[2])
+		N = uint32(shapeB[2]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 		resultShape = tensor.Shape{int(batch), int(M), int(N)}
 	} else {
 		// 4D: [batch, heads, M, K] @ [batch, heads, K, N]
@@ -791,11 +791,11 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 
 		batch = uint32(shapeA[0] * shapeA[1]) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-		M = uint32(shapeA[2])
+		M = uint32(shapeA[2]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-		K = uint32(shapeA[3])
+		K = uint32(shapeA[3]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-		N = uint32(shapeB[3])
+		N = uint32(shapeB[3]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 		resultShape = tensor.Shape{shapeA[0], shapeA[1], int(M), int(N)}
 	}
 
@@ -883,19 +883,19 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 		return nil, fmt.Errorf("webgpu: Conv2D requires 4D tensors")
 	}
 
-	batchSize := uint32(inShape[0])
+	batchSize := uint32(inShape[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	inChannels := uint32(inShape[1])
+	inChannels := uint32(inShape[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	inHeight := uint32(inShape[2])
+	inHeight := uint32(inShape[2]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	inWidth := uint32(inShape[3])
+	inWidth := uint32(inShape[3]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	outChannels := uint32(kShape[0])
+	outChannels := uint32(kShape[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	kernelH := uint32(kShape[2])
+	kernelH := uint32(kShape[2]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	kernelW := uint32(kShape[3])
+	kernelW := uint32(kShape[3]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
 	// Calculate output dimensions
 
@@ -993,13 +993,13 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 		return nil, fmt.Errorf("webgpu: MaxPool2D requires 4D tensor")
 	}
 
-	batchSize := uint32(inShape[0])
+	batchSize := uint32(inShape[0]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	channels := uint32(inShape[1])
+	channels := uint32(inShape[1]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	inHeight := uint32(inShape[2])
+	inHeight := uint32(inShape[2]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
-	inWidth := uint32(inShape[3])
+	inWidth := uint32(inShape[3]) //nolint:gosec // G115: safe, tensor dimensions are non-negative and fit in uint32
 
 	kSize := uint32(kernelSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
@@ -1378,9 +1378,8 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numIndices)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(embeddingDim))
-
-	binary.LittleEndian.PutUint32(params[8:12], uint32(numEmbeddings))
+	binary.LittleEndian.PutUint32(params[4:8], uint32(embeddingDim))   //nolint:gosec // G115: safe, embedding dimensions are non-negative and fit in uint32
+	binary.LittleEndian.PutUint32(params[8:12], uint32(numEmbeddings)) //nolint:gosec // G115: safe, embedding count is non-negative and fits in uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -1877,7 +1876,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack input shape (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(shape) {
-			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(shape[i]))
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(shape[i])) //nolint:gosec // G115: safe, shape values are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], 1)
 		}
@@ -1886,7 +1885,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i]))
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i])) //nolint:gosec // G115: safe, stride values are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], 1)
 		}
@@ -1895,7 +1894,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i]))
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i])) //nolint:gosec // G115: safe, stride values are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], 1)
 		}
@@ -1904,7 +1903,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// Pack axes (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(axes) {
-			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], uint32(axes[i]))
+			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], uint32(axes[i])) //nolint:gosec // G115: safe, axis indices are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[80+i*4:84+i*4], 0)
 		}
@@ -2036,7 +2035,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Pack input shape (6 slots) - use paddedShape
 	for i := 0; i < 6; i++ {
 		if i < len(paddedShape) {
-			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(paddedShape[i]))
+			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], uint32(paddedShape[i])) //nolint:gosec // G115: safe, shape values are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[8+i*4:12+i*4], 1)
 		}
@@ -2045,7 +2044,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i]))
+			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], uint32(inputStrides[i])) //nolint:gosec // G115: safe, stride values are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[32+i*4:36+i*4], 1)
 		}
@@ -2054,7 +2053,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i]))
+			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], uint32(outputStrides[i])) //nolint:gosec // G115: safe, stride values are non-negative and fit in uint32
 		} else {
 			binary.LittleEndian.PutUint32(params[56+i*4:60+i*4], 1)
 		}

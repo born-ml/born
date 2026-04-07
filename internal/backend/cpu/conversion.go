@@ -147,7 +147,7 @@ func castFromInt32(result, x *tensor.RawTensor, toDtype tensor.DataType) {
 	case tensor.Uint8:
 		dst := result.AsUint8()
 		for i, v := range src {
-			dst[i] = uint8(v)
+			dst[i] = uint8(v) //nolint:gosec // G115: intentional dtype cast, caller controls value range
 		}
 	case tensor.Bool:
 		dst := result.AsBool()
@@ -180,12 +180,12 @@ func castFromInt64(result, x *tensor.RawTensor, toDtype tensor.DataType) {
 	case tensor.Int32:
 		dst := result.AsInt32()
 		for i, v := range src {
-			dst[i] = int32(v)
+			dst[i] = int32(v) //nolint:gosec // G115: intentional dtype cast, caller controls value range
 		}
 	case tensor.Uint8:
 		dst := result.AsUint8()
 		for i, v := range src {
-			dst[i] = uint8(v)
+			dst[i] = uint8(v) //nolint:gosec // G115: intentional dtype cast, caller controls value range
 		}
 	case tensor.Bool:
 		dst := result.AsBool()

@@ -97,7 +97,7 @@ func dequantizeUnquantized(data []byte, dtype GGMLType, numElements int) ([]floa
 
 	case GGMLTypeI8:
 		for i := 0; i < numElements; i++ {
-			result[i] = float32(int8(data[i]))
+			result[i] = float32(int8(data[i])) //nolint:gosec // G115: intentional byte-to-signed reinterpretation for GGML I8 format
 		}
 
 	case GGMLTypeI16:
@@ -278,7 +278,7 @@ func dequantizeBlockQ8_0(data []byte) ([]float32, error) {
 
 	result := make([]float32, 32)
 	for i := 0; i < 32; i++ {
-		q := int8(data[2+i])
+		q := int8(data[2+i]) //nolint:gosec // G115: intentional byte-to-signed reinterpretation for Q8_0 quantized weights
 		result[i] = d * float32(q)
 	}
 
@@ -299,12 +299,12 @@ func dequantizeBlockQ8_1(data []byte) ([]float32, error) {
 	// Calculate sum of quantized values.
 	sum := int32(0)
 	for i := 0; i < 32; i++ {
-		sum += int32(int8(data[4+i]))
+		sum += int32(int8(data[4+i])) //nolint:gosec // G115: intentional byte-to-signed reinterpretation for Q8_1 quantized weights
 	}
 
 	result := make([]float32, 32)
 	for i := 0; i < 32; i++ {
-		q := int8(data[4+i])
+		q := int8(data[4+i]) //nolint:gosec // G115: intentional byte-to-signed reinterpretation for Q8_1 quantized weights
 		result[i] = d*float32(q) + s*float32(sum)
 	}
 

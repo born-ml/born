@@ -403,7 +403,7 @@ func (b *Backend) castToInt32(x, result *tensor.RawTensor) {
 	case tensor.Int64:
 		src := x.AsInt64()
 		for i, v := range src {
-			dst[i] = int32(v)
+			dst[i] = int32(v) //nolint:gosec // G115: safe, int64→int32 truncation accepted for GPU cast op
 		}
 	default:
 		panic("webgpu: Cast: unsupported source type for int32: " + x.DType().String())

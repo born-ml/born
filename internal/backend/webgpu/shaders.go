@@ -406,7 +406,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 `
 
 // erfShader performs element-wise error function: result = erf(x).
-// Abromowitz & Stegun approximation for erf(x)
+// Abromowitz & Stegun approximation for erf(x).
 const erfShader = `
 fn erf(x: f32) -> f32 {
     let sign = select(-1.0, 1.0, x >= 0.0);

@@ -201,9 +201,9 @@ func (b *Backend) runMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTensor, 
 		return nil, &lazyError{msg: "matmul: requires 2D tensors"}
 	}
 
-	M := uint32(a.Shape()[0])
-	K := uint32(a.Shape()[1])
-	N := uint32(other.Shape()[1])
+	M := uint32(a.Shape()[0])     //nolint:gosec // G115: safe, tensor dims are small positive ints
+	K := uint32(a.Shape()[1])     //nolint:gosec // G115: safe, tensor dims are small positive ints
+	N := uint32(other.Shape()[1]) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
 	if other.Shape()[0] != int(K) {
 		return nil, &lazyError{msg: "matmul: shape mismatch"}
@@ -398,17 +398,17 @@ func (b *Backend) runBatchMatMulLazy(a, other *tensor.RawTensor) (*tensor.RawTen
 
 	if len(shapeA) == 3 {
 		// 3D: [batch, M, K] @ [batch, K, N]
-		batch = uint32(shapeA[0])
-		M = uint32(shapeA[1])
-		K = uint32(shapeA[2])
-		N = uint32(shapeB[2])
+		batch = uint32(shapeA[0]) //nolint:gosec // G115: safe, tensor dims are small positive ints
+		M = uint32(shapeA[1])     //nolint:gosec // G115: safe, tensor dims are small positive ints
+		K = uint32(shapeA[2])     //nolint:gosec // G115: safe, tensor dims are small positive ints
+		N = uint32(shapeB[2])     //nolint:gosec // G115: safe, tensor dims are small positive ints
 		resultShape = tensor.Shape{int(batch), int(M), int(N)}
 	} else {
 		// 4D: [batch, heads, M, K] @ [batch, heads, K, N]
-		batch = uint32(shapeA[0] * shapeA[1]) //nolint:gosec // G115: integer overflow conversion int -> uint32
-		M = uint32(shapeA[2])
-		K = uint32(shapeA[3])
-		N = uint32(shapeB[3])
+		batch = uint32(shapeA[0] * shapeA[1]) //nolint:gosec // G115: safe, product of small tensor dims
+		M = uint32(shapeA[2])                 //nolint:gosec // G115: safe, tensor dims are small positive ints
+		K = uint32(shapeA[3])                 //nolint:gosec // G115: safe, tensor dims are small positive ints
+		N = uint32(shapeB[3])                 //nolint:gosec // G115: safe, tensor dims are small positive ints
 		resultShape = tensor.Shape{shapeA[0], shapeA[1], int(M), int(N)}
 	}
 
@@ -480,8 +480,8 @@ func (b *Backend) runTransposeLazy(input *tensor.RawTensor) (*tensor.RawTensor, 
 		return nil, &lazyError{msg: "transpose: requires 2D tensor"}
 	}
 
-	rows := uint32(input.Shape()[0])
-	cols := uint32(input.Shape()[1])
+	rows := uint32(input.Shape()[0]) //nolint:gosec // G115: safe, tensor dims are small positive ints
+	cols := uint32(input.Shape()[1]) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
 	// Compile shader
 	shader := b.compileShader("transpose", transposeShader)
@@ -543,8 +543,8 @@ func (b *Backend) runSoftmaxLazy(input *tensor.RawTensor) (*tensor.RawTensor, er
 		return nil, &lazyError{msg: "softmax: requires 2D tensor"}
 	}
 
-	batchSize := uint32(input.Shape()[0])
-	numClasses := uint32(input.Shape()[1])
+	batchSize := uint32(input.Shape()[0])  //nolint:gosec // G115: safe, tensor dims are small positive ints
+	numClasses := uint32(input.Shape()[1]) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
 	// Compile shader
 	shader := b.compileShader("softmax", softmaxShader)
@@ -677,7 +677,7 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack input shape (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(shape) {
-			putUint32LE(params[8+i*4:12+i*4], uint32(shape[i]))
+			putUint32LE(params[8+i*4:12+i*4], uint32(shape[i])) //nolint:gosec // G115: safe, tensor dims are small positive ints
 		} else {
 			putUint32LE(params[8+i*4:12+i*4], 1)
 		}
@@ -686,7 +686,7 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			putUint32LE(params[32+i*4:36+i*4], uint32(inputStrides[i]))
+			putUint32LE(params[32+i*4:36+i*4], uint32(inputStrides[i])) //nolint:gosec // G115: safe, strides derived from tensor dims
 		} else {
 			putUint32LE(params[32+i*4:36+i*4], 1)
 		}
@@ -695,7 +695,7 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			putUint32LE(params[56+i*4:60+i*4], uint32(outputStrides[i]))
+			putUint32LE(params[56+i*4:60+i*4], uint32(outputStrides[i])) //nolint:gosec // G115: safe, strides derived from tensor dims
 		} else {
 			putUint32LE(params[56+i*4:60+i*4], 1)
 		}
@@ -704,7 +704,7 @@ func (b *Backend) runTransposeNDLazy(input *tensor.RawTensor, axes []int) (*tens
 	// Pack axes (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(axes) {
-			putUint32LE(params[80+i*4:84+i*4], uint32(axes[i]))
+			putUint32LE(params[80+i*4:84+i*4], uint32(axes[i])) //nolint:gosec // G115: safe, axis indices are small non-negative ints
 		} else {
 			putUint32LE(params[80+i*4:84+i*4], 0)
 		}
@@ -817,7 +817,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	// Pack input shape (6 slots) - use paddedShape
 	for i := 0; i < 6; i++ {
 		if i < len(paddedShape) {
-			putUint32LE(params[8+i*4:12+i*4], uint32(paddedShape[i]))
+			putUint32LE(params[8+i*4:12+i*4], uint32(paddedShape[i])) //nolint:gosec // G115: safe, tensor dims are small positive ints
 		} else {
 			putUint32LE(params[8+i*4:12+i*4], 1)
 		}
@@ -826,7 +826,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	// Pack input strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(inputStrides) {
-			putUint32LE(params[32+i*4:36+i*4], uint32(inputStrides[i]))
+			putUint32LE(params[32+i*4:36+i*4], uint32(inputStrides[i])) //nolint:gosec // G115: safe, strides derived from tensor dims
 		} else {
 			putUint32LE(params[32+i*4:36+i*4], 1)
 		}
@@ -835,7 +835,7 @@ func (b *Backend) runExpandLazy(input *tensor.RawTensor, newShape tensor.Shape) 
 	// Pack output strides (6 slots)
 	for i := 0; i < 6; i++ {
 		if i < len(outputStrides) {
-			putUint32LE(params[56+i*4:60+i*4], uint32(outputStrides[i]))
+			putUint32LE(params[56+i*4:60+i*4], uint32(outputStrides[i])) //nolint:gosec // G115: safe, strides derived from tensor dims
 		} else {
 			putUint32LE(params[56+i*4:60+i*4], 1)
 		}

@@ -59,7 +59,7 @@ func (c *TensorConverter) Convert(name string) ([]float32, []int, error) {
 	// Convert GGUF dimensions to Born shape (reverse order).
 	shape := make([]int, len(tensor.Dimensions))
 	for i, dim := range tensor.Dimensions {
-		shape[len(tensor.Dimensions)-1-i] = int(dim)
+		shape[len(tensor.Dimensions)-1-i] = int(dim) //nolint:gosec // G115: safe, GGUF dimensions are small shape values
 	}
 
 	return data, shape, nil

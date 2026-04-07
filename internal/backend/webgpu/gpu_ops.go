@@ -169,11 +169,11 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 	// Create uniform buffer for dimensions
 	params := make([]byte, 16) // 16-byte aligned
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(m))
+	binary.LittleEndian.PutUint32(params[0:4], uint32(m)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(k))
+	binary.LittleEndian.PutUint32(params[4:8], uint32(k)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
-	binary.LittleEndian.PutUint32(params[8:12], uint32(n))
+	binary.LittleEndian.PutUint32(params[8:12], uint32(n)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -197,9 +197,9 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 	// Dispatch 2D workgroups: (m / tileSize, n / tileSize)
 	const tileSize = 16
 
-	workgroupsX := uint32((m + tileSize - 1) / tileSize)
+	workgroupsX := uint32((m + tileSize - 1) / tileSize) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
-	workgroupsY := uint32((n + tileSize - 1) / tileSize)
+	workgroupsY := uint32((n + tileSize - 1) / tileSize) //nolint:gosec // G115: safe, tensor dims are small positive ints
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, 1)
 	computePass.End()
 
@@ -255,9 +255,9 @@ func (b *Backend) TransposeGPU(t *GPUTensor, axes ...int) *GPUTensor {
 	// Create uniform buffer for dimensions
 	params := make([]byte, 16) // 16-byte aligned
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(m))
+	binary.LittleEndian.PutUint32(params[0:4], uint32(m)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
-	binary.LittleEndian.PutUint32(params[4:8], uint32(n))
+	binary.LittleEndian.PutUint32(params[4:8], uint32(n)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -280,9 +280,9 @@ func (b *Backend) TransposeGPU(t *GPUTensor, axes ...int) *GPUTensor {
 	// Dispatch 2D workgroups: (n / tileSize, m / tileSize)
 	const tileSize = 16
 
-	workgroupsX := uint32((n + tileSize - 1) / tileSize)
+	workgroupsX := uint32((n + tileSize - 1) / tileSize) //nolint:gosec // G115: safe, tensor dims are small positive ints
 
-	workgroupsY := uint32((m + tileSize - 1) / tileSize)
+	workgroupsY := uint32((m + tileSize - 1) / tileSize) //nolint:gosec // G115: safe, tensor dims are small positive ints
 	computePass.DispatchWorkgroups(workgroupsX, workgroupsY, 1)
 	computePass.End()
 

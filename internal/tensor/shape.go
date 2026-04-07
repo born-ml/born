@@ -33,7 +33,7 @@ func (s Shape) Equal(other Shape) bool {
 		return false
 	}
 	for i := range s {
-		if s[i] != other[i] {
+		if s[i] != other[i] { //nolint:gosec // G602: false positive, len equality checked above
 			return false
 		}
 	}
