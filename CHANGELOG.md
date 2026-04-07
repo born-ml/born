@@ -5,6 +5,26 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.15] - 2026-04-07
+
+### 🎉 Community Contribution — Erf Operator
+
+Second external contribution! Thanks to [@bennibbelink](https://github.com/bennibbelink).
+
+**Added**:
+- `Erf` (error function) operator — full vertical slice across the entire stack
+- Backend interface: `Erf(x *RawTensor) *RawTensor`
+- CPU backend: `math.Erf` for float32/float64
+- WebGPU backend: Abramowitz & Stegun polynomial approximation shader
+- Autodiff: backward pass with correct derivative `2/√π · exp(-x²)`
+- Mock backend, Tensor API (`tensor.Erf()`)
+- Comprehensive tests: forward + backward, float32/float64, edge cases (Inf, NaN)
+
+**Links**:
+- PR: [#37](https://github.com/born-ml/born/pull/37) by @bennibbelink
+
+---
+
 ## [0.7.14] - 2026-03-04
 
 ### 🎉 Community Contribution — ONNX Equal Operator
@@ -1229,6 +1249,7 @@ N/A (initial release)
 [0.7.10]: https://github.com/born-ml/born/releases/tag/v0.7.10
 [0.7.9]: https://github.com/born-ml/born/releases/tag/v0.7.9
 [0.7.8]: https://github.com/born-ml/born/releases/tag/v0.7.8
+[0.7.15]: https://github.com/born-ml/born/releases/tag/v0.7.15
 [0.7.14]: https://github.com/born-ml/born/releases/tag/v0.7.14
 [0.7.13]: https://github.com/born-ml/born/releases/tag/v0.7.13
 [0.7.12]: https://github.com/born-ml/born/releases/tag/v0.7.12
