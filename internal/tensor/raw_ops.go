@@ -700,7 +700,7 @@ func Squeeze(x *RawTensor, axes ...int) (*RawTensor, error) {
 	}
 
 	if len(newShape) == 0 {
-		newShape = Shape{1} // Scalar
+		newShape = Shape{} // Scalar
 	}
 
 	return Reshape(x, newShape)
