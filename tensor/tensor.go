@@ -218,3 +218,17 @@ func Where[T DType, B Backend](cond *Tensor[bool, B], x, y *Tensor[T, B]) *Tenso
 func BroadcastShapes(a, b Shape) (Shape, bool, error) {
 	return tensor.BroadcastShapes(a, b)
 }
+
+// BroadcastShapesMatMul computes the broadcast shape for two shapes specifically for matrix multiplication following NumPy broadcasting rules.
+// Returns the resulting shape, a flag indicating if broadcasting is needed among batch dimensions, and an error if incompatible.
+//
+// Example:
+//
+//	resultShape, needsBroadcast, err := tensor.BroadcastShapesMatMul(
+//	    tensor.Shape{2, 3, 4},
+//	    tensor.Shape{2, 4, 5},
+//	)
+//	// resultShape = [2, 3, 5], needsBroadcast = false
+func BroadcastShapesMatMul(a, b Shape) (Shape, bool, error) {
+	return tensor.BroadcastShapesMatMul(a, b)
+}

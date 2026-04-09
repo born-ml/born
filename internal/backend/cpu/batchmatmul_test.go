@@ -236,6 +236,121 @@ func TestBatchMatMul_Float64(t *testing.T) {
 	}
 }
 
+// TestBatchMatMul_Broadcast_SingletonBatch tests A with batch=1 broadcast to B's batch=2.
+func TestBatchMatMul_Broadcast_SingletonBatch(t *testing.T) {
+	backend := New()
+
+	// A: [1, 2, 2]  (batch=1, M=2, K=2)
+	// B: [2, 2, 2]  (batch=2, K=2, N=2)
+	// Output: [2, 2, 2]
+
+	aData := []float32{1, 2, 3, 4}
+	a, _ := tensor.FromSlice(aData, tensor.Shape{1, 2, 2}, backend)
+
+	bData := []float32{
+		1, 0, 0, 1,
+		2, 0, 0, 2,
+	}
+	b, _ := tensor.FromSlice(bData, tensor.Shape{2, 2, 2}, backend)
+
+	result := backend.BatchMatMul(a.Raw(), b.Raw())
+	expectedShape := tensor.Shape{2, 2, 2}
+	if !shapeEqual(result.Shape(), expectedShape) {
+		t.Fatalf("Shape: got %v, want %v", result.Shape(), expectedShape)
+	}
+
+	got := result.AsFloat32()
+	want := []float32{
+		1, 2, 3, 4,
+		2, 4, 6, 8,
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("Element %d: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestBatchMatMul_Broadcast_BothSides tests (2,1) vs (1,3) broadcasting.
+func TestBatchMatMul_Broadcast_BothSides(t *testing.T) {
+	backend := New()
+
+	// A: [2, 1, 2, 2] -> batch (2,1), M=2, K=2
+	// B: [1, 3, 2, 2] -> batch (1,3), K=2, N=2
+	// Output: [2, 3, 2, 2]
+
+	aData := []float32{
+		1, 0, 0, 1,
+		2, 0, 0, 2,
+	}
+	a, _ := tensor.FromSlice(aData, tensor.Shape{2, 1, 2, 2}, backend)
+
+	bData := []float32{
+		1, 0, 0, 1,
+		0, 1, 1, 0,
+		1, 1, 1, 1,
+	}
+	b, _ := tensor.FromSlice(bData, tensor.Shape{1, 3, 2, 2}, backend)
+
+	result := backend.BatchMatMul(a.Raw(), b.Raw())
+	expectedShape := tensor.Shape{2, 3, 2, 2}
+	if !shapeEqual(result.Shape(), expectedShape) {
+		t.Fatalf("Shape: got %v, want %v", result.Shape(), expectedShape)
+	}
+
+	want := []float32{
+		1, 0, 0, 1,
+		0, 1, 1, 0,
+		1, 1, 1, 1,
+		2, 0, 0, 2,
+		0, 2, 2, 0,
+		2, 2, 2, 2,
+	}
+	got := result.AsFloat32()
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("Element %d: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestBatchMatMul_Broadcast_2D_With_3D tests matrix (2D) broadcast to batch.
+func TestBatchMatMul_Broadcast_2D_With_3D(t *testing.T) {
+	backend := New()
+
+	// A: [2,2] (M=2,K=2) – no batch dims, treated as batch=1
+	// B: [3,2,2] (batch=3, K=2,N=2)
+	// Output: [3,2,2]
+
+	aData := []float32{1, 2, 3, 4}
+	a, _ := tensor.FromSlice(aData, tensor.Shape{2, 2}, backend)
+
+	bData := []float32{
+		1, 0, 0, 1,
+		0, 1, 1, 0,
+		1, 1, 1, 1,
+	}
+	b, _ := tensor.FromSlice(bData, tensor.Shape{3, 2, 2}, backend)
+
+	result := backend.BatchMatMul(a.Raw(), b.Raw())
+	expectedShape := tensor.Shape{3, 2, 2}
+	if !shapeEqual(result.Shape(), expectedShape) {
+		t.Fatalf("Shape: got %v, want %v", result.Shape(), expectedShape)
+	}
+
+	want := []float32{
+		1, 2, 3, 4,
+		2, 1, 4, 3,
+		3, 3, 7, 7,
+	}
+	got := result.AsFloat32()
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("Element %d: got %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
 // Helper function to compare shapes.
 func shapeEqual(a, b tensor.Shape) bool {
 	if len(a) != len(b) {
