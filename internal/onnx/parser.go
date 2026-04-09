@@ -614,31 +614,53 @@ func (p *parser) readAttributeProto(m *AttributeProto) error {
 			m.I, err = p.readVarint()
 		case 4: // s (bytes)
 			m.S, err = p.readBytes()
-		case 6: // floats (packed)
-			data, err2 := p.readBytes()
-			if err2 != nil {
-				return err2
-			}
-			for i := 0; i+4 <= len(data); i += 4 {
-				bits := binary.LittleEndian.Uint32(data[i:])
-				m.Floats = append(m.Floats, math.Float32frombits(bits))
+		case 7: // floats
+			switch wireType {
+			case wire32Bit:
+				v, err := p.readFloat32()
+				if err != nil {
+					return err
+				}
+				m.Floats = append(m.Floats, v)
+			case wireBytes:
+				data, err := p.readBytes()
+				if err != nil {
+					return err
+				}
+				for i := 0; i+4 <= len(data); i += 4 {
+					bits := binary.LittleEndian.Uint32(data[i:])
+					m.Floats = append(m.Floats, math.Float32frombits(bits))
+				}
+			default:
+				return fmt.Errorf("unsupported wire type %d for floats", wireType)
 			}
 			continue
-		case 7: // ints (packed)
-			data, err2 := p.readBytes()
-			if err2 != nil {
-				return err2
-			}
-			sub := &parser{data: data, pos: 0}
-			for sub.pos < len(sub.data) {
-				v, err3 := sub.readVarint()
-				if err3 != nil {
-					break
+		case 8: // ints
+			switch wireType {
+			case wireVarint:
+				v, err := p.readVarint()
+				if err != nil {
+					return err
 				}
 				m.Ints = append(m.Ints, v)
+			case wireBytes:
+				data, err := p.readBytes()
+				if err != nil {
+					return err
+				}
+				sub := &parser{data: data, pos: 0}
+				for sub.pos < len(sub.data) {
+					v, err := sub.readVarint()
+					if err != nil {
+						break
+					}
+					m.Ints = append(m.Ints, v)
+				}
+			default:
+				return fmt.Errorf("unsupported wire type %d for ints", wireType)
 			}
 			continue
-		case 8: // strings
+		case 9: // strings
 			data, err2 := p.readBytes()
 			if err2 != nil {
 				return err2

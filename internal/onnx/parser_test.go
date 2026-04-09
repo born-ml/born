@@ -426,7 +426,7 @@ func buildConvGraph() []byte {
 	attrData.writeBytes([]byte("kernel_shape"))
 	attrData.writeTag(20, wireVarint)
 	attrData.writeVarint(int64(AttributeProtoInts))
-	attrData.writeTag(7, wireBytes) // ints (field 7 in ONNX AttributeProto)
+	attrData.writeTag(8, wireBytes) // ints (field 8 in ONNX AttributeProto)
 	intsData := &protoBuilder{}
 	intsData.writeVarint(3)
 	intsData.writeVarint(3)
