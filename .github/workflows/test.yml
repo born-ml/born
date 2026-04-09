@@ -173,3 +173,23 @@ jobs:
 
     - name: Run benchmarks
       run: go test -bench=. -benchmem -run=^$ ./internal/tensor/...
+
+  # Gate job for branch protection — single required check
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [unit-tests, lint, formatting, build-examples, build-tools, benchmarks]
+    steps:
+    - name: Check results
+      run: |
+        if [[ "${{ needs.unit-tests.result }}" == "failure" || \
+              "${{ needs.lint.result }}" == "failure" || \
+              "${{ needs.formatting.result }}" == "failure" || \
+              "${{ needs.build-examples.result }}" == "failure" || \
+              "${{ needs.build-tools.result }}" == "failure" || \
+              "${{ needs.benchmarks.result }}" == "failure" ]]; then
+          echo "One or more required jobs failed"
+          exit 1
+        fi
+        echo "All checks passed ✓"
