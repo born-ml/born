@@ -58,7 +58,14 @@ func handleMatMul(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.
 	if len(inputs) != 2 {
 		return nil, fmt.Errorf("matMul requires 2 inputs, got %d", len(inputs))
 	}
-	result := ctx.Backend.MatMul(inputs[0], inputs[1])
+	a, b := inputs[0], inputs[1]
+
+	var result *tensor.RawTensor
+	if len(a.Shape()) <= 2 && len(b.Shape()) <= 2 {
+		result = ctx.Backend.MatMul(inputs[0], inputs[1])
+	} else {
+		result = ctx.Backend.BatchMatMul(inputs[0], inputs[1])
+	}
 	return []*tensor.RawTensor{result}, nil
 }
 

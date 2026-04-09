@@ -117,6 +117,51 @@ func BroadcastShapes(a, b Shape) (Shape, bool, error) {
 	return result, needsBroadcast, nil
 }
 
+// BroadcastShapesMatMul implements NumPy-style broadcasting rules for matrix multiplication.
+//
+// Rules:
+// 1. Both shapes must have at least 2 dimensions (matrix dimensions)
+// 2. The inner dimensions must match: a[last] == b[second-to-last] (k1 == k2)
+// 3. The batch dimensions (all dimensions except the last two) are broadcasted using standard broadcasting rules:
+//   - Compare shapes element-wise from right to left
+//   - Dimensions are compatible if they are equal OR one of them is 1
+//   - Missing dimensions are treated as 1
+//
+// Returns the broadcasted shape, a flag indicating if broadcasting is needed, and an error if incompatible.
+//
+// Examples:
+//
+//	(3, 4) + (4, 5) → (3, 5), false, nil
+//	(2, 3, 4) + (2, 4, 5) → (2, 3, 5), false, nil
+//	(2, 1, 3, 4) + (5, 4, 2) → (2, 5, 3, 2), true, nil
+//	(3, 4) + (4) → nil, false, Error
+//	(3, 1, 4) + (5, 4, 2) → nil, false, Error
+//	(3, 5) + (4, 5) → nil, false, Error
+func BroadcastShapesMatMul(a, b Shape) (Shape, bool, error) {
+	adim := len(a)
+	bdim := len(b)
+	if adim < 2 || bdim < 2 {
+		return nil, false, fmt.Errorf("shapes must have at least 2 dims for multiplication, got: %v and %v", adim, bdim)
+	}
+
+	m := a[adim-2]
+	k1 := a[adim-1]
+	n := b[bdim-1]
+	k2 := b[bdim-2]
+
+	if k1 != k2 {
+		return nil, false, fmt.Errorf("inner dimension mismatch: %d vs %d", k1, k2)
+	}
+
+	batchShape, needsBroadcast, err := BroadcastShapes(a[:adim-2], b[:bdim-2])
+	if err != nil {
+		return nil, false, err
+	}
+
+	batchShape = append(batchShape, m, n)
+	return batchShape, needsBroadcast, nil
+}
+
 // maxInt returns the maximum of two integers.
 func maxInt(a, b int) int {
 	if a > b {
