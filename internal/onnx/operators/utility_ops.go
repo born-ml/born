@@ -189,8 +189,10 @@ func handleWhere(_ *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.Raw
 // tensorFromAttribute creates a RawTensor from an ONNX TensorProto attribute.
 func tensorFromAttribute(attr *Attribute) (*tensor.RawTensor, error) {
 	// The attribute contains embedded tensor data
-	// For now, return error - full implementation would parse the embedded tensor
 	// This is typically used for small constant values
+	if attr.T != nil {
+		return attr.T, nil
+	}
 	if len(attr.Floats) > 0 {
 		t, err := tensor.NewRaw(tensor.Shape{len(attr.Floats)}, tensor.Float32, tensor.CPU)
 		if err != nil {

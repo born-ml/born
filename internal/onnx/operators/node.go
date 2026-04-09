@@ -3,6 +3,8 @@
 // Package operators provides ONNX operator implementations.
 package operators
 
+import "github.com/born-ml/born/internal/tensor"
+
 // ONNX data types (TensorProto.DataType).
 const (
 	TensorProtoUndefined = 0
@@ -35,14 +37,15 @@ type Node struct {
 
 // Attribute represents a node attribute.
 type Attribute struct {
-	Name    string    // Attribute name
-	Type    int32     // Attribute type
-	F       float32   // FLOAT value
-	I       int64     // INT value
-	S       []byte    // STRING value
-	Floats  []float32 // FLOATS array
-	Ints    []int64   // INTS array
-	Strings [][]byte  // STRINGS array
+	Name    string            // Attribute name
+	Type    int32             // Attribute type
+	F       float32           // FLOAT value
+	I       int64             // INT value
+	S       []byte            // STRING value
+	T       *tensor.RawTensor // TENSOR value
+	Floats  []float32         // FLOATS array
+	Ints    []int64           // INTS array
+	Strings [][]byte          // STRINGS array
 }
 
 // GetAttrInt returns an integer attribute or default value.

@@ -111,7 +111,10 @@ func (m *Model) ForwardNamed(inputs map[string]*tensor.RawTensor) (map[string]*t
 		}
 
 		// Execute operator
-		opNode := nodeProtoToOperatorNode(node)
+		opNode, err := nodeProtoToOperatorNode(node)
+		if err != nil {
+			return nil, fmt.Errorf("node %s (%s): %w", node.Name, node.OpType, err)
+		}
 		outputs, err := m.registry.Execute(ctx, opNode, nodeInputs)
 		if err != nil {
 			return nil, fmt.Errorf("node %s (%s): %w", node.Name, node.OpType, err)
@@ -247,7 +250,7 @@ func protoTypeToTensorType(onnxType int32) tensor.DataType {
 }
 
 // nodeProtoToOperatorNode converts NodeProto to operators.Node.
-func nodeProtoToOperatorNode(proto *NodeProto) *operators.Node {
+func nodeProtoToOperatorNode(proto *NodeProto) (*operators.Node, error) {
 	attrs := make([]operators.Attribute, len(proto.Attributes))
 	for i := range proto.Attributes {
 		attr := &proto.Attributes[i]
@@ -261,6 +264,13 @@ func nodeProtoToOperatorNode(proto *NodeProto) *operators.Node {
 			Ints:    attr.Ints,
 			Strings: attr.Strings,
 		}
+		if attr.T != nil {
+			var err error
+			attrs[i].T, err = tensorFromProto(attr.T)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &operators.Node{
 		Name:       proto.Name,
@@ -269,7 +279,7 @@ func nodeProtoToOperatorNode(proto *NodeProto) *operators.Node {
 		Outputs:    proto.Outputs,
 		Attributes: attrs,
 		Domain:     proto.Domain,
-	}
+	}, nil
 }
 
 // topologicalSort sorts nodes in execution order.

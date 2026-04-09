@@ -589,7 +589,7 @@ func (p *parser) readDimensionProto(m *DimensionProto) error {
 
 // readAttributeProto reads AttributeProto message.
 //
-//nolint:gocognit,gocyclo,cyclop // Protobuf parsing requires field-by-field switch logic
+//nolint:gocognit,gocyclo,cyclop,funlen // Protobuf parsing requires field-by-field switch logic
 func (p *parser) readAttributeProto(m *AttributeProto) error {
 	for p.pos < len(p.data) {
 		fieldNum, wireType, err := p.readTag()
@@ -614,6 +614,18 @@ func (p *parser) readAttributeProto(m *AttributeProto) error {
 			m.I, err = p.readVarint()
 		case 4: // s (bytes)
 			m.S, err = p.readBytes()
+		case 5: // t (tensor)
+			data, err2 := p.readBytes()
+			if err2 != nil {
+				return err2
+			}
+			sub := &parser{data: data, pos: 0}
+			tensor := TensorProto{}
+			if err2 := sub.readMessage(&tensor); err2 != nil {
+				return err2
+			}
+			m.T = &tensor
+			continue
 		case 7: // floats
 			switch wireType {
 			case wire32Bit:
