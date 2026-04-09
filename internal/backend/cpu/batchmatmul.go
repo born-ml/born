@@ -6,14 +6,19 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
-// BatchMatMul performs batched matrix multiplication.
-// Supports 3D and 4D tensors with batch dimensions.
+// BatchMatMul performs batched matrix multiplication with numpy-style broadcasting.
+// Supports tensors with 2 or more dimensions. At least one input must be 3D or higher.
 //
-// For 3D: [B, M, K] @ [B, K, N] -> [B, M, N]
-// For 4D: [B, H, M, K] @ [B, H, K, N] -> [B, H, M, N]
+// The last two dimensions are treated as matrix dimensions: A: (..., M, K), B: (..., K, N)
+// Output: (..., M, N). The inner dimension K must match exactly.
+// Batch dimensions are broadcast following numpy rules (dimensions compatible if equal or one is 1).
 //
-// The last two dimensions are treated as matrix dimensions.
-// All leading dimensions must match (batch dimensions).
+// Examples:
+//
+//	[B, M, K] @ [B, K, N]       -> [B, M, N]      (no broadcast)
+//	[1, M, K] @ [B, K, N]       -> [B, M, N]      (singleton broadcast)
+//	[M, K]    @ [B, K, N]       -> [B, M, N]      (2D broadcast to batch)
+//	[A, 1, M, K] @ [1, C, K, N] -> [A, C, M, N]  (multi-dim broadcast)
 func (cpu *CPUBackend) BatchMatMul(a, b *tensor.RawTensor) *tensor.RawTensor {
 	aShape := a.Shape()
 	bShape := b.Shape()
@@ -64,7 +69,7 @@ func batchMatmul(result, a, b *tensor.RawTensor, batchSize, m, k, n int) {
 	}
 }
 
-// batchMatmul performs batched matrix multiplication with broadcast.
+// batchMatmulBroadcast performs batched matrix multiplication with broadcast.
 func batchMatmulBroadcast(
 	result, a, b *tensor.RawTensor,
 	outBatchShape, aBatchShape, bBatchShape tensor.Shape,
