@@ -27,6 +27,8 @@ Third external contributor [@gmohmad](https://github.com/gmohmad) with 4 PRs! Pl
 
 **Refactored**:
 - `ConvDims` and `PoolDims` parameter structs to reduce argument counts in conv2d/maxpool2d ([#46](https://github.com/born-ml/born/pull/46) by @bennibbelink)
+- Moved `ConvDims`/`PoolDims` to `internal/tensor/` shared package, eliminating autodiff→cpu cross-dependency (fixes [#48](https://github.com/born-ml/born/issues/48))
+- Extracted 14 helper functions from conv2d/maxpool2d inner loops (fixes [#17](https://github.com/born-ml/born/issues/17)) — compiler-inlined, Conv2D batch path ~28% faster
 
 **Added** (PR #56 by @gmohmad):
 - ONNX comparison operators: Greater, GreaterOrEqual, Less, LessOrEqual
