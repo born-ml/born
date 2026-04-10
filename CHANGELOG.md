@@ -5,6 +5,42 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🎉 Community Contributions — @gmohmad & @bennibbelink
+
+Third external contributor [@gmohmad](https://github.com/gmohmad) with 4 PRs! Plus continued work from [@bennibbelink](https://github.com/bennibbelink).
+
+**Added**:
+- ONNX `LayerNormalization` operator with new `normalization_ops.go` category ([#47](https://github.com/born-ml/born/pull/47) by @gmohmad)
+- `BroadcastShapesMatMul` — NumPy-style broadcasting for batched matrix multiplication ([#49](https://github.com/born-ml/born/pull/49) by @gmohmad)
+- `BatchMatMul` now supports 2D×3D, singleton batch dims, multi-dim broadcasting
+- ONNX `MatMul` auto-delegates to `BatchMatMul` for >2D inputs
+- `tensor.BroadcastShapesMatMul` public API
+- ONNX `AttributeProto` tensor attribute (field 5) parsing ([#53](https://github.com/born-ml/born/pull/53) by @gmohmad)
+
+**Fixed**:
+- `Squeeze` scalar handling: returns `Shape{}` (scalar) instead of `Shape{1}` (1D) ([#50](https://github.com/born-ml/born/pull/50) by @gmohmad)
+- ONNX `AttributeProto` parser: correct protobuf field numbers, non-packed encoding support ([#53](https://github.com/born-ml/born/pull/53) by @gmohmad)
+- CPU backend: prevent inplace mutation when operands alias — `Mul(x,x)` no longer corrupts input ([#55](https://github.com/born-ml/born/pull/55), fixes [#45](https://github.com/born-ml/born/issues/45), reported by @gmohmad)
+- CI: added `test` gate job for branch protection required check ([#52](https://github.com/born-ml/born/pull/52))
+
+**Refactored**:
+- `ConvDims` and `PoolDims` parameter structs to reduce argument counts in conv2d/maxpool2d ([#46](https://github.com/born-ml/born/pull/46) by @bennibbelink)
+
+**Added** (PR #56 by @gmohmad):
+- ONNX comparison operators: Greater, GreaterOrEqual, Less, LessOrEqual
+- ONNX logical operators: Not, And, Or, Xor (new `logical_ops.go`)
+- ONNX Erf operator
+- Broadcasting for boolean ops (Or, And) and all comparison ops in CPU backend
+
+**Fixed** (PR #56 by @gmohmad):
+- Updated `onnx/onnx.go` doc comment to match all registered operators (fixes [#43](https://github.com/born-ml/born/issues/43))
+
+**ONNX operators**: 39 → 49
+
+---
+
 ## [0.7.15] - 2026-04-07
 
 ### 🎉 Community Contribution — Erf Operator
