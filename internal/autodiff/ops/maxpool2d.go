@@ -1,7 +1,6 @@
 package ops
 
 import (
-	"github.com/born-ml/born/internal/backend/cpu"
 	"github.com/born-ml/born/internal/tensor"
 )
 
@@ -62,7 +61,7 @@ func computeMaxIndices(input, output *tensor.RawTensor, kernelSize, stride int) 
 	numOutputs := N * C * HOut * WOut
 	maxIndices := make([]int, numOutputs)
 
-	poolDims := &cpu.PoolDims{
+	poolDims := &tensor.PoolDims{
 		N: N, C: C, H: H, W: W,
 		KH: kernelSize, KW: kernelSize,
 		HOut: HOut, WOut: WOut,
@@ -83,7 +82,7 @@ func computeMaxIndices(input, output *tensor.RawTensor, kernelSize, stride int) 
 }
 
 // computeMaxIndicesFloat32 finds max positions for float32 tensors.
-func computeMaxIndicesFloat32(maxIndices []int, input *tensor.RawTensor, dims *cpu.PoolDims) {
+func computeMaxIndicesFloat32(maxIndices []int, input *tensor.RawTensor, dims *tensor.PoolDims) {
 	inputData := input.AsFloat32()
 
 	N := dims.N
@@ -131,7 +130,7 @@ func computeMaxIndicesFloat32(maxIndices []int, input *tensor.RawTensor, dims *c
 }
 
 // computeMaxIndicesFloat64 finds max positions for float64 tensors.
-func computeMaxIndicesFloat64(maxIndices []int, input *tensor.RawTensor, dims *cpu.PoolDims) {
+func computeMaxIndicesFloat64(maxIndices []int, input *tensor.RawTensor, dims *tensor.PoolDims) {
 	inputData := input.AsFloat64()
 
 	N := dims.N

@@ -6,13 +6,8 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
-// ConvDims groups convolution dimension parameters.
-type ConvDims struct {
-	N, CIn, H, W    int // Input dimensions
-	COut, KH, KW    int // Kernel dimensions
-	HOut, WOut      int // Output dimensions
-	Stride, Padding int // Convolution parameters
-}
+// ConvDims is tensor.ConvDims, defined in the shared tensor package.
+type ConvDims = tensor.ConvDims
 
 // Conv2D performs 2D convolution using im2col algorithm.
 //

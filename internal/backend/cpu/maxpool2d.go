@@ -6,13 +6,8 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
-// PoolDims groups pooling dimension parameters.
-type PoolDims struct {
-	N, C, H, W      int // Input dimensions
-	KH, KW          int // Kernel dimensions
-	HOut, WOut      int // Output dimensions
-	Stride, Padding int // Pooling parameters
-}
+// PoolDims is tensor.PoolDims, defined in the shared tensor package.
+type PoolDims = tensor.PoolDims
 
 // MaxPool2D performs 2D max pooling.
 //
