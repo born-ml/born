@@ -64,6 +64,78 @@ func TestRegisterEqualOp(t *testing.T) {
 	}
 }
 
+func TestRegisterGreaterOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Greater"); !ok {
+		t.Error("Expected Greater operator to be registered")
+	}
+}
+
+func TestRegisterGreaterOrEqualOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("GreaterOrEqual"); !ok {
+		t.Error("Expected GreaterOrEqual operator to be registered")
+	}
+}
+
+func TestRegisterLessOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Less"); !ok {
+		t.Error("Expected Less operator to be registered")
+	}
+}
+
+func TestRegisterLessOrEqualOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("LessOrEqual"); !ok {
+		t.Error("Expected LessOrEqual operator to be registered")
+	}
+}
+
+func TestRegisterNotOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Not"); !ok {
+		t.Error("Expected Not operator to be registered")
+	}
+}
+
+func TestRegisterAndOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("And"); !ok {
+		t.Error("Expected And operator to be registered")
+	}
+}
+
+func TestRegisterOrOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Or"); !ok {
+		t.Error("Expected Or operator to be registered")
+	}
+}
+
+func TestRegisterXorOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Xor"); !ok {
+		t.Error("Expected Xor operator to be registered")
+	}
+}
+
+func TestRegisterErfOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Erf"); !ok {
+		t.Error("Expected Erf operator to be registered")
+	}
+}
+
 func TestRegisterLayerNormalizationOp(t *testing.T) {
 	r := NewRegistry()
 

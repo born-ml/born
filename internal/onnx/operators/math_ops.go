@@ -20,6 +20,7 @@ func (r *Registry) registerMathOps() {
 	r.Register("Exp", handleExp)
 	r.Register("Log", handleLog)
 	r.Register("Sum", handleSum)
+	r.Register("Erf", handleErf)
 }
 
 func handleAdd(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
@@ -144,5 +145,13 @@ func handleSum(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.Raw
 	for i := 1; i < len(inputs); i++ {
 		result = ctx.Backend.Add(result, inputs[i])
 	}
+	return []*tensor.RawTensor{result}, nil
+}
+
+func handleErf(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("erf requires 1 input, got %d", len(inputs))
+	}
+	result := ctx.Backend.Erf(inputs[0])
 	return []*tensor.RawTensor{result}, nil
 }
