@@ -137,32 +137,14 @@ func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	colBuf := make([]float32, colHeight*colWidth)
 
 	im2colFloat32Stride1NoPad(colBuf, inputData, dims)
-	// Step 2: Matrix multiplication
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float32(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			outputData[i*colHeight+j] = sum
-		}
-	}
 
-	// Step 3: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out]
+	// Step 2: Matrix multiplication via helper (inlined by compiler).
+	matMulColBufFloat32(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+
+	// Step 3: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float32, len(outputData))
 	copy(tempBuf, outputData)
-
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // conv2dFloat32General handles arbitrary stride and padding.
@@ -187,49 +169,16 @@ func conv2dFloat32General(output, input, kernel *tensor.RawTensor, dims *ConvDim
 
 	im2colFloat32(colBuf, inputData, dims)
 
-	// Step 2: Reshape kernel
-	// kernelData is already in [C_out, C_in * K_h * K_w] layout (row-major)
+	// Step 2: Reshape kernel — already in [C_out, C_in*K_h*K_w] layout (row-major).
 
-	// Step 3: Matrix multiplication
-	// kernel: [C_out, C_in * K_h * K_w]
-	// colBuf: [C_in * K_h * K_w, N * H_out * W_out] (transposed view)
-	// result: [C_out, N * H_out * W_out]
-	//
-	// We want: result[i, j] = sum_k kernel[i, k] * colBuf[j, k]
-	// But colBuf is in row-major as [N*H_out*W_out, C*K_h*K_w]
-	// So we compute: result[i, j] = sum_k kernel[i, k] * colBuf[j*colWidth + k]
+	// Step 3: Matrix multiplication via helper (inlined by compiler).
+	// kernel: [C_out, C_in*K_h*K_w] @ colBuf^T -> [C_out, N*H_out*W_out]
+	matMulColBufFloat32(outputData, kernelData, colBuf, COut, colHeight, colWidth)
 
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float32(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			// Temporary storage in row-major: [C_out, N*H_out*W_out]
-			// We'll rearrange this into [N, C_out, H_out, W_out] next
-			outputData[i*colHeight+j] = sum
-		}
-	}
-
-	// Step 4: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out]
-	// Current layout: output[c, n*H_out*W_out + h*W_out + w]
-	// Desired layout: output[n, c, h, w] = output[n*C_out*H_out*W_out + c*H_out*W_out + h*W_out + w]
+	// Step 4: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float32, len(outputData))
 	copy(tempBuf, outputData)
-
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					// Source index: [c, n*H_out*W_out + h*W_out + w]
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					// Dest index: [n, c, h, w]
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // im2colFloat32Stride1NoPad is optimized for stride=1, padding=0.
@@ -384,31 +333,14 @@ func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	colHeight := N * HOut * WOut
 	colBuf := make([]float64, colHeight*colWidth)
 	im2colFloat64Stride1NoPad(colBuf, inputData, dims)
-	// MatMul
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float64(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			outputData[i*colHeight+j] = sum
-		}
-	}
 
-	// Rearrange
+	// MatMul via helper (inlined by compiler).
+	matMulColBufFloat64(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+
+	// Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float64, len(outputData))
 	copy(tempBuf, outputData)
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // conv2dFloat64General handles arbitrary stride and padding.
@@ -430,31 +362,14 @@ func conv2dFloat64General(output, input, kernel *tensor.RawTensor, dims *ConvDim
 	colHeight := N * HOut * WOut
 	colBuf := make([]float64, colHeight*colWidth)
 	im2colFloat64(colBuf, inputData, dims)
-	// MatMul
-	for i := 0; i < COut; i++ {
-		for j := 0; j < colHeight; j++ {
-			sum := float64(0.0)
-			for k := 0; k < colWidth; k++ {
-				sum += kernelData[i*colWidth+k] * colBuf[j*colWidth+k]
-			}
-			outputData[i*colHeight+j] = sum
-		}
-	}
 
-	// Rearrange
+	// MatMul via helper (inlined by compiler).
+	matMulColBufFloat64(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+
+	// Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
 	tempBuf := make([]float64, len(outputData))
 	copy(tempBuf, outputData)
-	for n := 0; n < N; n++ {
-		for c := 0; c < COut; c++ {
-			for h := 0; h < HOut; h++ {
-				for w := 0; w < WOut; w++ {
-					srcIdx := c*colHeight + n*HOut*WOut + h*WOut + w
-					dstIdx := n*COut*HOut*WOut + c*HOut*WOut + h*WOut + w
-					outputData[dstIdx] = tempBuf[srcIdx]
-				}
-			}
-		}
-	}
+	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
 // im2colFloat64Stride1NoPad is optimized for stride=1, padding=0.
