@@ -39,15 +39,14 @@
 //
 // The following ONNX operators are supported:
 //
-//   - Arithmetic: Add, Sub, Mul, Div, Neg, Abs, Sqrt, Exp, Log, Pow
-//   - Activation: Relu, Sigmoid, Tanh, Softmax, LeakyRelu, Elu, Selu
+//   - Arithmetic: Add, Sub, Mul, Div, Sqrt, Exp, Log, Sum, Erf
+//   - Logical: Not, And, Or, Xor
+//   - Comparison: Equal, Greater, GreaterOrEqual, Less, LessOrEqual
+//   - Activation: Relu, LeakyRelu, PRelu, Gelu, Silu, Sigmoid, Tanh, Softmax, LogSoftmax
 //   - Matrix: MatMul, Gemm, Transpose, Flatten
-//   - Reduction: ReduceSum, ReduceMean, ReduceMax, ReduceMin
-//   - Shape: Reshape, Squeeze, Unsqueeze, Concat, Split, Slice, Gather
-//   - Normalization: BatchNormalization, LayerNormalization
-//   - Pooling: MaxPool, AveragePool, GlobalAveragePool
-//   - Convolution: Conv (2D)
-//   - Other: Constant, Identity, Cast, Clip, Where, Shape
+//   - Shape: Reshape, Squeeze, Unsqueeze, Concat, Split, Slice, Gather, Expand
+//   - Normalization: LayerNormalization
+//   - Other: Identity, Dropout, Constant, Cast, ConstantOfShape, Shape, Size, Where, Clip
 //
 // Use [ListSupportedOps] to get the complete list of supported operators.
 package onnx
