@@ -44,8 +44,8 @@ func (cpu *CPUBackend) Add(a, b *tensor.RawTensor) *tensor.RawTensor {
 	// Check for inplace optimization
 	if !needsBroadcast && a.Shape().Equal(b.Shape()) {
 		// Fast path: same shape, check if we can do inplace
-		if a.IsUnique() {
-			// Inplace add into a
+		if a.IsUnique() && a != b {
+			// Inplace add into a (safe: operands don't alias)
 			addInplace(a, b)
 			return a
 		}
@@ -72,7 +72,7 @@ func (cpu *CPUBackend) Sub(a, b *tensor.RawTensor) *tensor.RawTensor {
 	}
 
 	if !needsBroadcast && a.Shape().Equal(b.Shape()) {
-		if a.IsUnique() {
+		if a.IsUnique() && a != b {
 			subInplace(a, b)
 			return a
 		}
@@ -97,7 +97,7 @@ func (cpu *CPUBackend) Mul(a, b *tensor.RawTensor) *tensor.RawTensor {
 	}
 
 	if !needsBroadcast && a.Shape().Equal(b.Shape()) {
-		if a.IsUnique() {
+		if a.IsUnique() && a != b {
 			mulInplace(a, b)
 			return a
 		}
@@ -122,7 +122,7 @@ func (cpu *CPUBackend) Div(a, b *tensor.RawTensor) *tensor.RawTensor {
 	}
 
 	if !needsBroadcast && a.Shape().Equal(b.Shape()) {
-		if a.IsUnique() {
+		if a.IsUnique() && a != b {
 			divInplace(a, b)
 			return a
 		}

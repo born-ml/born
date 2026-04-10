@@ -1558,3 +1558,40 @@ func TestCPUBackend_Float32VectorizedOps(t *testing.T) {
 		}
 	})
 }
+
+// TestSelfOperandAliasing verifies that binary ops with the same tensor as both
+// operands (e.g. Mul(x, x)) do not mutate the input.
+// Regression test for https://github.com/born-ml/born/issues/45
+func TestSelfOperandAliasing(t *testing.T) {
+	backend := newTestBackend()
+
+	tests := []struct {
+		name string
+		op   func(a, b *tensor.RawTensor) *tensor.RawTensor
+		want []float32
+	}{
+		{"Mul(x,x)", backend.Mul, []float32{2.25, 0.25, 0.25, 2.25}},
+		{"Add(x,x)", backend.Add, []float32{-3, -1, 1, 3}},
+		{"Sub(x,x)", backend.Sub, []float32{0, 0, 0, 0}},
+		{"Div(x,x)", backend.Div, []float32{1, 1, 1, 1}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			x, _ := tensor.FromSlice([]float32{-1.5, -0.5, 0.5, 1.5}, tensor.Shape{4}, backend)
+			original := append([]float32(nil), x.Raw().AsFloat32()...)
+
+			result := tc.op(x.Raw(), x.Raw())
+
+			// Result must be correct
+			if !float32SliceEqual(result.AsFloat32(), tc.want) {
+				t.Errorf("result: got %v, want %v", result.AsFloat32(), tc.want)
+			}
+
+			// Input must NOT be mutated
+			if !float32SliceEqual(x.Raw().AsFloat32(), original) {
+				t.Errorf("input mutated: got %v, was %v", x.Raw().AsFloat32(), original)
+			}
+		})
+	}
+}
