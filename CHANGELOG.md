@@ -5,11 +5,11 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.16] - 2026-04-10
 
 ### 🎉 Community Contributions — @gmohmad & @bennibbelink
 
-Third external contributor [@gmohmad](https://github.com/gmohmad) with 4 PRs! Plus continued work from [@bennibbelink](https://github.com/bennibbelink).
+Third external contributor [@gmohmad](https://github.com/gmohmad) with 5 PRs! Plus continued work from [@bennibbelink](https://github.com/bennibbelink).
 
 **Added**:
 - ONNX `LayerNormalization` operator with new `normalization_ops.go` category ([#47](https://github.com/born-ml/born/pull/47) by @gmohmad)
