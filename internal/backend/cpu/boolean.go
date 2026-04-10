@@ -107,10 +107,42 @@ func andVectorized(result, a, b *tensor.RawTensor) {
 // Broadcast implementations
 // ============================================================================
 
-func orWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("orWithBroadcast: broadcasting not implemented yet")
+func orWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	dst := result.AsBool()
+	aData := a.AsBool()
+	bData := b.AsBool()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	for i := range n {
+		aIdx := computeFlatIndex(i, outStrides, aStrides)
+		bIdx := computeFlatIndex(i, outStrides, bStrides)
+		dst[i] = aData[aIdx] || bData[bIdx]
+	}
 }
 
-func andWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("andWithBroadcast: broadcasting not implemented yet")
+func andWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	dst := result.AsBool()
+	aData := a.AsBool()
+	bData := b.AsBool()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	for i := range n {
+		aIdx := computeFlatIndex(i, outStrides, aStrides)
+		bIdx := computeFlatIndex(i, outStrides, bStrides)
+		dst[i] = aData[aIdx] && bData[bIdx]
+	}
 }

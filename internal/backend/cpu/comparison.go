@@ -308,26 +308,268 @@ func notEqualVectorized(result, a, b *tensor.RawTensor) {
 // Broadcast implementations (different shapes)
 // ============================================================================
 
-func greaterWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("greaterWithBroadcast: broadcasting not implemented yet")
+func greaterWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	dst := result.AsBool()
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	switch a.DType() {
+	case tensor.Float32:
+		aData, bData := a.AsFloat32(), b.AsFloat32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] > bData[bIdx]
+		}
+	case tensor.Float64:
+		aData, bData := a.AsFloat64(), b.AsFloat64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] > bData[bIdx]
+		}
+	case tensor.Int32:
+		aData, bData := a.AsInt32(), b.AsInt32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] > bData[bIdx]
+		}
+	case tensor.Int64:
+		aData, bData := a.AsInt64(), b.AsInt64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] > bData[bIdx]
+		}
+	}
 }
 
-func lowerWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("lowerWithBroadcast: broadcasting not implemented yet")
+func lowerWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	dst := result.AsBool()
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	switch a.DType() {
+	case tensor.Float32:
+		aData, bData := a.AsFloat32(), b.AsFloat32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] < bData[bIdx]
+		}
+	case tensor.Float64:
+		aData, bData := a.AsFloat64(), b.AsFloat64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] < bData[bIdx]
+		}
+	case tensor.Int32:
+		aData, bData := a.AsInt32(), b.AsInt32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] < bData[bIdx]
+		}
+	case tensor.Int64:
+		aData, bData := a.AsInt64(), b.AsInt64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] < bData[bIdx]
+		}
+	}
 }
 
-func greaterEqualWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("greaterEqualWithBroadcast: broadcasting not implemented yet")
+func greaterEqualWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	dst := result.AsBool()
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	switch a.DType() {
+	case tensor.Float32:
+		aData, bData := a.AsFloat32(), b.AsFloat32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] >= bData[bIdx]
+		}
+	case tensor.Float64:
+		aData, bData := a.AsFloat64(), b.AsFloat64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] >= bData[bIdx]
+		}
+	case tensor.Int32:
+		aData, bData := a.AsInt32(), b.AsInt32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] >= bData[bIdx]
+		}
+	case tensor.Int64:
+		aData, bData := a.AsInt64(), b.AsInt64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] >= bData[bIdx]
+		}
+	}
 }
 
-func lowerEqualWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("lowerEqualWithBroadcast: broadcasting not implemented yet")
+func lowerEqualWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	dst := result.AsBool()
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	switch a.DType() {
+	case tensor.Float32:
+		aData, bData := a.AsFloat32(), b.AsFloat32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] <= bData[bIdx]
+		}
+	case tensor.Float64:
+		aData, bData := a.AsFloat64(), b.AsFloat64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] <= bData[bIdx]
+		}
+	case tensor.Int32:
+		aData, bData := a.AsInt32(), b.AsInt32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] <= bData[bIdx]
+		}
+	case tensor.Int64:
+		aData, bData := a.AsInt64(), b.AsInt64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] <= bData[bIdx]
+		}
+	}
 }
 
-func equalWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("equalWithBroadcast: broadcasting not implemented yet")
+func equalWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	dst := result.AsBool()
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	switch a.DType() {
+	case tensor.Float32:
+		aData, bData := a.AsFloat32(), b.AsFloat32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] == bData[bIdx]
+		}
+	case tensor.Float64:
+		aData, bData := a.AsFloat64(), b.AsFloat64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] == bData[bIdx]
+		}
+	case tensor.Int32:
+		aData, bData := a.AsInt32(), b.AsInt32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] == bData[bIdx]
+		}
+	case tensor.Int64:
+		aData, bData := a.AsInt64(), b.AsInt64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] == bData[bIdx]
+		}
+	case tensor.Bool:
+		aData, bData := a.AsBool(), b.AsBool()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] == bData[bIdx]
+		}
+	}
 }
 
-func notEqualWithBroadcast(_, _, _ *tensor.RawTensor, _ tensor.Shape) {
-	panic("notEqualWithBroadcast: broadcasting not implemented yet")
+func notEqualWithBroadcast(result, a, b *tensor.RawTensor, outShape tensor.Shape) {
+	dst := result.AsBool()
+	aShape := a.Shape()
+	bShape := b.Shape()
+
+	outStrides := outShape.ComputeStrides()
+	aStrides := computeBroadcastStridesForShape(aShape, outShape)
+	bStrides := computeBroadcastStridesForShape(bShape, outShape)
+
+	n := outShape.NumElements()
+	switch a.DType() {
+	case tensor.Float32:
+		aData, bData := a.AsFloat32(), b.AsFloat32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] != bData[bIdx]
+		}
+	case tensor.Float64:
+		aData, bData := a.AsFloat64(), b.AsFloat64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] != bData[bIdx]
+		}
+	case tensor.Int32:
+		aData, bData := a.AsInt32(), b.AsInt32()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] != bData[bIdx]
+		}
+	case tensor.Int64:
+		aData, bData := a.AsInt64(), b.AsInt64()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] != bData[bIdx]
+		}
+	case tensor.Bool:
+		aData, bData := a.AsBool(), b.AsBool()
+		for i := range n {
+			aIdx := computeFlatIndex(i, outStrides, aStrides)
+			bIdx := computeFlatIndex(i, outStrides, bStrides)
+			dst[i] = aData[aIdx] != bData[bIdx]
+		}
+	}
 }
