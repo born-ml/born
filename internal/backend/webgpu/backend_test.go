@@ -24,12 +24,12 @@ func TestListAdapters(t *testing.T) {
 
 	for i, info := range adapters {
 		t.Logf("Adapter %d:", i)
+		t.Logf("  Name: %s", info.Name)
 		t.Logf("  Vendor: %s", info.Vendor)
-		t.Logf("  Device: %s", info.Device)
-		t.Logf("  Description: %s", info.Description)
-		t.Logf("  Architecture: %s", info.Architecture)
-		t.Logf("  Backend: %v", info.BackendType)
-		t.Logf("  Type: %v", info.AdapterType)
+		t.Logf("  Driver: %s", info.Driver)
+		t.Logf("  DriverInfo: %s", info.DriverInfo)
+		t.Logf("  Backend: %v", info.Backend)
+		t.Logf("  DeviceType: %v", info.DeviceType)
 		t.Logf("  VendorID: 0x%04X", info.VendorID)
 		t.Logf("  DeviceID: 0x%04X", info.DeviceID)
 	}
@@ -57,7 +57,7 @@ func TestNew(t *testing.T) {
 	if info == nil {
 		t.Log("Note: Adapter info unavailable (GetInfo API issue)")
 	} else {
-		t.Logf("Using GPU: %s (%s)", info.Device, info.Vendor)
+		t.Logf("Using GPU: %s (%s)", info.Name, info.Vendor)
 	}
 }
 
