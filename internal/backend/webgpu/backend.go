@@ -12,6 +12,7 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
 	wgpu "github.com/gogpu/wgpu"
+	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
 
 // pipelineEntry caches a compute pipeline together with its bind group layout.
