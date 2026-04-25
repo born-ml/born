@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/go-webgpu/webgpu/wgpu"
 	"github.com/gogpu/gputypes"
+	wgpu "github.com/gogpu/wgpu"
 )
 
 // GPUTape records GPU operations for backward pass.
@@ -221,47 +221,35 @@ func (b *Backend) ReLUBackwardGPU(input, grad *GPUTensor) *GPUTensor {
 
 	numElements := input.NumElements()
 
-	// Compile shader
 	shader := b.compileShader("reluBackward", reluBackwardShader)
-	pipeline := b.getOrCreatePipeline("reluBackward", shader)
+	entry := b.getOrCreatePipeline("reluBackward", shader, bglBinary)
 
 	// Create output buffer
 	resultSize := input.ByteSize()
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: ReLUBackwardGPU: failed to create result buffer: %v", err))
+	}
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
-	// Create bind group
-	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, input.buffer, 0, input.bufferSize),
-		wgpu.BufferBindingEntry(1, grad.buffer, 0, grad.bufferSize),
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bg := b.createBindGroupFromBuffers(entry.layout, []bindGroupBuffer{
+		bufBinding(input.buffer, input.bufferSize),
+		bufBinding(grad.buffer, grad.bufferSize),
+		bufBinding(bufferResult, resultSize),
+		bufBinding(bufferParams, 16),
 	})
-	defer bindGroup.Release()
-
-	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
-	computePass := encoder.BeginComputePass(nil)
-
-	computePass.SetPipeline(pipeline)
-	computePass.SetBindGroup(0, bindGroup, nil)
+	defer bg.Release()
 
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	computePass.DispatchWorkgroups(workgroups, 1, 1)
-	computePass.End()
-
-	cmdBuffer := encoder.Finish(nil)
-	b.queue.Submit(cmdBuffer)
+	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
 
 	return &GPUTensor{
 		buffer:     bufferResult,
@@ -333,48 +321,35 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 	}
 	featureSize := shape[ndim-1]
 
-	// Compile shader
 	shader := b.compileShader("softmaxBackward", softmaxBackwardShader)
-	pipeline := b.getOrCreatePipeline("softmaxBackward", shader)
+	entry := b.getOrCreatePipeline("softmaxBackward", shader, bglBinary)
 
 	// Create output buffer
 	resultSize := output.ByteSize()
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: SoftmaxBackwardGPU: failed to create result buffer: %v", err))
+	}
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
-
-	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize)) //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))                             //nolint:gosec // G115: safe, batch dims are small positive ints
+	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))                           //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
-	// Create bind group
-	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, output.buffer, 0, output.bufferSize),
-		wgpu.BufferBindingEntry(1, grad.buffer, 0, grad.bufferSize),
-		wgpu.BufferBindingEntry(2, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(3, bufferParams, 0, 16),
+	bg := b.createBindGroupFromBuffers(entry.layout, []bindGroupBuffer{
+		bufBinding(output.buffer, output.bufferSize),
+		bufBinding(grad.buffer, grad.bufferSize),
+		bufBinding(bufferResult, resultSize),
+		bufBinding(bufferParams, 16),
 	})
-	defer bindGroup.Release()
+	defer bg.Release()
 
-	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
-	computePass := encoder.BeginComputePass(nil)
-
-	computePass.SetPipeline(pipeline)
-	computePass.SetBindGroup(0, bindGroup, nil)
-
-	computePass.DispatchWorkgroups(uint32(batchSize), 1, 1)
-	computePass.End()
-
-	cmdBuffer := encoder.Finish(nil)
-	b.queue.Submit(cmdBuffer)
+	b.execComputePass(entry.pipeline, bg, uint32(batchSize), 1, 1) //nolint:gosec // G115: safe, batch size is bounded
 
 	return &GPUTensor{
 		buffer:     bufferResult,
@@ -414,11 +389,10 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 	}
 	featureSize := shape[ndim-1]
 
-	// Compile shader
 	shader := b.compileShader("sumDim", sumDimShader)
-	pipeline := b.getOrCreatePipeline("sumDim", shader)
+	entry := b.getOrCreatePipeline("sumDim", shader, bglUnary)
 
-	// Create output buffer
+	// Build output shape
 	var outShape tensor.Shape
 	if keepDim {
 		outShape = make(tensor.Shape, ndim)
@@ -432,42 +406,30 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 	}
 
 	resultSize := uint64(batchSize * t.dtype.Size()) //nolint:gosec // G115: integer overflow conversion int -> uint64
-	bufferResult := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: gputypes.BufferUsageStorage | gputypes.BufferUsageCopySrc | gputypes.BufferUsageCopyDst,
 		Size:  resultSize,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: SumDimGPU: failed to create result buffer: %v", err))
+	}
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
-
-	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize)) //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))                             //nolint:gosec // G115: safe, batch dims are small positive ints
+	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))                           //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
-	// Create bind group
-	bindGroupLayout := pipeline.GetBindGroupLayout(0)
-	bindGroup := b.device.CreateBindGroupSimple(bindGroupLayout, []wgpu.BindGroupEntry{
-		wgpu.BufferBindingEntry(0, t.buffer, 0, t.bufferSize),
-		wgpu.BufferBindingEntry(1, bufferResult, 0, resultSize),
-		wgpu.BufferBindingEntry(2, bufferParams, 0, 16),
+	bg := b.createBindGroupFromBuffers(entry.layout, []bindGroupBuffer{
+		bufBinding(t.buffer, t.bufferSize),
+		bufBinding(bufferResult, resultSize),
+		bufBinding(bufferParams, 16),
 	})
-	defer bindGroup.Release()
+	defer bg.Release()
 
-	// Execute compute pass
-	encoder := b.device.CreateCommandEncoder(nil)
-	computePass := encoder.BeginComputePass(nil)
-
-	computePass.SetPipeline(pipeline)
-	computePass.SetBindGroup(0, bindGroup, nil)
-
-	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize)
-	computePass.DispatchWorkgroups(workgroups, 1, 1)
-	computePass.End()
-
-	cmdBuffer := encoder.Finish(nil)
-	b.queue.Submit(cmdBuffer)
+	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: safe, batch size is bounded
+	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
 
 	return &GPUTensor{
 		buffer:     bufferResult,

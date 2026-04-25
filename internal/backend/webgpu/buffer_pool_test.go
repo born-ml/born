@@ -5,8 +5,8 @@ package webgpu
 import (
 	"testing"
 
-	"github.com/go-webgpu/webgpu/wgpu"
 	"github.com/gogpu/gputypes"
+	wgpu "github.com/gogpu/wgpu"
 )
 
 // poolStats is a helper struct for cleaner stats access in tests.

@@ -5,7 +5,7 @@ package webgpu
 import (
 	"sync"
 
-	"github.com/go-webgpu/webgpu/wgpu"
+	wgpu "github.com/gogpu/wgpu"
 	"github.com/gogpu/gputypes"
 )
 
@@ -84,14 +84,17 @@ func (p *BufferPool) Acquire(size uint64, usage gputypes.BufferUsage) *wgpu.Buff
 		}
 	}
 
-	// No suitable buffer found - create new one
+	// No suitable buffer found - create new one.
 	p.poolMisses++
 	p.totalAllocated++
 
-	buffer := p.device.CreateBuffer(&wgpu.BufferDescriptor{
+	buffer, err := p.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage: usage,
 		Size:  size,
 	})
+	if err != nil {
+		panic("webgpu: BufferPool.Acquire: failed to create buffer: " + err.Error())
+	}
 
 	return buffer
 }

@@ -3,7 +3,9 @@
 package webgpu
 
 import (
-	"github.com/go-webgpu/webgpu/wgpu"
+	"fmt"
+
+	wgpu "github.com/gogpu/wgpu"
 )
 
 // CommandBatch accumulates GPU operations for single submission.
@@ -25,7 +27,10 @@ type pendingOp struct {
 // NewBatch creates a new command batch for accumulating operations.
 // The batch will use a single CommandEncoder for all operations.
 func (b *Backend) NewBatch() *CommandBatch {
-	encoder := b.device.CreateCommandEncoder(nil)
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: NewBatch: failed to create command encoder: %v", err))
+	}
 	return &CommandBatch{
 		backend: b,
 		encoder: encoder,
@@ -65,8 +70,13 @@ func (batch *CommandBatch) Submit() {
 	}
 
 	// Finish command encoder and submit all commands at once
-	cmdBuffer := batch.encoder.Finish(nil)
-	batch.backend.queue.Submit(cmdBuffer)
+	cmdBuffer, err := batch.encoder.Finish()
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: CommandBatch.Submit: failed to finish encoder: %v", err))
+	}
+	if _, submitErr := batch.backend.queue.Submit(cmdBuffer); submitErr != nil {
+		panic(fmt.Sprintf("webgpu: CommandBatch.Submit: failed to submit commands: %v", submitErr))
+	}
 
 	// Mark all outputs as computed
 	for i := range batch.ops {

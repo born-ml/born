@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/born-ml/born/internal/tensor"
-	"github.com/go-webgpu/webgpu/wgpu"
+	wgpu "github.com/gogpu/wgpu"
 )
 
 // GPUTensor holds tensor data in GPU memory without transferring to CPU.
