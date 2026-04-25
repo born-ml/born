@@ -1,7 +1,7 @@
 //go:build windows
 
 // Package webgpu implements the WebGPU backend for GPU-accelerated tensor operations.
-// Uses go-webgpu (github.com/go-webgpu/webgpu) for zero-CGO WebGPU bindings.
+// Uses gogpu/wgpu (github.com/gogpu/wgpu) for pure Go, zero-CGO WebGPU bindings.
 package webgpu
 
 import (
@@ -15,7 +15,7 @@ import (
 )
 
 // pipelineEntry caches a compute pipeline together with its bind group layout.
-// gogpu/wgpu does not expose GetBindGroupLayout on a pipeline (unlike go-webgpu),
+// gogpu/wgpu does not expose GetBindGroupLayout on a pipeline,
 // so we store the layout alongside the pipeline at creation time.
 type pipelineEntry struct {
 	pipeline *wgpu.ComputePipeline

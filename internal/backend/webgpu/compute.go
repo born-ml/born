@@ -172,7 +172,7 @@ func (b *Backend) execComputePass(pipeline *wgpu.ComputePipeline, bg *wgpu.BindG
 
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bg, nil)
-	computePass.Dispatch(x, y, z) // was DispatchWorkgroups in go-webgpu
+	computePass.Dispatch(x, y, z)
 	if err := computePass.End(); err != nil {
 		encoder.DiscardEncoding()
 		panic(fmt.Sprintf("webgpu: compute pass end error: %v", err))
@@ -210,7 +210,7 @@ func (b *Backend) createBuffer(data []byte, usage gputypes.BufferUsage) *wgpu.Bu
 	buffer, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
 		Usage:            usage,
 		Size:             size,
-		MappedAtCreation: true, // was wgpu.True in go-webgpu
+		MappedAtCreation: true,
 	})
 	if err != nil {
 		panic(fmt.Sprintf("webgpu: failed to create buffer (size=%d): %v", size, err))
