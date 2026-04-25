@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **WebGPU backend migrated from go-webgpu to gogpu/wgpu** ([#40](https://github.com/born-ml/born/issues/40))
+  - Replaced `github.com/go-webgpu/webgpu` with `github.com/gogpu/wgpu` (pure Go, zero CGO)
+  - **No more shared library dependency** — no `.dll`/`.so`/`.dylib` downloads needed
+  - True single binary deployment: `go build` produces executable with GPU support built in
+  - WGSL shaders unchanged — full backward compatibility
+  - Windows (D3D12) supported; Linux (Vulkan) and macOS (Metal) support in gogpu/wgpu, Born integration planned
+
 ### Added
 
 - `Sign` and `Abs` element-wise tensor operations — full vertical slice ([#59](https://github.com/born-ml/born/pull/59) by [@bennibbelink](https://github.com/bennibbelink))

@@ -8,8 +8,8 @@ import (
 	"fmt"
 
 	"github.com/born-ml/born/internal/tensor"
-	wgpu "github.com/gogpu/wgpu"
 	"github.com/gogpu/gputypes"
+	wgpu "github.com/gogpu/wgpu"
 )
 
 // AddGPU performs element-wise addition on GPU tensors.
@@ -148,8 +148,8 @@ func (b *Backend) MatMulGPU(a, c *GPUTensor) *GPUTensor {
 	}
 
 	params := make([]byte, 16)
-	binary.LittleEndian.PutUint32(params[0:4], uint32(m)) //nolint:gosec // G115: safe, tensor dims are small positive ints
-	binary.LittleEndian.PutUint32(params[4:8], uint32(k)) //nolint:gosec // G115: safe, tensor dims are small positive ints
+	binary.LittleEndian.PutUint32(params[0:4], uint32(m))  //nolint:gosec // G115: safe, tensor dims are small positive ints
+	binary.LittleEndian.PutUint32(params[4:8], uint32(k))  //nolint:gosec // G115: safe, tensor dims are small positive ints
 	binary.LittleEndian.PutUint32(params[8:12], uint32(n)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -394,7 +394,7 @@ func (b *Backend) runUnaryOpGPU(t *GPUTensor, opName, shaderCode string) *GPUTen
 	}
 
 	// Create uniform buffer for params (size: u32)
-	params := make([]byte, 16) // 16-byte aligned
+	params := make([]byte, 16)                                      // 16-byte aligned
 	binary.LittleEndian.PutUint32(params[0:4], uint32(numElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()

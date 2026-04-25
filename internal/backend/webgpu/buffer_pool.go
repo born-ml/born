@@ -5,8 +5,8 @@ package webgpu
 import (
 	"sync"
 
-	wgpu "github.com/gogpu/wgpu"
 	"github.com/gogpu/gputypes"
+	wgpu "github.com/gogpu/wgpu"
 )
 
 // BufferSize represents different buffer size categories for pooling.

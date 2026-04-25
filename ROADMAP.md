@@ -96,7 +96,7 @@ v1.0.0 LTS → After API stabilization
 - **Validated**: MNIST MLP 97.44%, CNN 98.18%
 
 **v0.2.0** = WebGPU GPU Backend ✅ RELEASED
-- Zero-CGO GPU acceleration via go-webgpu
+- Zero-CGO GPU acceleration (originally via go-webgpu, migrated to gogpu/wgpu in v0.8.0)
 - GPU operations: MatMul, Add, Sub, Mul, Div, Transpose
 - Activations: ReLU, Sigmoid, Tanh, Softmax
 - Buffer pool for memory efficiency
@@ -282,7 +282,7 @@ v1.0.0 LTS → After API stabilization
 **Goal**: GPU acceleration without CGO dependencies
 
 **Delivered**:
-- ✅ WebGPU backend via go-webgpu (zero-CGO)
+- ✅ WebGPU backend (zero-CGO, migrated to gogpu/wgpu in v0.8.0)
 - ✅ GPU operations: MatMul, Add, Sub, Mul, Div, Transpose
 - ✅ Activations: ReLU, Sigmoid, Tanh, Softmax
 - ✅ Buffer pool for memory efficiency
@@ -539,7 +539,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 **Development**:
 - Go 1.25+ required
 - golangci-lint for quality
-- wgpu-native for WebGPU (v0.2.0+)
+- gogpu/wgpu for WebGPU (pure Go, zero runtime dependencies)
 
 ---
 

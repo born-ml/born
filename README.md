@@ -271,35 +271,14 @@ type Backend interface {
 
 **GPU Backend Setup:**
 
-WebGPU requires the `wgpu_native` library. Download from [wgpu-native releases](https://github.com/gfx-rs/wgpu-native/releases):
+The WebGPU backend uses [gogpu/wgpu](https://github.com/gogpu/wgpu) — a pure Go WebGPU implementation. **No shared libraries, no DLLs, no CGO.** Just `go build` and it works.
 
-**Windows (x64):**
 ```bash
-# Download latest release
-curl -LO https://github.com/gfx-rs/wgpu-native/releases/latest/download/wgpu-windows-x86_64-msvc-release.zip
-unzip wgpu-windows-x86_64-msvc-release.zip
-
-# Install DLL system-wide (requires admin)
-copy lib\wgpu_native.dll C:\Windows\System32\
-
-# Or place next to your executable
-copy lib\wgpu_native.dll .\your-app\
+# That's it. No downloads, no system libraries.
+go build ./...
 ```
 
-**Linux (x64):**
-```bash
-curl -LO https://github.com/gfx-rs/wgpu-native/releases/latest/download/wgpu-linux-x86_64-release.zip
-unzip wgpu-linux-x86_64-release.zip
-sudo cp lib/libwgpu_native.so /usr/local/lib/
-sudo ldconfig
-```
-
-**macOS (ARM64):**
-```bash
-curl -LO https://github.com/gfx-rs/wgpu-native/releases/latest/download/wgpu-macos-aarch64-release.zip
-unzip wgpu-macos-aarch64-release.zip
-sudo cp lib/libwgpu_native.dylib /usr/local/lib/
-```
+Currently supported on **Windows (D3D12)**. Linux (Vulkan) and macOS (Metal) support coming soon — gogpu/wgpu supports all three backends.
 
 **Usage:**
 ```go
@@ -523,20 +502,18 @@ Born is inspired by and learns from:
 
 Special thanks to the projects that made Born possible:
 
-### 🙏 [go-webgpu](https://github.com/AlfredDobra662/webgpu) & [wgpu-native](https://github.com/gfx-rs/wgpu-native)
+### 🙏 [gogpu/wgpu](https://github.com/gogpu/wgpu) & [gogpu/naga](https://github.com/gogpu/naga)
 
-Born's GPU acceleration is powered by **go-webgpu** - a remarkable pure Go binding for WebGPU via **wgpu-native**.
+Born's GPU acceleration is powered by **gogpu/wgpu** — a pure Go WebGPU implementation with **gogpu/naga** shader compiler.
 
 **Why this stack is special:**
-- **Zero CGO** - Pure Go bindings using [goffi](https://github.com/AlfredDobra662/goffi) for FFI
-- **Cross-platform** - Works on Windows (D3D12), Linux (Vulkan), macOS (Metal)
-- **Modern API** - Clean, idiomatic Go interface to WebGPU
-- **wgpu-native** - Battle-tested Rust implementation of WebGPU by [gfx-rs](https://github.com/gfx-rs)
-- **Active development** - Both projects are actively maintained
+- **Pure Go** — No CGO, no shared libraries, no runtime dependencies
+- **Single binary** — `go build` produces one executable with GPU support built in
+- **Cross-platform** — Windows (D3D12) now, Linux (Vulkan) and macOS (Metal) coming soon
+- **naga compatibility** — Shader compiler is 100% compatible with Rust naga
+- **Integrated development** — Both gogpu and Born are developed by the same team
 
-Without go-webgpu and wgpu-native, Born would need CGO for GPU support, making cross-compilation complex and defeating our "pure Go" goal. This stack enables us to offer **production-ready GPU acceleration** while maintaining the simplicity of `go build`.
-
-Thank you to [Alfred Dobra](https://github.com/AlfredDobra662), [gfx-rs team](https://github.com/gfx-rs), and all contributors!
+No DLL downloads, no `LD_LIBRARY_PATH`, no system-level installs. True single binary deployment for production ML inference.
 
 ---
 

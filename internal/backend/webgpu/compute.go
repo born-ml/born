@@ -1354,8 +1354,8 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 	defer bufferResult.Release()
 
 	params := make([]byte, 16)
-	binary.LittleEndian.PutUint32(params[0:4], uint32(numIndices))    //nolint:gosec // G115: integer overflow conversion int -> uint32
-	binary.LittleEndian.PutUint32(params[4:8], uint32(embeddingDim))  //nolint:gosec // G115: safe, embedding dimensions are non-negative and fit in uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(numIndices))     //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[4:8], uint32(embeddingDim))   //nolint:gosec // G115: safe, embedding dimensions are non-negative and fit in uint32
 	binary.LittleEndian.PutUint32(params[8:12], uint32(numEmbeddings)) //nolint:gosec // G115: safe, embedding count is non-negative and fits in uint32
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
@@ -1624,8 +1624,8 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 	bufferParamsGather := b.createUniformBuffer(paramsGather)
 	defer bufferParamsGather.Release()
 
-	inputGatherSize := uint64(input.ByteSize())   //nolint:gosec // G115: integer overflow conversion int -> uint64
-	indicesSize := uint64(indices.ByteSize())     //nolint:gosec // G115: integer overflow conversion int -> uint64
+	inputGatherSize := uint64(input.ByteSize()) //nolint:gosec // G115: integer overflow conversion int -> uint64
+	indicesSize := uint64(indices.ByteSize())   //nolint:gosec // G115: integer overflow conversion int -> uint64
 	bgGather := b.createBindGroupFromBuffers(entryGather.layout, []bindGroupBuffer{
 		bufBinding(bufferInputGather, inputGatherSize),
 		bufBinding(bufferIndices, indicesSize),
@@ -1921,7 +1921,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	defer bufferInput.Release()
 
 	resultNumElements := newShape.NumElements()
-	elementSize := uint64(input.DType().Size()) //nolint:gosec // G115: integer overflow conversion int -> uint64
+	elementSize := uint64(input.DType().Size())           //nolint:gosec // G115: integer overflow conversion int -> uint64
 	resultSize := uint64(resultNumElements) * elementSize //nolint:gosec // G115: integer overflow conversion int -> uint64
 
 	bufferResult, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
@@ -1939,7 +1939,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 	inputStrides := paddedShape.ComputeStrides()
 	outputStrides := newShape.ComputeStrides()
 
-	binary.LittleEndian.PutUint32(params[0:4], uint32(len(newShape)))   //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(len(newShape)))     //nolint:gosec // G115: integer overflow conversion int -> uint32
 	binary.LittleEndian.PutUint32(params[4:8], uint32(resultNumElements)) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	for i := 0; i < 6; i++ {

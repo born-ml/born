@@ -43,7 +43,7 @@ func main() {
 	// Check WebGPU availability
 	if !webgpu.IsAvailable() {
 		fmt.Println("WebGPU not available on this system!")
-		fmt.Println("Ensure wgpu-native is installed and accessible.")
+		fmt.Println("Ensure your system has a supported GPU (D3D12/Vulkan/Metal).")
 		return
 	}
 
