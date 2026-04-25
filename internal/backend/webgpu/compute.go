@@ -126,7 +126,7 @@ func (b *Backend) createBindGroupFromBuffers(layout *wgpu.BindGroupLayout, bufs 
 	entries := make([]wgpu.BindGroupEntry, len(bufs))
 	for i, buf := range bufs {
 		entries[i] = wgpu.BindGroupEntry{
-			Binding: uint32(i), //nolint:gosec // G115: i is small (max 8 bindings)
+			Binding: uint32(i),
 			Buffer:  buf.buffer,
 			Offset:  buf.offset,
 			Size:    buf.size,
@@ -184,21 +184,6 @@ func (b *Backend) execComputePass(pipeline *wgpu.ComputePipeline, bg *wgpu.BindG
 	}
 	if _, err := b.queue.Submit(cmdBuffer); err != nil {
 		panic(fmt.Sprintf("webgpu: queue submit error: %v", err))
-	}
-}
-
-// execComputePassToQueue is like execComputePass but queues the command buffer
-// for batched submission instead of submitting immediately. Used by lazy mode.
-func (b *Backend) execComputePassToEncoder(encoder *wgpu.CommandEncoder, pipeline *wgpu.ComputePipeline, bg *wgpu.BindGroup, x, y, z uint32) {
-	computePass, err := encoder.BeginComputePass(nil)
-	if err != nil {
-		panic(fmt.Sprintf("webgpu: failed to begin compute pass: %v", err))
-	}
-	computePass.SetPipeline(pipeline)
-	computePass.SetBindGroup(0, bg, nil)
-	computePass.Dispatch(x, y, z)
-	if err := computePass.End(); err != nil {
-		panic(fmt.Sprintf("webgpu: compute pass end: %v", err))
 	}
 }
 

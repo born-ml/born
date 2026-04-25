@@ -112,7 +112,7 @@ func (b *Backend) FlashAttentionGPU(
 	binary.LittleEndian.PutUint32(params[8:12], uint32(kvLen))     //nolint:gosec // G115: safe, tensor dims are small positive ints
 	binary.LittleEndian.PutUint32(params[12:16], uint32(numHeads)) //nolint:gosec // G115: safe, tensor dims are small positive ints
 	binary.LittleEndian.PutUint32(params[16:20], uint32(headDim))  //nolint:gosec // G115: safe, tensor dims are small positive ints
-	binary.LittleEndian.PutUint32(params[20:24], uint32(blockSize))
+	binary.LittleEndian.PutUint32(params[20:24], uint32(blockSize)) //nolint:gosec // G115: blockSize is a small constant (32/64)
 	binary.LittleEndian.PutUint32(params[24:28], math.Float32bits(scale))
 
 	causalU32 := uint32(0)

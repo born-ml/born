@@ -152,7 +152,7 @@ func (b *Backend) flushCommandsLocked() {
 		return
 	}
 	// Submit returns (submissionIndex, error); errors are non-fatal for flush.
-	_, _ = b.queue.Submit(b.pendingCommands...) //nolint:errcheck // flush errors are best-effort
+	_, _ = b.queue.Submit(b.pendingCommands...)
 	b.pendingCommands = b.pendingCommands[:0]
 }
 

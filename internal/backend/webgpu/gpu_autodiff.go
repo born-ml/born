@@ -336,8 +336,8 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))                             //nolint:gosec // G115: safe, batch dims are small positive ints
-	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))                           //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
+	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize)) //nolint:gosec // G115
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -349,7 +349,7 @@ func (b *Backend) SoftmaxBackwardGPU(output, grad *GPUTensor, dim int) *GPUTenso
 	})
 	defer bg.Release()
 
-	b.execComputePass(entry.pipeline, bg, uint32(batchSize), 1, 1) //nolint:gosec // G115: safe, batch size is bounded
+	b.execComputePass(entry.pipeline, bg, uint32(batchSize), 1, 1)
 
 	return &GPUTensor{
 		buffer:     bufferResult,
@@ -416,8 +416,8 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 
 	// Create uniform buffer for params
 	params := make([]byte, 16)
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))                             //nolint:gosec // G115: safe, batch dims are small positive ints
-	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))                           //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
+	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize)) //nolint:gosec // G115
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -428,7 +428,7 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 	})
 	defer bg.Release()
 
-	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: safe, batch size is bounded
+	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize)
 	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
 
 	return &GPUTensor{

@@ -321,8 +321,8 @@ func (b *Backend) SoftmaxGPU(t *GPUTensor, dim int) *GPUTensor {
 
 	// Create uniform buffer for params
 	params := make([]byte, 16) // 16-byte aligned
-	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))                              //nolint:gosec // G115: safe, batch dims are small positive ints
-	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize))                            //nolint:gosec // G115: integer overflow conversion int -> uint32
+	binary.LittleEndian.PutUint32(params[0:4], uint32(batchSize))
+	binary.LittleEndian.PutUint32(params[4:8], uint32(featureSize)) //nolint:gosec // G115
 	bufferParams := b.createUniformBuffer(params)
 	defer bufferParams.Release()
 
@@ -334,7 +334,7 @@ func (b *Backend) SoftmaxGPU(t *GPUTensor, dim int) *GPUTensor {
 	defer bg.Release()
 
 	// Dispatch workgroups: one per batch element
-	workgroups := uint32(batchSize) //nolint:gosec // G115: safe, batch size is bounded
+	workgroups := uint32(batchSize)
 	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
 
 	// Return GPUTensor (NO readBuffer!)
