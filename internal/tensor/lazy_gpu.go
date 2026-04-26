@@ -78,8 +78,11 @@ func (l *LazyGPUData) Realize() ([]byte, error) {
 		return nil, nil
 	}
 
-	// Read data from GPU
+	// Read data from GPU. KeepAlive prevents GC from collecting this
+	// LazyGPUData (and running its finalizer) while ReadGPUBuffer
+	// is using bufferPtr.
 	data, err := l.backend.ReadGPUBuffer(l.bufferPtr, l.size)
+	runtime.KeepAlive(l)
 	if err != nil {
 		return nil, err
 	}
