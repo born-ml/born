@@ -62,8 +62,8 @@ type Backend struct {
 // New creates a new WebGPU backend.
 // Returns an error if WebGPU is not available or initialization fails.
 func New() (*Backend, error) {
-	// Create WebGPU instance with Vulkan backend preferred.
-	// DX12 has known issues with large buffers on Intel iGPUs (BUG-DX12-012).
+	// Create WebGPU instance. Vulkan is the primary compute backend —
+	// stable across all platforms and GPU vendors.
 	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{
 		Backends: wgpu.BackendsVulkan,
 	})
@@ -382,8 +382,12 @@ func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, 
 	}
 	defer mappedRange.Release()
 
+	data := mappedRange.Bytes()
+	if data == nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: MappedRange.Bytes() returned nil (buffer may have been unmapped or released)")
+	}
 	result := make([]byte, size)
-	copy(result, mappedRange.Bytes())
+	copy(result, data)
 	return result, nil
 }
 
