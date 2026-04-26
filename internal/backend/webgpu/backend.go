@@ -56,7 +56,6 @@ type Backend struct {
 		activeBuffers       int64
 		mu                  sync.RWMutex
 	}
-
 }
 
 // New creates a new WebGPU backend.
@@ -131,8 +130,12 @@ func (b *Backend) flushCommands() {}
 // Release releases all WebGPU resources.
 // Must be called when the backend is no longer needed.
 func (b *Backend) Release() {
-	// Flush any pending commands before releasing resources
-	b.flushCommands()
+	// Ensure GPU is fully idle before destroying resources.
+	// Without this, rapid create/destroy cycles (e.g. test suites) can
+	// overwhelm the driver on iGPUs with shared memory.
+	if b.device != nil {
+		b.device.Poll(wgpu.PollWait)
+	}
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -194,19 +197,47 @@ func (b *Backend) AdapterInfo() *wgpu.AdapterInfo {
 	return b.adapterInfo
 }
 
-// IsAvailable checks if WebGPU is available on this system.
+// IsAvailable checks if WebGPU with compute shader support is available.
+// Returns false on software renderers that don't support compute pipelines.
 func IsAvailable() bool {
-	instance, err := wgpu.CreateInstance(nil)
+	backend, err := New()
 	if err != nil {
 		return false
 	}
-	defer instance.Release()
+	defer backend.Release()
 
-	adapter, err := instance.RequestAdapter(nil)
+	// Verify compute shaders actually work by creating a minimal pipeline.
+	// Software renderers pass adapter/device creation but fail here.
+	shader, err := backend.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
+		Label: "availability-check",
+		WGSL:  "@compute @workgroup_size(1) fn main() {}",
+	})
 	if err != nil {
 		return false
 	}
-	adapter.Release()
+	defer shader.Release()
+
+	bgl, err := backend.device.CreateBindGroupLayout(&wgpu.BindGroupLayoutDescriptor{})
+	if err != nil {
+		return false
+	}
+	defer bgl.Release()
+
+	pl, err := backend.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{
+		BindGroupLayouts: []*wgpu.BindGroupLayout{bgl},
+	})
+	if err != nil {
+		return false
+	}
+	defer pl.Release()
+
+	pipeline, err := backend.device.CreateComputePipeline(&wgpu.ComputePipelineDescriptor{
+		Label: "availability-check", Layout: pl, Module: shader, EntryPoint: "main",
+	})
+	if err != nil {
+		return false
+	}
+	pipeline.Release()
 
 	return true
 }
@@ -385,6 +416,9 @@ func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, 
 	data := mappedRange.Bytes()
 	if data == nil {
 		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: MappedRange.Bytes() returned nil (buffer may have been unmapped or released)")
+	}
+	if uint64(len(data)) < size {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: MappedRange.Bytes() returned %d bytes but need %d (buffer size mismatch)", len(data), size)
 	}
 	result := make([]byte, size)
 	copy(result, data)

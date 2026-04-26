@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gogpu/gputypes v0.5.0
-	github.com/gogpu/wgpu v0.26.7
+	github.com/gogpu/wgpu v0.26.8
 	github.com/pkoukk/tiktoken-go v0.1.8
 	github.com/stretchr/testify v1.11.1
 )

@@ -3,18 +3,18 @@
 package webgpu
 
 import (
-	"testing"
 	"github.com/born-ml/born/internal/tensor"
+	"testing"
 )
 
 func TestAddNonLazy(t *testing.T) {
 	if !IsAvailable() {
-		t.Skip("WebGPU not available")
+		t.Skip("WebGPU compute not available")
 	}
 
 	backend, err := New()
 	if err != nil {
-		t.Fatalf("failed to create backend: %v", err)
+		t.Skipf("WebGPU not available: %v", err)
 	}
 	defer backend.Release()
 

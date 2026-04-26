@@ -198,7 +198,9 @@ func (b *Backend) execComputePass(pipeline *wgpu.ComputePipeline, bg *wgpu.BindG
 // leave the source buffer in an undefined state on some drivers (DX12, Vulkan).
 //
 // The function creates a temporary staging buffer, encodes
-//   compute_pass → CopyBufferToBuffer(resultBuf → staging) → Finish → Submit → Map
+//
+//	compute_pass → CopyBufferToBuffer(resultBuf → staging) → Finish → Submit → Map
+//
 // all in one encoder, then returns the mapped bytes.
 //
 // Panics on failure because all callers use statically validated buffers.

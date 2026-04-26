@@ -1315,7 +1315,6 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 // runSumLazy executes sum reduction and returns a LAZY tensor.
 // For Sum, the result is scalar (4 bytes), so lazy mode has minimal benefit.
 // However, this avoids blocking the GPU pipeline during chained operations.
-//
 func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error) {
 	dtype := input.DType()
 	if dtype != tensor.Float32 && dtype != tensor.Int32 {

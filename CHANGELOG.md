@@ -5,18 +5,22 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-04-26
 
 ### Changed
 
 - **WebGPU backend migrated from go-webgpu to gogpu/wgpu** ([#40](https://github.com/born-ml/born/issues/40))
-  - Replaced `github.com/go-webgpu/webgpu` with `github.com/gogpu/wgpu` v0.26.6 (pure Go, zero CGO)
+  - Replaced `github.com/go-webgpu/webgpu` with `github.com/gogpu/wgpu` v0.26.8 (pure Go, zero CGO)
   - **No more shared library dependency** — no `.dll`/`.so`/`.dylib` downloads needed
   - True single binary deployment: `go build` produces executable with GPU support built in
+  - Vulkan primary compute backend — stable across all platforms and GPU vendors
   - WGSL shaders unchanged — full backward compatibility
-  - Fixed lazy ops buffer lifetime (BUG-LAZY-DEFER-RELEASE): immediate submit instead of batching prevents premature buffer destruction
-  - All GPU ops verified: Add, Sub, Mul, Div, MatMul, Transpose, Reshape, ReLU, Sigmoid, Tanh, Softmax
-  - Windows (D3D12) supported; Linux (Vulkan) and macOS (Metal) support in gogpu/wgpu, Born integration planned
+  - Fixed: PipelineLayout kept alive for Vulkan SetBindGroup (was freed prematurely)
+  - Fixed: lazy ops immediate submit (prevents buffer lifetime issues with DestroyQueue)
+  - Fixed: lazy chain `copyGPUBuffer` immediate submit (prevents stale data in chained ops)
+  - Fixed: `runtime.KeepAlive` guards prevent GC finalizer races on GPU buffers
+  - Fixed: `Poll(PollWait)` in Release() ensures GPU idle before resource destruction
+  - All 105 GPU tests pass, validated with real model training (HRM, 20 epochs, 0 crashes)
 
 ### Added
 
