@@ -8,7 +8,7 @@ import (
 )
 
 func TestAddNonLazy(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU compute not available")
 	}
 

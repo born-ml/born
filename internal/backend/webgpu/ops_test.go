@@ -64,7 +64,7 @@ func compareSlices(t *testing.T, expected, actual []float32, tolerance float32) 
 }
 
 func TestAdd(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -89,7 +89,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestSub(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -114,7 +114,7 @@ func TestSub(t *testing.T) {
 }
 
 func TestMul(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -139,7 +139,7 @@ func TestMul(t *testing.T) {
 }
 
 func TestDiv(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -164,7 +164,7 @@ func TestDiv(t *testing.T) {
 }
 
 func TestMatMul(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -198,7 +198,7 @@ func TestMatMul(t *testing.T) {
 }
 
 func TestTranspose(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -229,7 +229,7 @@ func TestTranspose(t *testing.T) {
 }
 
 func TestReshape(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -258,7 +258,7 @@ func TestReshape(t *testing.T) {
 }
 
 func TestLargeAdd(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -291,7 +291,7 @@ func TestLargeAdd(t *testing.T) {
 }
 
 func TestLargeMatMul(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -326,7 +326,7 @@ func TestLargeMatMul(t *testing.T) {
 }
 
 func TestReLU(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -350,7 +350,7 @@ func TestReLU(t *testing.T) {
 }
 
 func TestSigmoid(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -374,7 +374,7 @@ func TestSigmoid(t *testing.T) {
 }
 
 func TestTanh(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -398,7 +398,7 @@ func TestTanh(t *testing.T) {
 }
 
 func TestSoftmax(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 

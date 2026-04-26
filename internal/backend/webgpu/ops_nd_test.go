@@ -10,7 +10,7 @@ import (
 
 // Test 3D transpose.
 func TestTranspose3D(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -64,7 +64,7 @@ func TestTranspose3D(t *testing.T) {
 
 // Test 4D transpose for attention mechanism.
 func TestTranspose4D(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -106,7 +106,7 @@ func TestTranspose4D(t *testing.T) {
 
 // Test 4D transpose with int32.
 func TestTranspose4DInt32(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -142,7 +142,7 @@ func TestTranspose4DInt32(t *testing.T) {
 
 // Test Expand broadcasting.
 func TestExpandBroadcast(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -190,7 +190,7 @@ func TestExpandBroadcast(t *testing.T) {
 
 // Test Expand with partial broadcasting.
 func TestExpandPartialBroadcast(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -239,7 +239,7 @@ func TestExpandPartialBroadcast(t *testing.T) {
 
 // Test Expand with int32.
 func TestExpandInt32(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -282,7 +282,7 @@ func TestExpandInt32(t *testing.T) {
 
 // Test 5D transpose.
 func TestTranspose5D(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -318,7 +318,7 @@ func TestTranspose5D(t *testing.T) {
 
 // Test 6D expand (max supported).
 func TestExpand6D(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 
@@ -367,7 +367,7 @@ func TestExpand6D(t *testing.T) {
 
 // Test transpose no-op.
 func TestTransposeNoOp(t *testing.T) {
-	if !IsAvailable() {
+	if !computeAvailable {
 		t.Skip("WebGPU not available")
 	}
 

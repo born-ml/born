@@ -11,6 +11,9 @@ import (
 
 // TestGPUTapeRecord tests that operations are recorded correctly.
 func TestGPUTapeRecord(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -50,6 +53,9 @@ func TestGPUTapeRecord(t *testing.T) {
 
 // TestGPUBackwardAdd tests gradient computation for addition.
 func TestGPUBackwardAdd(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -127,6 +133,9 @@ func TestGPUBackwardAdd(t *testing.T) {
 
 // TestGPUBackwardMul tests gradient computation for multiplication.
 func TestGPUBackwardMul(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -204,6 +213,9 @@ func TestGPUBackwardMul(t *testing.T) {
 
 // TestGPUBackwardMatMul tests gradient computation for matrix multiplication.
 func TestGPUBackwardMatMul(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -277,6 +289,9 @@ func TestGPUBackwardMatMul(t *testing.T) {
 
 // TestGPUBackwardChain tests gradient computation through a chain of operations.
 func TestGPUBackwardChain(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -384,6 +399,9 @@ func TestGPUBackwardChain(t *testing.T) {
 // TestGPUGradAccumulation tests that gradients accumulate correctly when
 // the same tensor is used multiple times.
 func TestGPUGradAccumulation(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -436,6 +454,9 @@ func TestGPUGradAccumulation(t *testing.T) {
 
 // TestGPUTapeEnable tests enabling/disabling tape recording.
 func TestGPUTapeEnable(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)

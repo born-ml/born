@@ -9,6 +9,9 @@ import (
 )
 
 func TestNewBatch(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -38,6 +41,9 @@ func TestNewBatch(t *testing.T) {
 }
 
 func TestBatchAdd(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -63,6 +69,9 @@ func TestBatchAdd(t *testing.T) {
 }
 
 func TestBatchSubmit(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -90,6 +99,9 @@ func TestBatchSubmit(t *testing.T) {
 }
 
 func TestBatchSubmitEmpty(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -107,6 +119,9 @@ func TestBatchSubmitEmpty(t *testing.T) {
 }
 
 func TestBatchMultipleOps(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -160,6 +175,9 @@ func TestBatchMultipleOps(t *testing.T) {
 }
 
 func TestEvalWithBatch(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -253,6 +271,9 @@ func TestEvalWithBatch(t *testing.T) {
 }
 
 func TestCollectDependencies(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -337,6 +358,9 @@ func TestCollectDependencies(t *testing.T) {
 }
 
 func TestCollectDependenciesNoOp(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)

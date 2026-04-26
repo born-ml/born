@@ -11,6 +11,9 @@ import (
 
 // TestAddGPU tests GPU-native addition.
 func TestAddGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -53,6 +56,9 @@ func TestAddGPU(t *testing.T) {
 
 // TestSubGPU tests GPU-native subtraction.
 func TestSubGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -95,6 +101,9 @@ func TestSubGPU(t *testing.T) {
 
 // TestMulGPU tests GPU-native multiplication.
 func TestMulGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -137,6 +146,9 @@ func TestMulGPU(t *testing.T) {
 
 // TestDivGPU tests GPU-native division.
 func TestDivGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -178,6 +190,9 @@ func TestDivGPU(t *testing.T) {
 }
 
 func TestErfGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -215,6 +230,9 @@ func TestErfGPU(t *testing.T) {
 }
 
 func TestSignGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -252,6 +270,9 @@ func TestSignGPU(t *testing.T) {
 }
 
 func TestAbsGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -290,6 +311,9 @@ func TestAbsGPU(t *testing.T) {
 
 // TestMatMulGPU tests GPU-native matrix multiplication.
 func TestMatMulGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -346,6 +370,9 @@ func TestMatMulGPU(t *testing.T) {
 
 // TestTransposeGPU tests GPU-native transpose.
 func TestTransposeGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -395,6 +422,9 @@ func TestTransposeGPU(t *testing.T) {
 
 // TestReLUGPU tests GPU-native ReLU activation.
 func TestReLUGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -432,6 +462,9 @@ func TestReLUGPU(t *testing.T) {
 
 // TestSigmoidGPU tests GPU-native sigmoid activation.
 func TestSigmoidGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -468,6 +501,9 @@ func TestSigmoidGPU(t *testing.T) {
 
 // TestSoftmaxGPU tests GPU-native softmax activation.
 func TestSoftmaxGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -518,6 +554,9 @@ func TestSoftmaxGPU(t *testing.T) {
 // TestGPUOpsChain tests chaining multiple GPU operations without CPU transfer.
 // This is the key advantage - no intermediate CPU↔GPU transfers!
 func TestGPUOpsChain(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -569,6 +608,9 @@ func TestGPUOpsChain(t *testing.T) {
 
 // TestGPUOpsChainComplex tests complex operation chain.
 func TestGPUOpsChainComplex(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
@@ -611,6 +653,9 @@ func TestGPUOpsChainComplex(t *testing.T) {
 
 // TestGPUOpsInt32 tests GPU operations with int32 dtype.
 func TestGPUOpsInt32(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	backend, err := New()
 	if err != nil {
 		t.Skipf("WebGPU not available: %v", err)
