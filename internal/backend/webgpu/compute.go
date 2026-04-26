@@ -211,7 +211,7 @@ func (b *Backend) execComputeAndRead(
 ) []byte {
 	// Create staging buffer for readback (MapRead | CopyDst).
 	stagingBuf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -355,7 +355,7 @@ func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error
 
 	// Create staging buffer for reading (MAP_READ | COPY_DST).
 	stagingBuffer, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
 		Size:  size,
 	})
 	if err != nil {

@@ -57,11 +57,6 @@ type Backend struct {
 		mu                  sync.RWMutex
 	}
 
-	// Command batching for lazy mode performance optimization.
-	// Commands are accumulated and submitted together to reduce GPU sync overhead.
-	pendingCommands []*wgpu.CommandBuffer
-	pendingMu       sync.Mutex
-	maxBatchSize    int // Maximum commands before auto-flush (0 = no limit)
 }
 
 // New creates a new WebGPU backend.
@@ -129,54 +124,9 @@ func (b *Backend) SetLazyMode(enabled bool) {
 	b.LazyMode = enabled
 }
 
-// queueCommand adds a command buffer to the pending queue for batch submission.
-// This reduces GPU sync overhead by submitting multiple commands at once.
-// Commands are automatically flushed when reading data or when batch size limit is reached.
-func (b *Backend) queueCommand(cmdBuffer *wgpu.CommandBuffer) {
-	b.pendingMu.Lock()
-	defer b.pendingMu.Unlock()
-
-	b.pendingCommands = append(b.pendingCommands, cmdBuffer)
-
-	// Auto-flush if batch size limit is reached (0 = no limit)
-	if b.maxBatchSize > 0 && len(b.pendingCommands) >= b.maxBatchSize {
-		b.flushCommandsLocked()
-	}
-}
-
-// flushCommands submits all pending command buffers to the GPU queue.
-// This is called automatically before reading data from GPU.
-func (b *Backend) flushCommands() {
-	b.pendingMu.Lock()
-	defer b.pendingMu.Unlock()
-	b.flushCommandsLocked()
-}
-
-// flushCommandsLocked submits all pending command buffers (must hold pendingMu lock).
-func (b *Backend) flushCommandsLocked() {
-	if len(b.pendingCommands) == 0 {
-		return
-	}
-	// Submit returns (submissionIndex, error); errors are non-fatal for flush.
-	_, _ = b.queue.Submit(b.pendingCommands...)
-	b.pendingCommands = b.pendingCommands[:0]
-}
-
-// FlushCommands submits all pending command buffers to the GPU queue.
-// Call this when you need to ensure all queued operations are executed.
-// Note: This is called automatically before reading data from GPU buffers.
-func (b *Backend) FlushCommands() {
-	b.flushCommands()
-}
-
-// SetMaxBatchSize sets the maximum number of commands to accumulate before auto-flush.
-// Set to 0 (default) to disable auto-flush limit.
-// Typical values: 32-128 for balanced latency/throughput.
-func (b *Backend) SetMaxBatchSize(size int) {
-	b.pendingMu.Lock()
-	defer b.pendingMu.Unlock()
-	b.maxBatchSize = size
-}
+// flushCommands is a no-op retained for backwards compatibility.
+// All GPU operations now use immediate submit to prevent buffer lifetime issues.
+func (b *Backend) flushCommands() {}
 
 // Release releases all WebGPU resources.
 // Must be called when the backend is no longer needed.

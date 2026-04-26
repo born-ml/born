@@ -93,10 +93,12 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 	}
 	defer bufferResult.Release()
 
-	// Staging buffer (MapRead | CopyDst): CopyBufferToBuffer destination.
+	// Staging buffer: CopyBufferToBuffer destination + MapRead for CPU readback.
+	// CopySrc is needed so this buffer can be re-used as source when chaining
+	// lazy ops (createBufferFromTensor → copyGPUBuffer).
 	// Ownership transfers to the lazy tensor — NO defer Release.
 	stagingBuf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
 		Size:  resultSize,
 	})
 	if err != nil {
@@ -145,7 +147,7 @@ func (b *Backend) runBinaryOpLazy(a, other *tensor.RawTensor, shaderName, shader
 // (or transferring ownership to a lazy tensor via createLazyResult).
 func (b *Backend) createStagingBuffer(size uint64) (*wgpu.Buffer, error) {
 	buf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
-		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst | gputypes.BufferUsageCopySrc,
 		Size:  size,
 	})
 	if err != nil {
@@ -211,7 +213,9 @@ func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffe
 	if finErr != nil {
 		panic(fmt.Sprintf("webgpu: copyGPUBuffer: failed to finish encoder: %v", finErr))
 	}
-	b.queueCommand(cmdBuffer) // Batch instead of immediate submit
+	if _, err := b.queue.Submit(cmdBuffer); err != nil {
+		panic(fmt.Sprintf("webgpu: copyGPUBuffer: submit failed: %v", err))
+	}
 
 	return dstBuffer
 }
