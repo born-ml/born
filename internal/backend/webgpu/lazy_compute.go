@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"runtime"
 	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
@@ -225,9 +226,13 @@ func (b *Backend) copyGPUBuffer(srcBuffer *wgpu.Buffer, size uint64) *wgpu.Buffe
 func (b *Backend) createBufferFromTensor(t *tensor.RawTensor) *wgpu.Buffer {
 	// Check if tensor already has GPU data
 	if gpuData := t.GPUData(); gpuData != nil && !gpuData.IsRealized() {
-		// Tensor has unrealized GPU data - use GPU→GPU copy
+		// Tensor has unrealized GPU data - use GPU→GPU copy.
+		// KeepAlive prevents GC from collecting gpuData (and running its
+		// finalizer which releases the buffer) while copyGPUBuffer uses it.
 		existingBuffer := (*wgpu.Buffer)(gpuData.BufferPtr())
-		return b.copyGPUBuffer(existingBuffer, gpuData.Size())
+		result := b.copyGPUBuffer(existingBuffer, gpuData.Size())
+		runtime.KeepAlive(gpuData)
+		return result
 	}
 
 	// CPU tensor - upload data to GPU
