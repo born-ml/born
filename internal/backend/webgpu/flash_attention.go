@@ -28,7 +28,7 @@ import (
 // Returns:
 //   - *tensor.RawTensor: Output tensor [batch, seqLen, numHeads, headDim]
 //
-//nolint:gocyclo,cyclop,funlen // High complexity/length inherent to Flash Attention setup with multiple validation checks
+//nolint:gocyclo,cyclop // High cyclomatic complexity inherent to Flash Attention setup with multiple validation checks
 func (b *Backend) FlashAttentionGPU(
 	q, k, v *tensor.RawTensor,
 	scale float32,
@@ -135,16 +135,11 @@ func (b *Backend) FlashAttentionGPU(
 	})
 	defer bg.Release()
 
-	// Workgroup dispatch: (num_q_blocks, num_heads, batch)
+	// Workgroup dispatch: (num_q_blocks, num_heads, batch).
+	// Unified encoder: compute + copy to staging in one submission.
 	numQBlocks := (seqLen + blockSize - 1) / blockSize
-	b.execComputePass(entry.pipeline, bg,
-		uint32(numQBlocks), uint32(numHeads), uint32(batch)) //nolint:gosec // G115: integer overflow conversion int -> uint32
-
-	// Read result
-	resultData, err := b.readBuffer(bufferOutput, outputSize)
-	if err != nil {
-		return nil, fmt.Errorf("FlashAttentionGPU: failed to read output: %w", err)
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg,
+		uint32(numQBlocks), uint32(numHeads), uint32(batch), bufferOutput, outputSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
 
 	// Create result tensor
 	result, err := tensor.NewRaw(q.Shape(), tensor.Float32, tensor.WebGPU)

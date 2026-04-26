@@ -5,6 +5,7 @@
 package webgpu
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"unsafe"
@@ -381,11 +382,52 @@ func (b *Backend) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor
 }
 
 // ReadGPUBuffer implements tensor.LazyBackend interface.
-// Reads data from a GPU buffer to CPU memory.
-// bufferPtr must be *wgpu.Buffer.
+// Reads data from a GPU staging buffer (MapRead | CopyDst) to CPU memory.
+// bufferPtr must point to a *wgpu.Buffer created with BufferUsageMapRead.
+//
+// The lazy path (runBinaryOpLazy, runUnaryOpLazy, etc.) creates a staging buffer
+// in the same encoder as the compute pass (unified encoder pattern). The staging
+// buffer already has the computed data after the batch submit completes.
+//
+// Sequence:
+//  1. flushCommands() — submit all batched compute+copy commands.
+//  2. Poll(PollWait) — block until the GPU completes the submitted commands.
+//     This is required because Map()'s internal Poll(PollPoll) may resolve
+//     immediately using a prior submission's fence when a backend has received
+//     multiple submits (DX12/Vulkan fence ordering artifact with batched commands).
+//  3. Map the staging buffer (blocks until the GPU fence resolves).
+//  4. Copy data to CPU slice, Unmap.
 func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, error) {
+	// Flush all pending batched commands (compute + CopyBufferToBuffer to staging).
+	b.flushCommands()
+
+	// Wait for ALL pending GPU work to complete before mapping.
+	// Without this Poll, Map()'s internal Poll(PollPoll) can return "done"
+	// prematurely on backends (DX12) that signal fences conservatively,
+	// causing the staging buffer to be read before the compute pass has
+	// finished writing to it — resulting in zeros.
+	// This matches the pattern used by readBuffer() for the split-encoder path.
+	b.device.Poll(wgpu.PollWait)
+
 	buffer := (*wgpu.Buffer)(bufferPtr)
-	return b.readBuffer(buffer, size)
+
+	// Map the staging buffer. After Poll(PollWait) the GPU is idle, so
+	// Map() returns immediately without blocking on the fence.
+	ctx := context.Background()
+	if err := buffer.Map(ctx, wgpu.MapModeRead, 0, size); err != nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: failed to map staging buffer: %w", err)
+	}
+	defer func() { _ = buffer.Unmap() }()
+
+	mappedRange, err := buffer.MappedRange(0, size)
+	if err != nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: failed to get mapped range: %w", err)
+	}
+	defer mappedRange.Release()
+
+	result := make([]byte, size)
+	copy(result, mappedRange.Bytes())
+	return result, nil
 }
 
 // ReleaseGPUBuffer implements tensor.LazyBackend interface.

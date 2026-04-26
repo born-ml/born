@@ -155,9 +155,14 @@ func bufBinding(buf *wgpu.Buffer, size uint64) bindGroupBuffer {
 }
 
 // execComputePass encodes a single compute pass and submits it.
-// It handles all error-returning API calls that gogpu/wgpu requires.
+// Used for GPU-resident operations (gpu_ops.go, gpu_autodiff.go) where the result
+// stays on GPU in a storage buffer for subsequent GPU operations.
+// When the result eventually needs to be read back, call readBuffer() which
+// uses Poll(PollWait) + a separate copy encoder to safely transfer the data.
 //
 // Panics on failure since compute pass errors indicate a programming error.
+//
+//nolint:unparam // z is always 1 currently but kept for future 3D workgroup dispatch support
 func (b *Backend) execComputePass(pipeline *wgpu.ComputePipeline, bg *wgpu.BindGroup, x, y, z uint32) {
 	encoder, err := b.device.CreateCommandEncoder(nil)
 	if err != nil {
@@ -185,6 +190,81 @@ func (b *Backend) execComputePass(pipeline *wgpu.ComputePipeline, bg *wgpu.BindG
 	if _, err := b.queue.Submit(cmdBuffer); err != nil {
 		panic(fmt.Sprintf("webgpu: queue submit error: %v", err))
 	}
+}
+
+// execComputeAndRead runs a compute pass and copies the result to CPU in a SINGLE encoder.
+// gogpu/wgpu requires that CopyBufferToBuffer and the compute pass that writes
+// the source buffer be submitted in the same command buffer — separate submits
+// leave the source buffer in an undefined state on some drivers (DX12, Vulkan).
+//
+// The function creates a temporary staging buffer, encodes
+//   compute_pass → CopyBufferToBuffer(resultBuf → staging) → Finish → Submit → Map
+// all in one encoder, then returns the mapped bytes.
+//
+// Panics on failure because all callers use statically validated buffers.
+func (b *Backend) execComputeAndRead(
+	pipeline *wgpu.ComputePipeline,
+	bg *wgpu.BindGroup,
+	x, y, z uint32,
+	resultBuf *wgpu.Buffer,
+	resultSize uint64,
+) []byte {
+	// Create staging buffer for readback (MapRead | CopyDst).
+	stagingBuf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+		Size:  resultSize,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: failed to create staging buffer: %v", err))
+	}
+	defer stagingBuf.Release()
+
+	// Single encoder: compute pass + copy to staging.
+	encoder, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: failed to create command encoder: %v", err))
+	}
+
+	computePass, err := encoder.BeginComputePass(nil)
+	if err != nil {
+		encoder.DiscardEncoding()
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: failed to begin compute pass: %v", err))
+	}
+
+	computePass.SetPipeline(pipeline)
+	computePass.SetBindGroup(0, bg, nil)
+	computePass.Dispatch(x, y, z)
+	if err := computePass.End(); err != nil {
+		encoder.DiscardEncoding()
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: compute pass end error: %v", err))
+	}
+
+	// CopyBufferToBuffer INSIDE the same encoder, after pass.End(), before Finish().
+	encoder.CopyBufferToBuffer(resultBuf, 0, stagingBuf, 0, resultSize)
+
+	cmdBuffer, err := encoder.Finish()
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: encoder finish error: %v", err))
+	}
+	if _, err := b.queue.Submit(cmdBuffer); err != nil {
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: queue submit error: %v", err))
+	}
+
+	// Map staging buffer. Map() blocks until the GPU fence resolves.
+	if err := stagingBuf.Map(context.Background(), wgpu.MapModeRead, 0, resultSize); err != nil {
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: failed to map staging buffer: %v", err))
+	}
+	defer func() { _ = stagingBuf.Unmap() }()
+
+	mappedRange, err := stagingBuf.MappedRange(0, resultSize)
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: execComputeAndRead: failed to get mapped range: %v", err))
+	}
+	defer mappedRange.Release()
+
+	out := make([]byte, resultSize)
+	copy(out, mappedRange.Bytes())
+	return out
 }
 
 // createBuffer creates a GPU buffer and uploads initial data via MappedAtCreation.
@@ -251,11 +331,27 @@ func (b *Backend) createUniformBuffer(data []byte) *wgpu.Buffer {
 	return buffer
 }
 
-// readBuffer reads data back from a GPU buffer to CPU memory.
-// Uses a staging buffer since storage buffers can't be mapped directly.
+// readBuffer reads data from a GPU storage buffer back to CPU.
+// Used by GPUTensor.ToCPU() for GPU-resident tensors produced by gpu_ops.go.
+//
+// This function uses a dedicated staging buffer approach:
+//  1. Poll(PollWait) to ensure all prior GPU work (compute passes) is complete.
+//  2. New encoder: CopyBufferToBuffer(srcStorage → staging).
+//  3. Submit + Map staging buffer.
+//
+// This is the "split encoder" path — it works because Poll(PollWait) guarantees
+// the compute pass has fully committed its writes before the copy encoder runs.
+//
+// For non-lazy operations (runBinaryOp, runUnaryOp, etc.) use execComputeAndRead()
+// instead, which keeps compute + copy in a single encoder without needing a poll.
 func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error) {
-	// Flush all pending commands first to ensure GPU operations are complete.
+	// Flush all pending lazy-mode command buffers.
 	b.flushCommands()
+
+	// Wait for ALL pending GPU work to complete before reading.
+	// This ensures the compute pass has written its results to srcBuffer
+	// before we issue the CopyBufferToBuffer in a new encoder.
+	b.device.Poll(wgpu.PollWait)
 
 	// Create staging buffer for reading (MAP_READ | COPY_DST).
 	stagingBuffer, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
@@ -267,7 +363,7 @@ func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error
 	}
 	defer stagingBuffer.Release()
 
-	// Copy from GPU buffer to staging buffer.
+	// Copy from GPU storage buffer to staging buffer.
 	encoder, err := b.device.CreateCommandEncoder(nil)
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: failed to create command encoder: %w", err)
@@ -282,7 +378,6 @@ func (b *Backend) readBuffer(srcBuffer *wgpu.Buffer, size uint64) ([]byte, error
 	}
 
 	// Map staging buffer for reading. Map() blocks until the GPU fence resolves.
-	// In gogpu/wgpu, MapAsync+poll loop is replaced by the blocking Map(ctx, ...) API.
 	if err = stagingBuffer.Map(context.Background(), wgpu.MapModeRead, 0, size); err != nil {
 		return nil, fmt.Errorf("webgpu: failed to map staging buffer: %w", err)
 	}
@@ -379,12 +474,7 @@ func (b *Backend) runBinaryOp(a, other *tensor.RawTensor, shaderName, shaderCode
 	defer bg.Release()
 
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(a.Shape(), a.DType(), tensor.WebGPU)
 	if err != nil {
@@ -472,12 +562,7 @@ func (b *Backend) runComparisonOp(a, other *tensor.RawTensor, shaderName, shader
 	defer bg.Release()
 
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	// Comparison always returns float32 (0.0/1.0).
 	result, err := tensor.NewRaw(a.Shape(), tensor.Float32, tensor.WebGPU)
@@ -526,12 +611,7 @@ func (b *Backend) runUnaryOp(input *tensor.RawTensor, shaderName, shaderCode str
 	defer bg.Release()
 
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(input.Shape(), input.DType(), tensor.WebGPU)
 	if err != nil {
@@ -604,12 +684,7 @@ func (b *Backend) runMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor, erro
 	// 2D workgroup dispatch: 16×16 tiles.
 	workgroupsX := uint32(math.Ceil(float64(N) / 16.0))
 	workgroupsY := uint32(math.Ceil(float64(M) / 16.0))
-	b.execComputePass(entry.pipeline, bg, workgroupsX, workgroupsY, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroupsX, workgroupsY, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -667,12 +742,7 @@ func (b *Backend) runTranspose(input *tensor.RawTensor) (*tensor.RawTensor, erro
 	// 2D workgroup dispatch: 16×16 tiles.
 	workgroupsX := uint32(math.Ceil(float64(cols) / 16.0))
 	workgroupsY := uint32(math.Ceil(float64(rows) / 16.0))
-	b.execComputePass(entry.pipeline, bg, workgroupsX, workgroupsY, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroupsX, workgroupsY, 1, bufferResult, resultSize)
 
 	resultShape := tensor.Shape{int(cols), int(rows)}
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
@@ -725,12 +795,7 @@ func (b *Backend) runScalarOp(input *tensor.RawTensor, scalar float32, shaderNam
 	defer bg.Release()
 
 	workgroups := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(input.Shape(), input.DType(), tensor.WebGPU)
 	if err != nil {
@@ -788,12 +853,7 @@ func (b *Backend) runSoftmax(input *tensor.RawTensor) (*tensor.RawTensor, error)
 
 	// Each workgroup handles one row (batch sample).
 	workgroups := (batchSize + workgroupSize - 1) / workgroupSize
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(input.Shape(), tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -888,12 +948,7 @@ func (b *Backend) runBatchMatMul(a, other *tensor.RawTensor) (*tensor.RawTensor,
 	// Dispatch: (N+7)/8 × (M+7)/8 × batch.
 	workgroupsX := (N + 7) / 8
 	workgroupsY := (M + 7) / 8
-	b.execComputePass(entry.pipeline, bg, workgroupsX, workgroupsY, batch)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroupsX, workgroupsY, batch, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -987,12 +1042,7 @@ func (b *Backend) runConv2D(input, kernel *tensor.RawTensor, stride, padding int
 	workgroupsX := (outWidth + 7) / 8
 	workgroupsY := (outHeight + 7) / 8
 	workgroupsZ := batchSize * outChannels
-	b.execComputePass(entry.pipeline, bg, workgroupsX, workgroupsY, workgroupsZ)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroupsX, workgroupsY, workgroupsZ, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -1069,12 +1119,7 @@ func (b *Backend) runMaxPool2D(input *tensor.RawTensor, kernelSize, stride int) 
 	workgroupsX := (outWidth + 7) / 8
 	workgroupsY := (outHeight + 7) / 8
 	workgroupsZ := batchSize * channels
-	b.execComputePass(entry.pipeline, bg, workgroupsX, workgroupsY, workgroupsZ)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroupsX, workgroupsY, workgroupsZ, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -1190,13 +1235,7 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	})
 	defer bg.Release()
 
-	b.execComputePass(entry.pipeline, bg, numWorkgroups, 1, 1)
-
-	// Read partial sums and sum on CPU
-	partialData, err := b.readBuffer(bufferPartialSums, partialSumsSize)
-	if err != nil {
-		return nil, err
-	}
+	partialData := b.execComputeAndRead(entry.pipeline, bg, numWorkgroups, 1, 1, bufferPartialSums, partialSumsSize)
 
 	// Sum partial results on CPU based on dtype
 	switch dtype {
@@ -1295,12 +1334,7 @@ func (b *Backend) runArgmax(input *tensor.RawTensor, dim int) (*tensor.RawTensor
 	defer bg.Release()
 
 	workgroups := uint32((batchSize + workgroupSize - 1) / workgroupSize)
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(resultShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -1372,12 +1406,7 @@ func (b *Backend) runEmbedding(weight, indices *tensor.RawTensor) (*tensor.RawTe
 
 	totalElements := numIndices * embeddingDim
 	workgroups := uint32((totalElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(outputShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -1542,12 +1571,7 @@ func (b *Backend) runWhere(condition, x, y *tensor.RawTensor) (*tensor.RawTensor
 	defer bgWhere.Release()
 
 	workgroupsWhere := uint32((numElements + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entry.pipeline, bgWhere, workgroupsWhere, 1, 1)
-
-	resultDataWhere, err := b.readBuffer(bufferResultWhere, resultSizeWhere)
-	if err != nil {
-		return nil, err
-	}
+	resultDataWhere := b.execComputeAndRead(entry.pipeline, bgWhere, workgroupsWhere, 1, 1, bufferResultWhere, resultSizeWhere)
 
 	resultWhere, err := tensor.NewRaw(x.Shape(), dtype, tensor.WebGPU)
 	if err != nil {
@@ -1636,12 +1660,7 @@ func (b *Backend) runGather(input *tensor.RawTensor, dim int, indices *tensor.Ra
 
 	totalOutputGather := gatherBatchSize * outputK
 	workgroupsGather := uint32((totalOutputGather + workgroupSize - 1) / workgroupSize) //nolint:gosec // G115: integer overflow conversion int -> uint32
-	b.execComputePass(entryGather.pipeline, bgGather, workgroupsGather, 1, 1)
-
-	resultDataGather, err := b.readBuffer(bufferResultGather, gatherResultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultDataGather := b.execComputeAndRead(entryGather.pipeline, bgGather, workgroupsGather, 1, 1, bufferResultGather, gatherResultSize)
 
 	resultGather, err := tensor.NewRaw(gatherResultShape, tensor.Float32, tensor.WebGPU)
 	if err != nil {
@@ -1852,12 +1871,7 @@ func (b *Backend) runTransposeND(input *tensor.RawTensor, axes []int) (*tensor.R
 	// 1D workgroups, 256 threads each.
 	numElements := uint32(shape.NumElements()) //nolint:gosec // G115: integer overflow conversion int -> uint32
 	workgroups := uint32(math.Ceil(float64(numElements) / 256.0))
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(newShape, input.DType(), tensor.WebGPU)
 	if err != nil {
@@ -1978,12 +1992,7 @@ func (b *Backend) runExpand(input *tensor.RawTensor, newShape tensor.Shape) (*te
 
 	// 1D workgroups, 256 threads each.
 	workgroups := uint32(math.Ceil(float64(resultNumElements) / 256.0))
-	b.execComputePass(entry.pipeline, bg, workgroups, 1, 1)
-
-	resultData, err := b.readBuffer(bufferResult, resultSize)
-	if err != nil {
-		return nil, err
-	}
+	resultData := b.execComputeAndRead(entry.pipeline, bg, workgroups, 1, 1, bufferResult, resultSize)
 
 	result, err := tensor.NewRaw(newShape, input.DType(), tensor.WebGPU)
 	if err != nil {
