@@ -66,8 +66,11 @@ type Backend struct {
 // New creates a new WebGPU backend.
 // Returns an error if WebGPU is not available or initialization fails.
 func New() (*Backend, error) {
-	// Create WebGPU instance.
-	instance, err := wgpu.CreateInstance(nil)
+	// Create WebGPU instance with Vulkan backend preferred.
+	// DX12 has known issues with large buffers on Intel iGPUs (BUG-DX12-012).
+	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{
+		Backends: wgpu.BackendsVulkan,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
 	}

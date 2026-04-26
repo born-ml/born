@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **WebGPU backend migrated from go-webgpu to gogpu/wgpu** ([#40](https://github.com/born-ml/born/issues/40))
-  - Replaced `github.com/go-webgpu/webgpu` with `github.com/gogpu/wgpu` (pure Go, zero CGO)
+  - Replaced `github.com/go-webgpu/webgpu` with `github.com/gogpu/wgpu` v0.26.6 (pure Go, zero CGO)
   - **No more shared library dependency** — no `.dll`/`.so`/`.dylib` downloads needed
   - True single binary deployment: `go build` produces executable with GPU support built in
   - WGSL shaders unchanged — full backward compatibility
+  - Fixed lazy ops buffer lifetime (BUG-LAZY-DEFER-RELEASE): immediate submit instead of batching prevents premature buffer destruction
+  - All GPU ops verified: Add, Sub, Mul, Div, MatMul, Transpose, Reshape, ReLU, Sigmoid, Tanh, Softmax
   - Windows (D3D12) supported; Linux (Vulkan) and macOS (Metal) support in gogpu/wgpu, Born integration planned
 
 ### Added
