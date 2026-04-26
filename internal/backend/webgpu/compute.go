@@ -73,7 +73,6 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, en
 		bgl.Release()
 		panic(fmt.Sprintf("webgpu: failed to create pipeline layout for %q: %v", name, err))
 	}
-	defer pipelineLayout.Release() // layout is consumed by the pipeline; release after creation
 
 	pipeline, err := b.device.CreateComputePipeline(&wgpu.ComputePipelineDescriptor{
 		Label:      name,
@@ -82,11 +81,12 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, en
 		EntryPoint: "main",
 	})
 	if err != nil {
+		pipelineLayout.Release()
 		bgl.Release()
 		panic(fmt.Sprintf("webgpu: failed to create compute pipeline %q: %v", name, err))
 	}
 
-	entry := pipelineEntry{pipeline: pipeline, layout: bgl}
+	entry := pipelineEntry{pipeline: pipeline, layout: bgl, pipelineLayout: pipelineLayout}
 	b.mu.Lock()
 	b.pipelines[name] = entry
 	b.mu.Unlock()

@@ -16,12 +16,13 @@ import (
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
 
-// pipelineEntry caches a compute pipeline together with its bind group layout.
-// gogpu/wgpu does not expose GetBindGroupLayout on a pipeline,
-// so we store the layout alongside the pipeline at creation time.
+// pipelineEntry caches a compute pipeline together with its layouts.
+// The pipeline layout must remain alive because Vulkan references it
+// during vkCmdBindDescriptorSets on every SetBindGroup call.
 type pipelineEntry struct {
-	pipeline *wgpu.ComputePipeline
-	layout   *wgpu.BindGroupLayout
+	pipeline       *wgpu.ComputePipeline
+	layout         *wgpu.BindGroupLayout
+	pipelineLayout *wgpu.PipelineLayout
 }
 
 // Backend implements tensor operations on GPU using WebGPU.
@@ -192,10 +193,13 @@ func (b *Backend) Release() {
 		b.bufferPool = nil
 	}
 
-	// Release pipelines and their associated bind group layouts.
+	// Release pipelines and their associated layouts.
 	for _, entry := range b.pipelines {
 		entry.pipeline.Release()
 		entry.layout.Release()
+		if entry.pipelineLayout != nil {
+			entry.pipelineLayout.Release()
+		}
 	}
 	b.pipelines = nil
 
