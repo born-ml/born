@@ -82,15 +82,24 @@ func LoadGGUF[B tensor.Backend](path string, backend B, opts ...Option[B]) (*Mod
 		return nil, fmt.Errorf("llama: load weights from %s: %w", path, err)
 	}
 
+	// Handle tied embeddings: most LLaMA models omit lm_head.weight from GGUF
+	// because it shares weights with embed_tokens (tie_word_embeddings=true).
+	if !loader.lmHeadLoaded {
+		embedData := model.Embed.Weight.Tensor().Raw().AsFloat32()
+		headData := model.Head.Weight().Tensor().Raw().AsFloat32()
+		copy(headData, embedData)
+	}
+
 	return model, nil
 }
 
 // weightLoader centralizes the weight loading logic.
 type weightLoader[B tensor.Backend] struct {
-	converter *gguf.TensorConverter
-	mapper    internalLoader.WeightMapper
-	model     *Model[B]
-	backend   B
+	converter    *gguf.TensorConverter
+	mapper       internalLoader.WeightMapper
+	model        *Model[B]
+	backend      B
+	lmHeadLoaded bool // tracks whether lm_head.weight was found in GGUF
 }
 
 // loadAll iterates every tensor in the GGUF file, maps it to a Born parameter,
@@ -149,6 +158,7 @@ func (wl *weightLoader[B]) setParameter(bornName string, raw *tensor.RawTensor) 
 		return copyToParam(m.Norm.Gamma, raw)
 
 	case bornName == "lm_head.weight":
+		wl.lmHeadLoaded = true
 		return copyToLinearWeight(m.Head, raw)
 
 	case strings.HasPrefix(bornName, "layers."):
