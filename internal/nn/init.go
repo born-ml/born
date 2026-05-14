@@ -2,7 +2,6 @@ package nn
 
 import (
 	"math"
-	"math/rand"
 
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -33,9 +32,7 @@ func Xavier[B tensor.Backend](fanIn, fanOut int, shape tensor.Shape, backend B) 
 
 	data := t.AsFloat32()
 	for i := range data {
-		// Random value in [-bound, bound]
-		//nolint:gosec // Using math/rand for weight initialization (not security-critical)
-		data[i] = float32((rand.Float64()*2.0 - 1.0) * bound)
+		data[i] = float32((randFloat64()*2.0 - 1.0) * bound)
 	}
 
 	return tensor.New[float32, B](t, backend)

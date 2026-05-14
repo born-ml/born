@@ -44,6 +44,29 @@ func NewParameter[B tensor.Backend](name string, t *tensor.Tensor[float32, B]) *
 	return nn.NewParameter(name, t)
 }
 
+// Reproducibility
+
+// SetSeed sets the global random seed for weight initialization and tensor creation.
+//
+// Call this before creating models to ensure reproducible initialization across runs.
+// Seeds both nn (Xavier, Embedding) and tensor (Randn, Rand) random sources.
+//
+// Example:
+//
+//	nn.SetSeed(42)
+//	model1 := nn.NewLinear(784, 128, backend)
+//
+//	nn.SetSeed(42)
+//	model2 := nn.NewLinear(784, 128, backend) // identical weights
+func SetSeed(seed int64) {
+	nn.SetSeed(seed)
+}
+
+// ResetSeed clears the seeded RNG, reverting to Go's default auto-seeded behavior.
+func ResetSeed() {
+	nn.ResetSeed()
+}
+
 // Layers
 
 // Linear represents a fully connected (dense) layer.

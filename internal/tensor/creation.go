@@ -2,7 +2,6 @@ package tensor
 
 import (
 	"math"
-	"math/rand"
 )
 
 // Zeros creates a tensor filled with zeros.
@@ -89,8 +88,8 @@ func Randn[T DType, B Backend](shape Shape, b B) *Tensor[T, B] {
 	case float32:
 		dataF32 := any(data).([]float32)
 		for i := 0; i < len(dataF32); i += 2 {
-			u1 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
-			u2 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
+			u1 := RandFloat64()
+			u2 := RandFloat64()
 			z0 := math.Sqrt(-2.0*math.Log(u1)) * math.Cos(2.0*math.Pi*u2)
 			z1 := math.Sqrt(-2.0*math.Log(u1)) * math.Sin(2.0*math.Pi*u2)
 			dataF32[i] = float32(z0)
@@ -101,8 +100,8 @@ func Randn[T DType, B Backend](shape Shape, b B) *Tensor[T, B] {
 	case float64:
 		dataF64 := any(data).([]float64)
 		for i := 0; i < len(dataF64); i += 2 {
-			u1 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
-			u2 := rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally for reproducibility
+			u1 := RandFloat64()
+			u2 := RandFloat64()
 			z0 := math.Sqrt(-2.0*math.Log(u1)) * math.Cos(2.0*math.Pi*u2)
 			z1 := math.Sqrt(-2.0*math.Log(u1)) * math.Sin(2.0*math.Pi*u2)
 			dataF64[i] = z0
@@ -131,12 +130,12 @@ func Rand[T DType, B Backend](shape Shape, b B) *Tensor[T, B] {
 	case float32:
 		dataF32 := any(data).([]float32)
 		for i := range dataF32 {
-			dataF32[i] = float32(rand.Float64()) //nolint:gosec // G404: ML uses math/rand intentionally
+			dataF32[i] = float32(RandFloat64())
 		}
 	case float64:
 		dataF64 := any(data).([]float64)
 		for i := range dataF64 {
-			dataF64[i] = rand.Float64() //nolint:gosec // G404: ML uses math/rand intentionally
+			dataF64[i] = RandFloat64()
 		}
 	default:
 		panic("Rand only supports float32 and float64 types")

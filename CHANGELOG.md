@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `nn.SetSeed(seed)` / `nn.ResetSeed()` for reproducible weight initialization
+  - Seeds both nn (Xavier, Embedding) and tensor (Randn, Rand) random sources
+  - Thread-safe (sync.Mutex per package)
+  - Enables deterministic model creation for experiments and testing
+  - Public API: `nn.SetSeed(42)` before `nn.NewLinear(...)` guarantees identical weights
 - `Clamp` element-wise tensor operation ([#61](https://github.com/born-ml/born/pull/61) by [@bennibbelink](https://github.com/bennibbelink))
   - Restricts values to `[min, max]` range
   - CPU: `int32`, `int64`, `float32`, `float64`

@@ -2,7 +2,6 @@ package nn
 
 import (
 	"fmt"
-	"math/rand"
 
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -49,9 +48,8 @@ type Embedding[B tensor.Backend] struct {
 func NewEmbedding[B tensor.Backend](numEmbeddings, embeddingDim int, backend B) *Embedding[B] {
 	// Initialize weight from N(0, 1)
 	weightData := make([]float32, numEmbeddings*embeddingDim)
-	//nolint:gosec // math/rand is appropriate for ML weight initialization
 	for i := range weightData {
-		weightData[i] = float32(rand.NormFloat64())
+		weightData[i] = float32(randNormFloat64())
 	}
 
 	weight, err := tensor.FromSlice[float32, B](weightData, tensor.Shape{numEmbeddings, embeddingDim}, backend)
