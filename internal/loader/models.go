@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/born-ml/born/internal/gguf"
 	"github.com/born-ml/born/internal/tensor"
 )
 
@@ -105,6 +106,8 @@ type ggufModel struct {
 	reader       *GGUFReader
 	architecture string
 	mapper       WeightMapper
+	// filePath is stored for on-demand dequantization via gguf.TensorConverter.
+	filePath string
 }
 
 // Format returns FormatGGUF.
@@ -132,45 +135,69 @@ func (m *ggufModel) TensorNames() []string {
 }
 
 // LoadTensor loads a tensor with optional name mapping.
-// Note: GGUF quantized tensors (Q4_0, Q8_0) will return an error.
-// Caller must use ReadTensorData and dequantize manually.
+// Quantized GGUF tensors (Q4_0, Q4_K, Q8_0, F16, etc.) are dequantized
+// transparently to float32 using the gguf.TensorConverter.
 func (m *ggufModel) LoadTensor(name string, backend tensor.Backend) (*tensor.RawTensor, error) {
 	info, err := m.reader.TensorInfo(name)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if dtype is supported
-	if _, err := ggufDTypeToDataType(info.DType); err != nil {
-		return nil, fmt.Errorf("tensor %s: %w", name, err)
-	}
-
-	// For F32, we can load directly
+	// Fast path: F32 tensors can be copied directly without dequantization.
 	if info.DType == GGUFDTypeF32 {
 		data, err := m.reader.ReadTensorData(name)
 		if err != nil {
 			return nil, err
 		}
 
-		// Convert dims (GGUF uses reversed order)
+		// GGUF stores dimensions in reversed order relative to Born convention.
 		shape := make(tensor.Shape, len(info.Dims))
 		for i, dim := range info.Dims {
 			shape[len(shape)-1-i] = int(dim) //nolint:gosec // G115: safe, GGUF dimensions are small shape values
 		}
 
-		// Create tensor
 		raw, err := tensor.NewRaw(shape, tensor.Float32, backend.Device())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create tensor: %w", err)
 		}
-
-		// Copy data
 		copy(raw.Data(), data)
-
 		return raw, nil
 	}
 
-	return nil, fmt.Errorf("dtype %v requires manual conversion", info.DType)
+	// Slow path: quantized or F16 tensors require full dequantization.
+	// Parse the GGUF file via internal/gguf to obtain a TensorConverter that
+	// handles all quantization formats (Q4_0, Q4_K, Q5_K, Q6_K, Q8_0, F16, …).
+	if m.filePath == "" {
+		return nil, fmt.Errorf("tensor %s: quantized dtype %v requires file path for dequantization", name, info.DType)
+	}
+
+	ggufFile, err := gguf.ParseFile(m.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("tensor %s: parse gguf for dequantization: %w", name, err)
+	}
+
+	converter, err := gguf.NewTensorConverter(ggufFile)
+	if err != nil {
+		return nil, fmt.Errorf("tensor %s: create tensor converter: %w", name, err)
+	}
+	defer func() { _ = converter.Close() }()
+
+	float32Data, shape, err := converter.Convert(name)
+	if err != nil {
+		return nil, fmt.Errorf("tensor %s: dequantize: %w", name, err)
+	}
+
+	// Convert []int shape to tensor.Shape.
+	tShape := make(tensor.Shape, len(shape))
+	copy(tShape, shape)
+
+	raw, err := tensor.NewRaw(tShape, tensor.Float32, backend.Device())
+	if err != nil {
+		return nil, fmt.Errorf("tensor %s: create raw tensor: %w", name, err)
+	}
+	copy(raw.AsFloat32(), float32Data)
+
+	return raw, nil
 }
 
 // ReadTensorData reads raw tensor bytes.
@@ -255,5 +282,6 @@ func openGGUF(path string) (ModelReader, error) {
 		reader:       reader,
 		architecture: arch,
 		mapper:       mapper,
+		filePath:     path,
 	}, nil
 }

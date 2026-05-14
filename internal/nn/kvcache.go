@@ -125,6 +125,14 @@ func (c *KVCache[B]) Reset() {
 	c.length = 0
 }
 
+// Clear clears the cache for new generation.
+//
+// This is an alias for Reset provided to satisfy the generate.KVCache interface.
+// After Clear, the cache is empty (length=0) and ready for a new sequence.
+func (c *KVCache[B]) Clear() {
+	c.Reset()
+}
+
 // Len returns the current sequence length in cache.
 //
 // Example:

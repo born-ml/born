@@ -44,7 +44,11 @@ coverage.html
 *.pth
 *.h5
 *.pb
-/models/
+# Model weight files (not Go source packages)
+*.gguf
+*.safetensors
+*.bin
+!/models/
 /datasets/
 *.npy
 *.npz
