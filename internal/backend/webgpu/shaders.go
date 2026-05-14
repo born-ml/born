@@ -518,8 +518,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 `
 
 // siluShader performs SiLU activation: result = x * sigmoid(x) = x / (1 + exp(-x)).
-//
-//nolint:unused // Prepared for SiLU operation (will be used when SiLU is added to backend interface)
 const siluShader = `
 @group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> result: array<f32>;

@@ -277,6 +277,15 @@ func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
 	return result
 }
 
+// SiLU applies SiLU (Swish) activation: x * sigmoid(x).
+func (b *Backend) SiLU(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := b.runUnaryOp(x, "silu", siluShader)
+	if err != nil {
+		panic("webgpu: SiLU: " + err.Error())
+	}
+	return result
+}
+
 // Exp computes element-wise exponential on GPU.
 func (b *Backend) Exp(x *tensor.RawTensor) *tensor.RawTensor {
 	var result *tensor.RawTensor
