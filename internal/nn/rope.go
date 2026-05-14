@@ -275,19 +275,16 @@ func (r *RotaryEncoding[B]) applyRotation(
 				// Index for cos/sin (only depends on position)
 				cossinBaseIdx := pos * halfDim
 
-				// Apply rotation to each dimension pair
+				// Apply rotation using rotate-half convention (LLaMA/GPT-NeoX standard).
+				// Pairs (x[i], x[i+d/2]) instead of interleaved (x[2i], x[2i+1]).
 				for i := 0; i < halfDim; i++ {
-					evenIdx := baseIdx + 2*i
-					oddIdx := baseIdx + 2*i + 1
-
-					xEven := xData[evenIdx]
-					xOdd := xData[oddIdx]
+					xi := xData[baseIdx+i]
+					xiHalf := xData[baseIdx+halfDim+i]
 					cosVal := cosData[cossinBaseIdx+i]
 					sinVal := sinData[cossinBaseIdx+i]
 
-					// Rotation formula
-					outData[evenIdx] = xEven*cosVal - xOdd*sinVal
-					outData[oddIdx] = xEven*sinVal + xOdd*cosVal
+					outData[baseIdx+i] = xi*cosVal - xiHalf*sinVal
+					outData[baseIdx+halfDim+i] = xiHalf*cosVal + xi*sinVal
 				}
 			}
 		}

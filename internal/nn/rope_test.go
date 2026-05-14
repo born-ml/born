@@ -275,6 +275,127 @@ func TestRotaryEncodingThetaFrequencies(t *testing.T) {
 	}
 }
 
+// TestRotaryEncodingRotateHalfConvention verifies that RoPE uses the rotate-half
+// convention (LLaMA/GPT-NeoX standard) rather than interleaved (GPT-J style).
+//
+// Rotate-half pairs (x[i], x[i+d/2]); interleaved pairs (x[2i], x[2i+1]).
+// LLaMA models are trained with rotate-half — using interleaved produces garbage.
+func TestRotaryEncodingRotateHalfConvention(t *testing.T) {
+	backend := cpu.New()
+
+	dModel := 4 // Minimal: 4 dims → halfDim=2, pairs: (x[0],x[2]) and (x[1],x[3]).
+	cfg := RotaryEncodingConfig{
+		DModel:    dModel,
+		MaxSeqLen: 10,
+		Theta:     10000.0,
+	}
+	rope := NewRotaryEncoding(cfg, backend)
+
+	// Known input: x = [1, 2, 3, 4]. Shape [1, 1, 4] (batch=1, seq=1, dim=4).
+	x, err := tensor.FromSlice[float32](
+		[]float32{1, 2, 3, 4},
+		tensor.Shape{1, 1, dModel},
+		backend,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Position 0: cos=[1,1], sin=[0,0] → output = input (identity rotation).
+	out0 := rope.ForwardWithOffset(x, 0)
+	d0 := out0.Data()
+	for i, want := range []float32{1, 2, 3, 4} {
+		if math.Abs(float64(d0[i]-want)) > 1e-5 {
+			t.Errorf("pos=0: out[%d]=%.6f, want %.6f", i, d0[i], want)
+		}
+	}
+
+	// Position 1: non-trivial rotation. Verify rotate-half formula explicitly.
+	//
+	// cos/sin at position 1:
+	//   freq[0] = 1/theta^(0/4) = 1.0
+	//   freq[1] = 1/theta^(2/4) = 1/100 = 0.01
+	//   cos = [cos(1*1.0), cos(1*0.01)] = [cos(1), cos(0.01)]
+	//   sin = [sin(1*1.0), sin(1*0.01)] = [sin(1), sin(0.01)]
+	//
+	// Rotate-half (correct):
+	//   out[0] = x[0]*cos[0] - x[2]*sin[0] = 1*cos(1) - 3*sin(1)
+	//   out[1] = x[1]*cos[1] - x[3]*sin[1] = 2*cos(0.01) - 4*sin(0.01)
+	//   out[2] = x[2]*cos[0] + x[0]*sin[0] = 3*cos(1) + 1*sin(1)
+	//   out[3] = x[3]*cos[1] + x[1]*sin[1] = 4*cos(0.01) + 2*sin(0.01)
+	//
+	// Interleaved (WRONG for LLaMA):
+	//   out[0] = x[0]*cos[0] - x[1]*sin[0]  ← pairs (x[0],x[1]) instead of (x[0],x[2])
+	cos1 := float32(math.Cos(1.0))
+	sin1 := float32(math.Sin(1.0))
+	cos001 := float32(math.Cos(0.01))
+	sin001 := float32(math.Sin(0.01))
+
+	expected := []float32{
+		1*cos1 - 3*sin1,       // out[0]: x[0]*cos[0] - x[halfDim+0]*sin[0]
+		2*cos001 - 4*sin001,   // out[1]: x[1]*cos[1] - x[halfDim+1]*sin[1]
+		3*cos1 + 1*sin1,       // out[2]: x[halfDim+0]*cos[0] + x[0]*sin[0]
+		4*cos001 + 2*sin001,   // out[3]: x[halfDim+1]*cos[1] + x[1]*sin[1]
+	}
+
+	out1 := rope.ForwardWithOffset(x, 1)
+	d1 := out1.Data()
+	for i, want := range expected {
+		if math.Abs(float64(d1[i]-want)) > 1e-4 {
+			t.Errorf("pos=1 rotate-half: out[%d]=%.6f, want %.6f (delta=%.6f)",
+				i, d1[i], want, d1[i]-want)
+		}
+	}
+
+	// Verify it's NOT interleaved: if interleaved, out[0] = x[0]*cos[0] - x[1]*sin[0].
+	interleavedOut0 := 1*cos1 - 2*sin1
+	if math.Abs(float64(d1[0]-interleavedOut0)) < 1e-4 {
+		t.Error("RoPE appears to use INTERLEAVED convention — LLaMA requires ROTATE-HALF")
+	}
+}
+
+// TestRotaryEncodingRotateHalf4D verifies rotate-half on 4D attention tensors.
+func TestRotaryEncodingRotateHalf4D(t *testing.T) {
+	backend := cpu.New()
+
+	dModel := 4
+	rope := NewRotaryEncoding(RotaryEncodingConfig{
+		DModel: dModel, MaxSeqLen: 10, Theta: 10000.0,
+	}, backend)
+
+	// [batch=1, heads=2, seq=1, dim=4] — two heads with different values.
+	x, err := tensor.FromSlice[float32](
+		[]float32{
+			1, 2, 3, 4, // head 0
+			5, 6, 7, 8, // head 1
+		},
+		tensor.Shape{1, 2, 1, dModel},
+		backend,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := rope.ForwardWithOffset(x, 1)
+	d := out.Data()
+
+	cos1 := float32(math.Cos(1.0))
+	sin1 := float32(math.Sin(1.0))
+	cos001 := float32(math.Cos(0.01))
+	sin001 := float32(math.Sin(0.01))
+
+	// Head 0: rotate-half on [1,2,3,4].
+	expected0 := []float32{1*cos1 - 3*sin1, 2*cos001 - 4*sin001, 3*cos1 + 1*sin1, 4*cos001 + 2*sin001}
+	// Head 1: rotate-half on [5,6,7,8].
+	expected1 := []float32{5*cos1 - 7*sin1, 6*cos001 - 8*sin001, 7*cos1 + 5*sin1, 8*cos001 + 6*sin001}
+
+	for i, want := range append(expected0, expected1...) {
+		if math.Abs(float64(d[i]-want)) > 1e-4 {
+			t.Errorf("4D out[%d]=%.6f, want %.6f", i, d[i], want)
+		}
+	}
+}
+
 func BenchmarkRotaryEncodingForward3D(b *testing.B) {
 	backend := cpu.New()
 	cfg := RotaryEncodingConfig{
