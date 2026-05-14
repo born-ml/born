@@ -371,6 +371,14 @@ func (m *Model[B]) VocabSize() int {
 	return m.Config.VocabSize
 }
 
+// SetAttentionFunc replaces the attention scoring function on all layers.
+// Pass nil to restore default ScaledDotProductAttention.
+func (m *Model[B]) SetAttentionFunc(fn AttentionFunc[B]) {
+	for _, l := range m.Layers {
+		l.attnFn = fn
+	}
+}
+
 // Parameters returns all trainable parameters of the model.
 func (m *Model[B]) Parameters() []*nn.Parameter[B] {
 	var params []*nn.Parameter[B]
