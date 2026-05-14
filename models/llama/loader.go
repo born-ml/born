@@ -68,7 +68,12 @@ func LoadGGUF[B tensor.Backend](path string, backend B, opts ...Option[B]) (*Mod
 	defer func() { _ = converter.Close() }()
 
 	// 5. Build the weight mapping: GGUF name → Born name.
-	mapper := internalLoader.GetMapper(ggufFile.Architecture())
+	// Auto-detect naming convention (GGML "blk.0..." vs HuggingFace "model.layers.0...").
+	var tensorNames []string
+	for i := range ggufFile.TensorInfo {
+		tensorNames = append(tensorNames, ggufFile.TensorInfo[i].Name)
+	}
+	mapper := internalLoader.GetMapperForNaming(tensorNames)
 
 	// 6. Load all tensors.
 	loader := &weightLoader[B]{

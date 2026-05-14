@@ -223,6 +223,86 @@ func (m *DeepSeekMapper) Architecture() string {
 	return ArchitectureDeepSeek
 }
 
+// GGMLMapper maps GGUF-native (ggml) weight names to Born standard names.
+// GGUF files from llama.cpp use this naming convention (blk.0.attn_q.weight).
+type GGMLMapper struct{}
+
+// NewGGMLMapper creates a new GGML weight mapper.
+func NewGGMLMapper() *GGMLMapper {
+	return &GGMLMapper{}
+}
+
+// MapName converts GGUF-native tensor names to Born standard names.
+func (m *GGMLMapper) MapName(name string) (string, error) {
+	switch {
+	case name == "token_embd.weight":
+		return "embedding.weight", nil
+	case name == "output.weight":
+		return "lm_head.weight", nil
+	case name == "output_norm.weight":
+		return "norm.weight", nil
+	case strings.HasPrefix(name, "blk."):
+		return m.mapBlockWeight(name)
+	}
+	return name, nil
+}
+
+func (m *GGMLMapper) mapBlockWeight(name string) (string, error) {
+	// blk.{i}.attn_q.weight -> layers.{i}.attn.q.weight
+	parts := strings.Split(name, ".")
+	if len(parts) < 3 {
+		return name, nil
+	}
+	layerIdx := parts[1]
+
+	rest := strings.Join(parts[2:], ".")
+	switch rest {
+	case "attn_norm.weight":
+		return fmt.Sprintf("layers.%s.norm1.weight", layerIdx), nil
+	case "ffn_norm.weight":
+		return fmt.Sprintf("layers.%s.norm2.weight", layerIdx), nil
+	case "attn_q.weight":
+		return fmt.Sprintf("layers.%s.attn.q.weight", layerIdx), nil
+	case "attn_k.weight":
+		return fmt.Sprintf("layers.%s.attn.k.weight", layerIdx), nil
+	case "attn_v.weight":
+		return fmt.Sprintf("layers.%s.attn.v.weight", layerIdx), nil
+	case "attn_output.weight":
+		return fmt.Sprintf("layers.%s.attn.o.weight", layerIdx), nil
+	case "ffn_gate.weight":
+		return fmt.Sprintf("layers.%s.ffn.gate.weight", layerIdx), nil
+	case "ffn_up.weight":
+		return fmt.Sprintf("layers.%s.ffn.up.weight", layerIdx), nil
+	case "ffn_down.weight":
+		return fmt.Sprintf("layers.%s.ffn.down.weight", layerIdx), nil
+	}
+	return name, nil
+}
+
+// Architecture returns "llama".
+func (m *GGMLMapper) Architecture() string {
+	return ArchitectureLLaMA
+}
+
+// NamingFormat identifies the weight naming convention.
+const (
+	NamingHuggingFace = "hf"   // model.layers.0.self_attn.q_proj.weight
+	NamingGGML        = "ggml" // blk.0.attn_q.weight
+)
+
+// DetectNaming identifies whether tensor names use HuggingFace or GGML convention.
+func DetectNaming(names []string) string {
+	for _, name := range names {
+		if strings.HasPrefix(name, "blk.") || name == "token_embd.weight" {
+			return NamingGGML
+		}
+		if strings.HasPrefix(name, "model.") {
+			return NamingHuggingFace
+		}
+	}
+	return NamingHuggingFace // default
+}
+
 // DetectArchitecture attempts to detect model architecture from weight names.
 func DetectArchitecture(names []string) string {
 	// Check for DeepSeek-specific weights
@@ -241,6 +321,14 @@ func DetectArchitecture(names []string) string {
 
 	// Default to LLaMA (most common)
 	return ArchitectureLLaMA
+}
+
+// GetMapperForNaming returns a mapper based on the naming convention of the GGUF file.
+func GetMapperForNaming(names []string) WeightMapper {
+	if DetectNaming(names) == NamingGGML {
+		return NewGGMLMapper()
+	}
+	return GetMapper(DetectArchitecture(names))
 }
 
 // GetMapper returns the appropriate weight mapper for an architecture.
