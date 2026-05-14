@@ -210,25 +210,47 @@ func TestDequantizeQ5_0(t *testing.T) {
 	}
 }
 
-// TestDequantizeQ4_K tests 4-bit K-quant (256 elements).
+// TestDequantizeQ4_K tests 4-bit K-quant scale unpacking and value reconstruction.
 func TestDequantizeQ4_K(t *testing.T) {
-	// Create Q4_K block with simple values.
 	data := make([]byte, 144)
 
-	// d = 1.0 in F16.
+	// d = 1.0 (F16 0x3C00), dmin = 0.5 (F16 0x3800).
 	binary.LittleEndian.PutUint16(data[0:2], 0x3C00)
-	// dmin = 0.0 in F16.
-	binary.LittleEndian.PutUint16(data[2:4], 0x0000)
+	binary.LittleEndian.PutUint16(data[2:4], 0x3800)
 
-	// scales[12]: set all to simple values for testing.
-	for i := 0; i < 12; i++ {
-		data[4+i] = 0x01 // Minimal non-zero scales.
-	}
+	// Scales layout (12 bytes at offset 4):
+	//   bytes [0..3]: low 6 bits = sc[0..3], bits [6:7] = high 2 bits of m[0..3]
+	//   bytes [4..7]: low 6 bits = sc[4..7], bits [6:7] = high 2 bits of m[4..7]
+	//   bytes [8..11]: low nibble = low 4 bits of m[0..3], high nibble = low 4 bits of m[4..7]
+	//
+	// Set sc[0]=3, m[0]=2 → data[4+0] = (3 & 0x3F) | ((2 >> 2) << 6) = 3
+	//                        data[4+8] = (2 & 0x0F) = 2  (low nibble for m[0])
+	data[4+0] = 3   // sc[0] = 3 (low 6 bits), m[0] high 2 bits = 0
+	data[4+1] = 5   // sc[1] = 5
+	data[4+2] = 0   // sc[2] = 0
+	data[4+3] = 0   // sc[3] = 0
+	data[4+4] = 0   // sc[4] = 0
+	data[4+5] = 0   // sc[5] = 0
+	data[4+6] = 0   // sc[6] = 0
+	data[4+7] = 0   // sc[7] = 0
+	data[4+8] = 0x02 // low nibble = m[0] low 4 bits = 2; high nibble = m[4] low 4 bits = 0
+	data[4+9] = 0x00
+	data[4+10] = 0x00
+	data[4+11] = 0x00
 
-	// qs[128]: set to zeros.
-	for i := 0; i < 128; i++ {
-		data[16+i] = 0x00
-	}
+	// m[0] = (data[4+0] >> 6) | ((data[4+8] & 0x0F) << 2) = 0 | (2 << 2) = 8
+	// Wait, let me recalculate:
+	// data[4+0] = 3 = 0b00000011 → sc[0] = 3 & 0x3F = 3, high bits = 3 >> 6 = 0
+	// data[4+8] = 2 = 0b00000010 → low nibble = 2
+	// m[0] = (0) | (2 << 2) = 8
+	// So: scale = d * sc[0] = 1.0 * 3 = 3.0, min = dmin * m[0] = 0.5 * 8 = 4.0
+
+	// qs[128] at offset 16. Sub-block 0 uses first 16 bytes.
+	// Set qs[16] = 0x53 → low nibble = 3, high nibble = 5.
+	data[16] = 0x53
+
+	// Sub-block 0, element 0: scale * q_low - min = 3.0 * 3 - 4.0 = 5.0
+	// Sub-block 0, element 1: scale * q_high - min = 3.0 * 5 - 4.0 = 11.0
 
 	result, err := DequantizeBlock(data, GGMLTypeQ4_K)
 	if err != nil {
@@ -239,9 +261,67 @@ func TestDequantizeQ4_K(t *testing.T) {
 		t.Fatalf("expected 256 elements, got %d", len(result))
 	}
 
-	// With zeros, all values should be near zero (within scale * 0 - min).
-	// Since scales extraction is complex, just verify length and no crashes.
-	t.Logf("Q4_K dequantization produced %d elements", len(result))
+	// Verify sub-block 0 first two elements.
+	if math.Abs(float64(result[0]-5.0)) > 0.01 {
+		t.Errorf("result[0] = %.4f, want 5.0 (scale=3.0, q=3, min=4.0)", result[0])
+	}
+	if math.Abs(float64(result[1]-11.0)) > 0.01 {
+		t.Errorf("result[1] = %.4f, want 11.0 (scale=3.0, q=5, min=4.0)", result[1])
+	}
+
+	// Sub-block 1 uses sc[1]=5, m[1]=0. scale=5.0, min=0.
+	// Its qs start at data[16+16]=data[32]. data[32]=0 → q_low=0, q_high=0.
+	// result[32] = 5.0 * 0 - 0 = 0.0
+	if math.Abs(float64(result[32])) > 0.01 {
+		t.Errorf("result[32] = %.4f, want 0.0 (scale=5.0, q=0, min=0.0)", result[32])
+	}
+
+	t.Logf("Q4_K sub-block 0: result[0]=%.2f result[1]=%.2f (expect 5.0, 11.0)", result[0], result[1])
+}
+
+// TestDequantizeQ4_K_ScaleExtraction verifies all 8 scale/min pairs extract correctly.
+func TestDequantizeQ4_K_ScaleExtraction(t *testing.T) {
+	data := make([]byte, 144)
+	binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d = 1.0
+	binary.LittleEndian.PutUint16(data[2:4], 0x3C00) // dmin = 1.0
+
+	// Set distinct sc and m values for verification.
+	// sc[0..3] in low 6 bits of bytes [0..3], sc[4..7] in low 6 bits of bytes [4..7].
+	data[4+0] = 1  // sc[0] = 1
+	data[4+1] = 2  // sc[1] = 2
+	data[4+2] = 3  // sc[2] = 3
+	data[4+3] = 4  // sc[3] = 4
+	data[4+4] = 10 // sc[4] = 10
+	data[4+5] = 20 // sc[5] = 20
+	data[4+6] = 30 // sc[6] = 30
+	data[4+7] = 40 // sc[7] = 40
+
+	result, err := DequantizeBlock(data, GGMLTypeQ4_K)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// All qs = 0, so result = scale*0 - min = -min.
+	// m values with high 2 bits = 0 and bytes[8..11] = 0 → all m = 0.
+	// So all elements = -dmin*0 = 0.
+
+	// But the scales should be non-zero. Set one qs byte to test.
+	data[16] = 0x01 // sub-block 0, elem 0: q=1
+	result, _ = DequantizeBlock(data, GGMLTypeQ4_K)
+
+	// result[0] = d * sc[0] * 1 - dmin * m[0] = 1.0 * 1 * 1 - 1.0 * 0 = 1.0
+	if math.Abs(float64(result[0]-1.0)) > 0.01 {
+		t.Errorf("sc[0] extraction: result[0] = %.4f, want 1.0", result[0])
+	}
+
+	// Test sub-block 4 (uses sc[4] = 10).
+	data[16+64] = 0x01 // sub-block 4, elem 0: q=1
+	result, _ = DequantizeBlock(data, GGMLTypeQ4_K)
+
+	// result[128] = d * sc[4] * 1 - dmin * m[4] = 1.0 * 10 * 1 - 0 = 10.0
+	if math.Abs(float64(result[128]-10.0)) > 0.01 {
+		t.Errorf("sc[4] extraction: result[128] = %.4f, want 10.0", result[128])
+	}
 }
 
 // TestDequantizeQ5_K tests 5-bit K-quant (256 elements).

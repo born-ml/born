@@ -330,31 +330,21 @@ func dequantizeBlockQ4_K(data []byte) ([]float32, error) {
 	d := Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2]))
 	dmin := Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4]))
 
-	// Unpack scales (6 bits each, packed in 12 bytes = 96 bits = 16 scales).
-	// Each sub-block has 2 scales: one for values, one for min.
+	// Unpack scales and mins from 12 packed bytes (bytes 4..15).
+	//
+	// GGML Q4_K scale layout (from ggml-quants.c dequantize_row_q4_K):
+	//   bytes [0..3]:  low 6 bits = sc[0..3], bits [6:7] = high 2 bits of m[0..3]
+	//   bytes [4..7]:  low 6 bits = sc[4..7], bits [6:7] = high 2 bits of m[4..7]
+	//   bytes [8..11]: low nibble = low 4 bits of m[0..3], high nibble = low 4 bits of m[4..7]
 	scales := make([]uint8, 8)
 	mins := make([]uint8, 8)
+	sc := data[4:16] // 12 scale bytes
 
-	// scales[12] contains packed 6-bit values.
-	// Layout: 8 value scales (6 bits each) + 8 min scales (6 bits each).
-	for i := 0; i < 8; i++ {
-		// Extract 6-bit scale values.
-		byteIdx := i * 3 / 4
-		bitOffset := (i * 3) % 4 * 2
-
-		if byteIdx+1 < 12 {
-			val := (uint16(data[4+byteIdx]) | (uint16(data[4+byteIdx+1]) << 8)) >> bitOffset
-			scales[i] = uint8(val & 0x3F)
-		}
-
-		// Extract 6-bit min values.
-		minByteIdx := (8*3 + i*3) / 4
-		minBitOffset := ((8*3 + i*3) % 4) * 2
-
-		if minByteIdx+1 < 12 {
-			val := (uint16(data[4+minByteIdx]) | (uint16(data[4+minByteIdx+1]) << 8)) >> minBitOffset
-			mins[i] = uint8(val & 0x3F)
-		}
+	for i := 0; i < 4; i++ {
+		scales[i] = sc[i] & 0x3F
+		scales[i+4] = sc[i+4] & 0x3F
+		mins[i] = (sc[i] >> 6) | ((sc[i+8] & 0x0F) << 2)
+		mins[i+4] = (sc[i+4] >> 6) | ((sc[i+8] >> 4) << 2)
 	}
 
 	result := make([]float32, 256)
@@ -400,26 +390,16 @@ func dequantizeBlockQ5_K(data []byte) ([]float32, error) {
 	d := Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2]))
 	dmin := Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4]))
 
-	// Unpack scales (same as Q4_K).
+	// Unpack scales and mins — same GGML layout as Q4_K.
 	scales := make([]uint8, 8)
 	mins := make([]uint8, 8)
+	sc := data[4:16]
 
-	for i := 0; i < 8; i++ {
-		byteIdx := i * 3 / 4
-		bitOffset := (i * 3) % 4 * 2
-
-		if byteIdx+1 < 12 {
-			val := (uint16(data[4+byteIdx]) | (uint16(data[4+byteIdx+1]) << 8)) >> bitOffset
-			scales[i] = uint8(val & 0x3F)
-		}
-
-		minByteIdx := (8*3 + i*3) / 4
-		minBitOffset := ((8*3 + i*3) % 4) * 2
-
-		if minByteIdx+1 < 12 {
-			val := (uint16(data[4+minByteIdx]) | (uint16(data[4+minByteIdx+1]) << 8)) >> minBitOffset
-			mins[i] = uint8(val & 0x3F)
-		}
+	for i := 0; i < 4; i++ {
+		scales[i] = sc[i] & 0x3F
+		scales[i+4] = sc[i+4] & 0x3F
+		mins[i] = (sc[i] >> 6) | ((sc[i+8] & 0x0F) << 2)
+		mins[i+4] = (sc[i+4] >> 6) | ((sc[i+8] >> 4) << 2)
 	}
 
 	result := make([]float32, 256)
