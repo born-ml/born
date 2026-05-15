@@ -58,7 +58,7 @@ optimized := fusion.New(withAutodiff) // Add kernel fusion
 - Testable components
 - Flexible architecture
 
-#### 4. Production-First, Research-Capable
+##### 4. Production-First, Research-Capable
 
 ```
 Traditional ML workflow:
@@ -76,6 +76,22 @@ Research (Go) → Production (Go)
 - ✅ Cloud-native ML serving (Kubernetes)
 - ✅ ML Systems research (distributed learning, federated ML)
 - ✅ Integration with Go ecosystem
+
+#### 5. Injectable Attention for Research
+
+Born separates the *model architecture* from the *attention implementation*. Pass a custom attention function at `LoadGGUF` time to experiment with sparse, linear, or custom attention without touching the model weights:
+
+```go
+model, _ := llama.LoadGGUF("model.gguf", backend,
+    llama.WithAttention(myCustomAttentionFn),
+)
+```
+
+This keeps research modifications local and reproducible.
+
+#### 6. Reproducibility via nn.SetSeed()
+
+`nn.SetSeed(seed)` sets the global random seed before weight initialization, ensuring identical starting conditions across runs — critical for debugging and fair comparisons.
 
 ---
 
@@ -218,7 +234,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 - SGD/Adam optimizers
 
 ### Phase 2: GPU Acceleration ✅ COMPLETE
-- WebGPU backend (zero-CGO via go-webgpu)
+- WebGPU backend (zero-CGO via [gogpu/wgpu](https://github.com/gogpu/wgpu), pure Go)
 - WGSL compute shaders
 - GPU buffer pooling & memory management
 - 123x MatMul speedup, 10.9x inference speedup
@@ -230,11 +246,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 - Modern layers (SiLU, RMSNorm, Embedding)
 - LLaMA/GPT/Mistral architecture support
 
-### Phase 3: Attention Mechanisms - In Progress
-- Multi-head attention (MHA)
-- Scaled dot-product attention
-- KV-cache for efficient inference
-- Layer normalization variants
+### Phase 3: LLM Inference ✅ COMPLETE
+- Multi-head attention (MHA), GQA, KV-cache (3.94x speedup)
+- Flash Attention 2, speculative decoding
+- `models/llama.LoadGGUF()` — end-to-end LLaMA inference (verified: TinyLlama 1.1B Q8_0, Q4_K_M)
+- Injectable attention for research experiments (swap implementation at model load time)
+- `nn.SetSeed()` for reproducible weight initialization
+- Tokenizers (TikToken, BPE), streaming text generation
 
 ### Phase 4: Cross-Platform & ONNX - Planned
 - Linux/macOS WebGPU support
@@ -258,7 +276,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 - Go generics available (1.18+, mature in 1.25+)
 - Cloud-native deployment critical
 - Python dependency hell is real problem
-- goffi + go-webgpu enabling technologies
+- gogpu/wgpu (pure Go WebGPU) enabling zero-CGO GPU inference
 
 ### 2. ✅ Right Problem
 Production ML deployment is painful:

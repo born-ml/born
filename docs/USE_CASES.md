@@ -179,49 +179,56 @@ func processBatch(inputs []Tensor) []Prediction {
 
 ---
 
-### 6. LLM & Transformer Inference (v0.4.0+)
+### 6. LLM & Transformer Inference
 
 **Scenario:**
-Run transformer-based models (GPT, LLaMA, BERT) with efficient autoregressive generation.
+Run transformer-based models (LLaMA, Mistral, DeepSeek) with efficient autoregressive generation directly from GGUF files.
 
 **Why Born:**
-- **Full transformer architecture** in pure Go
+- **`models/llama.LoadGGUF()`** — end-to-end LLaMA inference, no manual assembly required
 - **KV-Cache** for 3.94x faster text generation
-- **Modern positional encodings**: RoPE (LLaMA), ALiBi (BLOOM)
-- **Pre-Norm/Post-Norm** support for different model architectures
+- **GGUF quantization**: Q4_K, Q5_K, Q6_K, Q8_0, F16, F32
+- **Injectable attention** — swap attention implementation at load time for research
 
 **Example:**
 ```go
 import (
-    "github.com/born-ml/born/nn"
-    "github.com/born-ml/born/tensor"
+    "fmt"
+    "github.com/born-ml/born/backend/cpu"
+    "github.com/born-ml/born/models/llama"
+    "github.com/born-ml/born/generate"
+    "github.com/born-ml/born/tokenizer"
 )
 
-// Create transformer block (LLaMA style)
-config := nn.TransformerConfig{
-    EmbedDim:   768,
-    NumHeads:   12,
-    FFNDim:     3072,
-    NormFirst:  true,   // Pre-Norm (LLaMA)
-    UseRMSNorm: true,   // RMSNorm (LLaMA)
-    NormEps:    1e-5,
-}
-block := nn.NewTransformerBlock(config, backend)
+func main() {
+    backend := cpu.New()
 
-// Efficient generation with KV-cache
-cache := nn.NewKVCache(1, 12, 2048, 64, backend)
-for i := 0; i < 100; i++ {
-    token := getNextToken()
-    output := block.ForwardWithCache(token, cache)
-    // 3.94x faster than recomputing all tokens!
+    // Load from GGUF — Q4_K_M, Q8_0, F16, F32 all supported
+    model, _ := llama.LoadGGUF("tinyllama-1.1b.Q8_0.gguf", backend)
+    defer model.Release()
+
+    tok, _ := tokenizer.NewTikTokenForModel("gpt-4")
+
+    gen := generate.NewTextGenerator(model, tok, generate.SamplingConfig{
+        Temperature: 0.7,
+        TopP:        0.9,
+        TopK:        40,
+    })
+
+    result, _ := gen.Generate("Once upon a time", generate.GenerateConfig{
+        MaxTokens: 200,
+    })
+    fmt.Println(result)
 }
 ```
 
+Verified: TinyLlama 1.1B Q8_0 and Q4_K_M.
+
 **Benefits:**
-- ✅ Single binary LLM inference
-- ✅ No Python/PyTorch runtime
-- ✅ Efficient KV-cache (3.94x speedup)
-- ✅ Modern architectures (RoPE, RMSNorm, SiLU)
+- ✅ Single binary LLM inference — no Python, no runtime libraries
+- ✅ GGUF loading with K-quant dequantization
+- ✅ KV-cache (3.94x speedup over recompute)
+- ✅ Injectable attention for research experiments
 
 **Example applications:**
 - Local LLM inference
@@ -323,21 +330,24 @@ No model zoo yet (planned future releases).
 
 ---
 
-### 3. NLP with Transformers (For Now)
+### 3. NLP with Pre-Trained Transformers (Large-Scale)
 
 **Current limitation:**
-- No transformer layers yet
-- No attention mechanisms
-- No tokenizers
+- No model zoo — you need to supply your own GGUF or ONNX file
+- Distributed / multi-GPU inference not yet supported
 
-**Roadmap:**
-- ✅ Transformer primitives (available now!)
-- Attention mechanisms (in development)
-- Pre-trained models via ONNX import (planned)
+**What works today:**
+- ✅ LLaMA-compatible models via `models/llama.LoadGGUF()`
+- ✅ Tokenizers (TikToken, BPE), streaming generation
+- ✅ ONNX import (49 operators) for encoder-style models (BERT, etc.)
 
-**Alternative now:**
-- Use ONNX Runtime (Go bindings)
-- Wait for Born upcoming releases
+**Use Born when:**
+- You have a GGUF or ONNX file and need single-binary deployment
+- Edge inference or privacy-preserving local inference
+
+**Wait or use alternatives when:**
+- You need access to hundreds of pre-trained models without GGUF conversion
+- Multi-GPU or distributed serving at scale is required
 
 ---
 
@@ -488,13 +498,14 @@ model := born.LoadONNX("model.onnx")
 
 ### Q: Is Born stable enough?
 
-**A:** Current status:
+**A:** Current status (v0.8.1):
 - ✅ Core API stable (tensor, nn, optim, autodiff)
 - ✅ Production-tested (MNIST 97%+, GPU 123x speedup)
-- ✅ Transformer primitives (LLaMA, GPT, Mistral support)
+- ✅ LLM inference: LLaMA via `models/llama.LoadGGUF()`, verified on TinyLlama 1.1B Q8_0 and Q4_K_M
+- ✅ ONNX import (49 operators)
 - ⚠️ API may evolve before v1.0
 
-**Recommendation:** Ready for production inference workloads. ONNX import planned for future release.
+**Recommendation:** Ready for production inference workloads.
 
 ---
 
