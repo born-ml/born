@@ -15,9 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - SwiGLU FFN, RMSNorm, incremental KV-cache decoding
   - `WithAttentionFunc` option for runtime attention replacement (Flash Attention, etc.)
   - `Layer.DebugForward` returns attn and FFN contributions for diagnostics
-  - `LoadGGUF(path, backend)` — loads Q4_K, Q5_K, Q8_0, F16, F32 weights from GGUF files
+  - `LoadGGUF(path, backend)` — loads Q4_K, Q5_K, Q6_K, Q8_0, F16, F32 weights from GGUF files
   - Implements `generate.LLMModel` interface — drop-in for `generate.TextGenerator`
   - Tested with TinyLlama-1.1B-Q8_0: Paris top-1 answer confirmed
+  - Note: Q4_K_M (4-bit) requires quantized matmul for correct inference; Q8_0 (8-bit) works with full dequantization
 - `loader`: Public API for model loading (`LoadGGUF`, `LoadSafeTensors`)
   - Namespace-clean: `loader.LoadGGUF(path, backend)` at module root
 - `nn.SetSeed(seed)` / `nn.ResetSeed()` for reproducible weight initialization
