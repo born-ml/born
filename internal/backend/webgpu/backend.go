@@ -198,8 +198,22 @@ func (b *Backend) AdapterInfo() *wgpu.AdapterInfo {
 }
 
 // IsAvailable checks if WebGPU with compute shader support is available.
-// Returns false on software renderers that don't support compute pipelines.
-func IsAvailable() bool {
+// Returns false on software renderers that don't support compute pipelines,
+// and also returns false if the underlying driver panics (e.g., missing GPU
+// on CI runners). The panic recovery prevents process crashes on headless
+// systems such as GitHub Actions Windows runners that have no Vulkan driver.
+func IsAvailable() (available bool) {
+	// Recover from panics that originate inside the wgpu DLL on machines
+	// with no GPU or no Vulkan driver installed. Without this guard,
+	// CreateInstance/RequestAdapter can raise an access violation that
+	// propagates as a Go panic and crashes the entire test binary before
+	// any t.Skip() can execute.
+	defer func() {
+		if r := recover(); r != nil {
+			available = false
+		}
+	}()
+
 	backend, err := New()
 	if err != nil {
 		return false
