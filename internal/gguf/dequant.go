@@ -132,14 +132,13 @@ func Float16ToFloat32(h uint16) float32 {
 			// Zero.
 			result = uint32(sign) << 31
 		} else {
-			// Subnormal number - normalize it.
-			exp = 1
-			for (mant & 0x400) == 0 {
-				mant <<= 1
-				exp--
+			// Subnormal F16: value = (-1)^sign * 2^(-14) * (mant / 1024).
+			// Convert directly without normalization to avoid uint16 underflow.
+			f := float64(mant) / 1024.0 * math.Pow(2, -14)
+			if sign == 1 {
+				f = -f
 			}
-			mant &= 0x3FF
-			result = (uint32(sign) << 31) | (uint32(exp+127-15) << 23) | (uint32(mant) << 13)
+			return float32(f)
 		}
 	case 0x1F:
 		// Inf or NaN.
