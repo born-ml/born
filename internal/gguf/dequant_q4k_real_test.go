@@ -1,11 +1,12 @@
 package gguf
 
-// TestDequantizeQ4K_RealData verifies Q4_K dequantization against a Python
-// reference computed from the actual first block of blk.0.attn_q.weight in
-// TinyLlama-1.1B-Chat Q4_K_M.gguf.
+// TestDequantizeQ4K_RealData verifies Q4_K dequantization against the GGML reference
+// algorithm (ggml-quants.c dequantize_row_q4_K) applied to the actual first block of
+// blk.0.attn_q.weight in TinyLlama-1.1B-Chat Q4_K_M.gguf.
 //
-// Python reference script: attention-experiment/scripts/dequant_q4k_ref.py
-// All expected values were computed by the GGML algorithm from ggml-quants.c.
+// All expected values match the GGML algorithm exactly:
+//   - getScaleMinK4 for scale/min extraction
+//   - 4 groups of 64 elements: 32 lo-nibbles (d1/m1) + 32 hi-nibbles (d2/m2)
 //
 // Block layout (144 bytes):
 //
@@ -33,21 +34,16 @@ var realQ4KBlock = []byte{
 	0x97, 0x86, 0x76, 0x99, 0xb9, 0xb8, 0xf8, 0xcf, 0xd9, 0xba, 0xa9, 0x78, 0xd8, 0x77, 0x88, 0x84, // [128..143]
 }
 
-// TestDequantizeQ4K_RealData_First10 verifies the first 10 dequantized values
-// against the Python reference.
+// TestDequantizeQ4K_RealData_First10 verifies the first 10 dequantized values against
+// the GGML reference (dequantize_row_q4_K from ggml-quants.c).
 //
-// Python output (dequant_q4k_ref.py):
+// GGML getScaleMinK4 for this block's scales[12]=data[4:16]:
 //
-//	result[0] = 0.00518513  (scale=0.001839, q=7, minv=0.007689)
-//	result[1] = 0.00150681
-//	result[2] = 0.00334597
-//	result[3] = 0.00518513
-//	result[4] = -0.00033236
-//	result[5] = 0.00334597
-//	result[6] = -0.00768900
-//	result[7] = 0.00150681
-//	result[8] = 0.00334597
-//	result[9] = 0.00702429
+//	j=0: sc=29, m=28  → d1=d*29, m1v=dmin*28
+//	j=1: sc=45, m=29  → d2=d*45, m2v=dmin*29
+//
+// Group 0 (j=0..1): result[0..31] use d1/m1v (lo nibbles), result[32..63] use d2/m2v (hi nibbles).
+// These values were computed by running the GGML algorithm in Go (D:/tmp/qcheck/main.go).
 func TestDequantizeQ4K_RealData_First10(t *testing.T) {
 	result, err := dequantizeBlockQ4_K(realQ4KBlock)
 	if err != nil {
@@ -57,8 +53,6 @@ func TestDequantizeQ4K_RealData_First10(t *testing.T) {
 		t.Fatalf("expected 256 elements, got %d", len(result))
 	}
 
-	// Expected values computed by Python reference (dequant_q4k_ref.py).
-	// Tolerance accounts for float32 vs float64 intermediate precision.
 	const tol = 1e-5
 
 	type want struct {
@@ -66,17 +60,19 @@ func TestDequantizeQ4K_RealData_First10(t *testing.T) {
 		val float32
 	}
 
+	// Correct GGML values for the first 10 elements.
+	// Group 0 lo-nibble pass (elements 0..31): d1=d*sc(j=0)=d*29, m1v=dmin*m(j=0)=dmin*28.
 	wantVals := []want{
-		{0, 0.00518513},
-		{1, 0.00150681},
-		{2, 0.00334597},
-		{3, 0.00518513},
-		{4, -0.00033236},
-		{5, 0.00334597},
-		{6, -0.00768900},
-		{7, 0.00150681},
-		{8, 0.00334597},
-		{9, 0.00702429},
+		{0, -0.00147867},
+		{1, -0.00331783},
+		{2, -0.00699615},
+		{3, -0.01435280},
+		{4, -0.00331783},
+		{5, -0.00331783},
+		{6, 0.00036049},
+		{7, -0.00331783},
+		{8, 0.00036049},
+		{9, 0.01323462},
 	}
 
 	for _, w := range wantVals {
@@ -87,56 +83,53 @@ func TestDequantizeQ4K_RealData_First10(t *testing.T) {
 	}
 }
 
-// TestDequantizeQ4K_RealData_SubBlockBoundaries verifies values at the start
-// of each of the 8 sub-blocks, confirming correct scale and min indexing.
+// TestDequantizeQ4K_RealData_GroupBoundaries verifies values at the start of each
+// of the 4 GGML groups (indices 0, 64, 128, 192) and at the hi-nibble boundary
+// within each group (indices 32, 96, 160, 224).
 //
-// Python sub-block breakdown (dequant_q4k_ref.py):
+// GGML scale/min pairs for this block:
 //
-//	sub[0]: scale=0.001839 minv=0.007689  → result[0]=0.005185,  result[1]=0.001507
-//	sub[1]: scale=0.002854 minv=0.027680  → result[32]=0.000858, result[33]=-0.007703
-//	sub[2]: scale=0.002854 minv=0.032294  → result[64]=-0.003755 result[65]=-0.020878
-//	sub[3]: scale=0.002537 minv=0.021529  → result[96]=0.001302  result[97]=-0.008845
-//	sub[4]: scale=0.001776 minv=0.003588  → result[128]=0.014169 result[129]=0.003515
-//	sub[5]: scale=0.001839 minv=0.014865  → result[160]=-0.000152 result[161]=-0.000152
-//	sub[6]: scale=0.003488 minv=0.032294  → result[192]=-0.000901 result[193]=-0.000901
-//	sub[7]: scale=0.001522 minv=0.001538  → result[224]=0.009117 result[225]=0.012161
-func TestDequantizeQ4K_RealData_SubBlockBoundaries(t *testing.T) {
+//	j=0: sc=29, m=28   j=1: sc=45, m=29   → group 0: result[0..31]=d1/m1v, result[32..63]=d2/m2v
+//	j=2: sc=45, m=55   j=3: sc=40, m=24   → group 1: result[64..95]=d1/m1v, result[96..127]=d2/m2v
+//	j=4: sc=51, m=49   j=5: sc=45, m=23   → group 2: result[128..159]=d1/m1v, result[160..191]=d2/m2v
+//	j=6: sc=63, m=63   j=7: sc=42, m=48   → group 3: result[192..223]=d1/m1v, result[224..255]=d2/m2v
+func TestDequantizeQ4K_RealData_GroupBoundaries(t *testing.T) {
 	result, err := dequantizeBlockQ4_K(realQ4KBlock)
 	if err != nil {
 		t.Fatalf("dequantizeBlockQ4_K failed: %v", err)
 	}
 
-	const tol = 2e-5 // Slightly looser to handle float32 rounding.
+	const tol = 2e-5
 
 	tests := []struct {
 		name string
 		idx  int
 		want float32
 	}{
-		// sub-block 0 (scales[0]=29, mins[0]=15)
-		{"sub0[0]", 0, 0.005185},
-		{"sub0[1]", 1, 0.001507},
-		// sub-block 1 (scales[1]=45, mins[1]=54)
-		{"sub1[0]", 32, 0.000858},
-		{"sub1[1]", 33, -0.007703},
-		// sub-block 2 (scales[2]=45, mins[2]=63)
-		{"sub2[0]", 64, -0.003755},
-		{"sub2[1]", 65, -0.020878},
-		// sub-block 3 (scales[3]=40, mins[3]=42)
-		{"sub3[0]", 96, 0.001302},
-		{"sub3[1]", 97, -0.008845},
-		// sub-block 4 (scales[4]=28, mins[4]=7)
-		{"sub4[0]", 128, 0.014169},
-		{"sub4[1]", 129, 0.003515},
-		// sub-block 5 (scales[5]=29, mins[5]=29)
-		{"sub5[0]", 160, -0.000152},
-		{"sub5[1]", 161, -0.000152},
-		// sub-block 6 (scales[6]=55, mins[6]=63)
-		{"sub6[0]", 192, -0.000901},
-		{"sub6[1]", 193, -0.000901},
-		// sub-block 7 (scales[7]=24, mins[7]=3)
-		{"sub7[0]", 224, 0.009117},
-		{"sub7[1]", 225, 0.012161},
+		// Group 0 lo-nibble pass (j=0: sc=29, m=28):
+		{"group0_lo[0]", 0, -0.001479},
+		{"group0_lo[1]", 1, -0.003318},
+		// Group 0 hi-nibble pass (j=1: sc=45, m=29):
+		{"group0_hi[0]", 32, -0.000596},
+		{"group0_hi[31]", 63, 0.002258},
+		// Group 1 lo-nibble pass (j=2: sc=45, m=55):
+		{"group1_lo[0]", 64, 0.000346},
+		{"group1_lo[1]", 65, 0.006053},
+		// Group 1 hi-nibble pass (j=3: sc=40, m=24):
+		{"group1_hi[0]", 96, -0.002155},
+		{"group1_hi[31]", 127, -0.004692},
+		// Group 2 lo-nibble pass (j=4: sc=51, m=49):
+		{"group2_lo[0]", 128, 0.007226},
+		{"group2_lo[1]", 129, 0.003992},
+		// Group 2 hi-nibble pass (j=5: sc=45, m=23):
+		{"group2_hi[0]", 160, -0.000374},
+		{"group2_hi[31]", 191, 0.011041},
+		// Group 3 lo-nibble pass (j=6: sc=63, m=63):
+		{"group3_lo[0]", 192, 0.003665},
+		{"group3_lo[1]", 193, 0.003665},
+		// Group 3 hi-nibble pass (j=7: sc=42, m=48):
+		{"group3_hi[0]", 224, -0.000632},
+		{"group3_hi[31]", 255, -0.003296},
 	}
 
 	for _, tt := range tests {
@@ -150,33 +143,28 @@ func TestDequantizeQ4K_RealData_SubBlockBoundaries(t *testing.T) {
 	}
 }
 
-// TestDequantizeQ4K_RealData_ScaleUnpacking verifies the intermediate
-// scale/min unpacking step against the Python reference values.
+// TestDequantizeQ4K_RealData_ScaleUnpacking verifies all 8 scale/min pairs via getScaleMinK4
+// against the GGML reference values for this block's scales[12].
 //
-// Python unpacked scales: [29, 45, 45, 40, 28, 29, 55, 24]
-// Python unpacked mins:   [15, 54, 63, 42,  7, 29, 63,  3].
+// GGML getScaleMinK4 values for data[4:16] of realQ4KBlock:
+//
+//	j=0: sc=29, m=28   j=1: sc=45, m=29
+//	j=2: sc=45, m=55   j=3: sc=40, m=24
+//	j=4: sc=51, m=49   j=5: sc=45, m=23
+//	j=6: sc=63, m=63   j=7: sc=42, m=48
 func TestDequantizeQ4K_RealData_ScaleUnpacking(t *testing.T) {
-	// Reproduce the scale unpacking from dequantizeBlockQ4_K.
-	sc := realQ4KBlock[4:16]
+	q := realQ4KBlock[4:16]
 
-	gotScales := make([]uint8, 8)
-	gotMins := make([]uint8, 8)
-	for i := 0; i < 4; i++ {
-		gotScales[i] = sc[i] & 0x3F
-		gotScales[i+4] = sc[i+4] & 0x3F
-		gotMins[i] = (sc[i] >> 6) | ((sc[i+8] & 0x0F) << 2)
-		gotMins[i+4] = (sc[i+4] >> 6) | ((sc[i+8] >> 4) << 2)
-	}
+	wantScales := []uint8{29, 45, 45, 40, 51, 45, 63, 42}
+	wantMins := []uint8{28, 29, 55, 24, 49, 23, 63, 48}
 
-	wantScales := []uint8{29, 45, 45, 40, 28, 29, 55, 24}
-	wantMins := []uint8{15, 54, 63, 42, 7, 29, 63, 3}
-
-	for i := 0; i < 8; i++ {
-		if gotScales[i] != wantScales[i] {
-			t.Errorf("scales[%d] = %d, want %d", i, gotScales[i], wantScales[i])
+	for j := 0; j < 8; j++ {
+		sc, m := getScaleMinK4(j, q)
+		if sc != wantScales[j] {
+			t.Errorf("scales[%d] = %d, want %d", j, sc, wantScales[j])
 		}
-		if gotMins[i] != wantMins[i] {
-			t.Errorf("mins[%d] = %d, want %d", i, gotMins[i], wantMins[i])
+		if m != wantMins[j] {
+			t.Errorf("mins[%d] = %d, want %d", j, m, wantMins[j])
 		}
 	}
 }

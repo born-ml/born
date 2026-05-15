@@ -311,15 +311,38 @@ func dequantizeBlockQ8_1(data []byte) ([]float32, error) {
 	return result, nil
 }
 
+// getScaleMinK4 unpacks one scale/min pair from the 12-byte Q4_K/Q5_K scales array.
+// This is a direct translation of the GGML get_scale_min_k4 function from ggml-quants.c.
+//
+// The 12-byte layout stores 8 pairs of 6-bit (scale, min) values:
+//
+//	q[0..3]:  low 6 bits = sc[0..3]; bits [6:7] = high 2 bits of sc[4..7]
+//	q[4..7]:  low 6 bits = m[0..3];  bits [6:7] = high 2 bits of m[4..7]
+//	q[8..11]: low nibble = low 4 bits of sc[4..7]; high nibble = low 4 bits of m[4..7]
+//
+func getScaleMinK4(j int, q []byte) (sc, m uint8) {
+	if j < 4 {
+		sc = q[j] & 63
+		m = q[j+4] & 63
+	} else {
+		sc = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
+		m = (q[j+4] >> 4) | ((q[j-0] >> 6) << 4)
+	}
+	return
+}
+
 // Q4_K: 256 elements per block, 4-bit K-quant with super-block scales.
 // Structure:
 //
 //	half d (2 bytes) - super-block scale
 //	half dmin (2 bytes) - super-block minimum
-//	uint8_t scales[12] (12 bytes) - packed 6-bit scales
+//	uint8_t scales[12] (12 bytes) - packed 6-bit scales/mins via get_scale_min_k4
 //	uint8_t qs[128] (128 bytes) - 4-bit quantized values
 //
-// 256 elements = 8 sub-blocks of 32 elements each.
+// Element ordering (matches ggml-quants.c dequantize_row_q4_K exactly):
+// 4 groups of 64 elements. Each group uses TWO scale pairs (is and is+1):
+//   - First 32 elements: lo nibbles of qs[group*32..(group+1)*32-1], scaled by d1/m1
+//   - Next  32 elements: hi nibbles of the same qs range, scaled by d2/m2
 //
 //nolint:revive // Function name matches GGML specification (Q4_K format).
 func dequantizeBlockQ4_K(data []byte) ([]float32, error) {
@@ -327,46 +350,40 @@ func dequantizeBlockQ4_K(data []byte) ([]float32, error) {
 		return nil, fmt.Errorf("insufficient data for Q4_K block: need 144 bytes, got %d", len(data))
 	}
 
-	d := Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2]))
-	dmin := Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4]))
+	d := float64(Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2])))
+	dmin := float64(Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4])))
 
-	// Unpack scales and mins from 12 packed bytes (bytes 4..15).
-	//
-	// GGML Q4_K scale layout (from ggml-quants.c dequantize_row_q4_K):
-	//   bytes [0..3]:  low 6 bits = sc[0..3], bits [6:7] = high 2 bits of m[0..3]
-	//   bytes [4..7]:  low 6 bits = sc[4..7], bits [6:7] = high 2 bits of m[4..7]
-	//   bytes [8..11]: low nibble = low 4 bits of m[0..3], high nibble = low 4 bits of m[4..7]
-	scales := make([]uint8, 8)
-	mins := make([]uint8, 8)
-	sc := data[4:16] // 12 scale bytes
-
-	for i := 0; i < 4; i++ {
-		scales[i] = sc[i] & 0x3F
-		scales[i+4] = sc[i+4] & 0x3F
-		mins[i] = (sc[i] >> 6) | ((sc[i+8] & 0x0F) << 2)
-		mins[i+4] = (sc[i+4] >> 6) | ((sc[i+8] >> 4) << 2)
-	}
+	// scales[12] at bytes 4..15, indexed as q[0..11] by getScaleMinK4.
+	q := data[4:16]
+	// qs[128] at bytes 16..143.
+	qptr := data[16:]
 
 	result := make([]float32, 256)
+	y := 0
+	is := 0
 
-	// Process 8 sub-blocks of 32 elements each.
-	for subBlock := 0; subBlock < 8; subBlock++ {
-		scale := d * float32(scales[subBlock])
-		minVal := dmin * float32(mins[subBlock])
+	// 4 outer groups of 64 elements, each group advancing qptr by 32 bytes.
+	for j := 0; j < 4; j++ {
+		sc0, m0 := getScaleMinK4(is+0, q)
+		sc1, m1 := getScaleMinK4(is+1, q)
+		d1 := d * float64(sc0)
+		m1v := dmin * float64(m0)
+		d2 := d * float64(sc1)
+		m2v := dmin * float64(m1)
 
-		offset := 16 + subBlock*16
+		qOffset := j * 32
 
-		for i := 0; i < 16; i++ {
-			qByte := data[offset+i]
-
-			// Low 4 bits.
-			q0 := qByte & 0x0F
-			result[subBlock*32+i*2] = scale*float32(q0) - minVal
-
-			// High 4 bits.
-			q1 := qByte >> 4
-			result[subBlock*32+i*2+1] = scale*float32(q1) - minVal
+		// First 32 outputs: lo nibbles, scaled by d1/m1.
+		for l := 0; l < 32; l++ {
+			result[y] = float32(d1*float64(qptr[qOffset+l]&0xF) - m1v)
+			y++
 		}
+		// Next 32 outputs: hi nibbles, scaled by d2/m2.
+		for l := 0; l < 32; l++ {
+			result[y] = float32(d2*float64(qptr[qOffset+l]>>4) - m2v)
+			y++
+		}
+		is += 2
 	}
 
 	return result, nil
@@ -377,9 +394,14 @@ func dequantizeBlockQ4_K(data []byte) ([]float32, error) {
 //
 //	half d (2 bytes)
 //	half dmin (2 bytes)
-//	uint8_t scales[12] (12 bytes)
-//	uint8_t qh[32] (32 bytes) - high bits
+//	uint8_t scales[12] (12 bytes) - packed 6-bit scales/mins via get_scale_min_k4
+//	uint8_t qh[32] (32 bytes) - high bits, bit-packed: qh[elem/8] bit (elem%8)
 //	uint8_t qs[128] (128 bytes) - low 4 bits
+//
+// Element ordering (matches ggml-quants.c dequantize_row_q5_K exactly):
+// 4 groups of 64 elements. Each group uses TWO scale pairs (is and is+1):
+//   - First 32 outputs: lo nibbles of qs[group*32..], high bit from qh[elem/8], scaled by d1/m1
+//   - Next  32 outputs: hi nibbles of the same qs range, high bit from qh[elem/8], scaled by d2/m2
 //
 //nolint:revive // Function name matches GGML specification (Q5_K format).
 func dequantizeBlockQ5_K(data []byte) ([]float32, error) {
@@ -387,47 +409,48 @@ func dequantizeBlockQ5_K(data []byte) ([]float32, error) {
 		return nil, fmt.Errorf("insufficient data for Q5_K block: need 176 bytes, got %d", len(data))
 	}
 
-	d := Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2]))
-	dmin := Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4]))
+	d := float64(Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2])))
+	dmin := float64(Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4])))
 
-	// Unpack scales and mins — same GGML layout as Q4_K.
-	scales := make([]uint8, 8)
-	mins := make([]uint8, 8)
-	sc := data[4:16]
-
-	for i := 0; i < 4; i++ {
-		scales[i] = sc[i] & 0x3F
-		scales[i+4] = sc[i+4] & 0x3F
-		mins[i] = (sc[i] >> 6) | ((sc[i+8] & 0x0F) << 2)
-		mins[i+4] = (sc[i+4] >> 6) | ((sc[i+8] >> 4) << 2)
-	}
+	// scales[12] at bytes 4..15 — same get_scale_min_k4 layout as Q4_K.
+	q := data[4:16]
+	// qh[32] at bytes 16..47: 1 bit per element, packed as qh[elem/8] bit (elem%8).
+	qh := data[16:48]
+	// qs[128] at bytes 48..175: lo 4 bits per element.
+	ql := data[48:]
 
 	result := make([]float32, 256)
+	y := 0
+	is := 0
 
-	// qh starts at offset 16, qs starts at offset 48.
-	for subBlock := 0; subBlock < 8; subBlock++ {
-		scale := d * float32(scales[subBlock])
-		minVal := dmin * float32(mins[subBlock])
+	// 4 outer groups of 64 elements, each group advancing ql by 32 bytes.
+	for j := 0; j < 4; j++ {
+		sc0, m0 := getScaleMinK4(is+0, q)
+		sc1, m1 := getScaleMinK4(is+1, q)
+		d1 := d * float64(sc0)
+		m1v := dmin * float64(m0)
+		d2 := d * float64(sc1)
+		m2v := dmin * float64(m1)
 
-		qhOffset := 16 + subBlock*4
-		qsOffset := 48 + subBlock*16
+		qlOffset := j * 32
 
-		for i := 0; i < 16; i++ {
-			qByte := data[qsOffset+i]
-			qhByte := data[qhOffset+i/4]
-
-			// Low element.
-			q0Low := qByte & 0x0F
-			q0High := (qhByte >> ((i % 4) * 2)) & 0x1
-			q0 := q0Low | (q0High << 4)
-			result[subBlock*32+i*2] = scale*float32(q0) - minVal
-
-			// High element.
-			q1Low := qByte >> 4
-			q1High := (qhByte >> ((i%4)*2 + 1)) & 0x1
-			q1 := q1Low | (q1High << 4)
-			result[subBlock*32+i*2+1] = scale*float32(q1) - minVal
+		// First 32 outputs: lo nibbles + high bit from qh, scaled by d1/m1.
+		for l := 0; l < 32; l++ {
+			elemGlobal := j*64 + l
+			highBit := (qh[elemGlobal/8] >> uint(elemGlobal%8)) & 1
+			q5 := (ql[qlOffset+l] & 0xF) | (highBit << 4)
+			result[y] = float32(d1*float64(q5) - m1v)
+			y++
 		}
+		// Next 32 outputs: hi nibbles + high bit from qh, scaled by d2/m2.
+		for l := 0; l < 32; l++ {
+			elemGlobal := j*64 + 32 + l
+			highBit := (qh[elemGlobal/8] >> uint(elemGlobal%8)) & 1
+			q5 := (ql[qlOffset+l] >> 4) | (highBit << 4)
+			result[y] = float32(d2*float64(q5) - m2v)
+			y++
+		}
+		is += 2
 	}
 
 	return result, nil

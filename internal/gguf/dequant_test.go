@@ -273,47 +273,49 @@ func TestDequantizeQ5_0(t *testing.T) {
 	}
 }
 
-// TestDequantizeQ4_K tests 4-bit K-quant scale unpacking and value reconstruction.
+// TestDequantizeQ4_K tests 4-bit K-quant dequantization against the GGML reference algorithm.
+//
+// Block layout (144 bytes):
+//
+//	[0:2]   d    (F16 super-scale)
+//	[2:4]   dmin (F16 super-min)
+//	[4:16]  scales[12] (packed via get_scale_min_k4)
+//	[16:144] qs[128] (4-bit values, 2 per byte)
+//
+// GGML element ordering: 4 groups of 64. Each group j (j=0..3):
+//   - scale pair (is, is+1) via getScaleMinK4 where is = j*2
+//   - first 32 outputs: lo nibbles of qs[j*32..(j+1)*32-1], using d1=d*sc(is),   m1v=dmin*m(is)
+//   - next  32 outputs: hi nibbles of the same range,       using d2=d*sc(is+1), m2v=dmin*m(is+1)
+//
+// Test data: d=1.0, dmin=0.5
+//
+//	q[0]=3 (sc(j=0)=3, m(j=0)=q[4]&63=0)
+//	q[1]=5 (sc(j=1)=5, m(j=1)=q[5]&63=0)
+//	qs[16]=0x53 → lo_nibble=3, hi_nibble=5
+//
+// GGML group 0 (j=0): d1=1.0*3=3.0, m1v=0.5*0=0.0; d2=1.0*5=5.0, m2v=0.0
+//
+//	result[0]  = d1 * lo_nibble(qs[0]) - m1v = 3.0 * 3 - 0 = 9.0
+//	result[1]  = d1 * lo_nibble(qs[1]) - m1v = 3.0 * 0 - 0 = 0.0  (qs[1]=0)
+//	result[32] = d2 * hi_nibble(qs[0]) - m2v = 5.0 * 5 - 0 = 25.0
+//	result[33] = d2 * hi_nibble(qs[1]) - m2v = 5.0 * 0 - 0 = 0.0
 func TestDequantizeQ4_K(t *testing.T) {
 	data := make([]byte, 144)
 
-	// d = 1.0 (F16 0x3C00), dmin = 0.5 (F16 0x3800).
+	// d=1.0 (F16 0x3C00), dmin=0.5 (F16 0x3800).
 	binary.LittleEndian.PutUint16(data[0:2], 0x3C00)
 	binary.LittleEndian.PutUint16(data[2:4], 0x3800)
 
-	// Scales layout (12 bytes at offset 4):
-	//   bytes [0..3]: low 6 bits = sc[0..3], bits [6:7] = high 2 bits of m[0..3]
-	//   bytes [4..7]: low 6 bits = sc[4..7], bits [6:7] = high 2 bits of m[4..7]
-	//   bytes [8..11]: low nibble = low 4 bits of m[0..3], high nibble = low 4 bits of m[4..7]
-	//
-	// Set sc[0]=3, m[0]=2 → data[4+0] = (3 & 0x3F) | ((2 >> 2) << 6) = 3
-	//                        data[4+8] = (2 & 0x0F) = 2  (low nibble for m[0])
-	data[4+0] = 3   // sc[0] = 3 (low 6 bits), m[0] high 2 bits = 0
-	data[4+1] = 5   // sc[1] = 5
-	data[4+2] = 0   // sc[2] = 0
-	data[4+3] = 0   // sc[3] = 0
-	data[4+4] = 0   // sc[4] = 0
-	data[4+5] = 0   // sc[5] = 0
-	data[4+6] = 0   // sc[6] = 0
-	data[4+7] = 0   // sc[7] = 0
-	data[4+8] = 0x02 // low nibble = m[0] low 4 bits = 2; high nibble = m[4] low 4 bits = 0
-	data[4+9] = 0x00
-	data[4+10] = 0x00
-	data[4+11] = 0x00
+	// q[0..11] = scales[12] at data[4..15].
+	// getScaleMinK4(j=0, q): sc=q[0]&63=3, m=q[4]&63=data[8]&63=0
+	// getScaleMinK4(j=1, q): sc=q[1]&63=5, m=q[5]&63=data[9]&63=0
+	data[4+0] = 3 // q[0]: sc(j=0)=3
+	data[4+1] = 5 // q[1]: sc(j=1)=5
+	// q[4]=data[8]=0 → m(j=0)=0; q[5]=data[9]=0 → m(j=1)=0
 
-	// m[0] = (data[4+0] >> 6) | ((data[4+8] & 0x0F) << 2) = 0 | (2 << 2) = 8
-	// Wait, let me recalculate:
-	// data[4+0] = 3 = 0b00000011 → sc[0] = 3 & 0x3F = 3, high bits = 3 >> 6 = 0
-	// data[4+8] = 2 = 0b00000010 → low nibble = 2
-	// m[0] = (0) | (2 << 2) = 8
-	// So: scale = d * sc[0] = 1.0 * 3 = 3.0, min = dmin * m[0] = 0.5 * 8 = 4.0
-
-	// qs[128] at offset 16. Sub-block 0 uses first 16 bytes.
-	// Set qs[16] = 0x53 → low nibble = 3, high nibble = 5.
+	// qs[128] at data[16..143]. Group 0 uses qs[0..31] = data[16..47].
+	// qs[0] = data[16] = 0x53 → lo_nibble=3, hi_nibble=5.
 	data[16] = 0x53
-
-	// Sub-block 0, element 0: scale * q_low - min = 3.0 * 3 - 4.0 = 5.0
-	// Sub-block 0, element 1: scale * q_high - min = 3.0 * 5 - 4.0 = 11.0
 
 	result, err := DequantizeBlock(data, GGMLTypeQ4_K)
 	if err != nil {
@@ -324,76 +326,98 @@ func TestDequantizeQ4_K(t *testing.T) {
 		t.Fatalf("expected 256 elements, got %d", len(result))
 	}
 
-	// Verify sub-block 0 first two elements.
-	if math.Abs(float64(result[0]-5.0)) > 0.01 {
-		t.Errorf("result[0] = %.4f, want 5.0 (scale=3.0, q=3, min=4.0)", result[0])
+	// Group 0, first lo-nibble element: d1*3 - m1v = 3.0*3 - 0 = 9.0.
+	if math.Abs(float64(result[0]-9.0)) > 0.01 {
+		t.Errorf("result[0] = %.4f, want 9.0 (d1=3.0, lo_nibble=3, m1v=0)", result[0])
 	}
-	if math.Abs(float64(result[1]-11.0)) > 0.01 {
-		t.Errorf("result[1] = %.4f, want 11.0 (scale=3.0, q=5, min=4.0)", result[1])
+	// Group 0, second lo-nibble element (qs[1]=0): d1*0 - m1v = 0.0.
+	if math.Abs(float64(result[1])) > 0.01 {
+		t.Errorf("result[1] = %.4f, want 0.0 (d1=3.0, lo_nibble=0, m1v=0)", result[1])
+	}
+	// Group 0, first hi-nibble element: d2*5 - m2v = 5.0*5 - 0 = 25.0.
+	if math.Abs(float64(result[32]-25.0)) > 0.01 {
+		t.Errorf("result[32] = %.4f, want 25.0 (d2=5.0, hi_nibble=5, m2v=0)", result[32])
+	}
+	// Group 0, second hi-nibble element (qs[1] hi=0): d2*0 - m2v = 0.0.
+	if math.Abs(float64(result[33])) > 0.01 {
+		t.Errorf("result[33] = %.4f, want 0.0 (d2=5.0, hi_nibble=0, m2v=0)", result[33])
 	}
 
-	// Sub-block 1 uses sc[1]=5, m[1]=0. scale=5.0, min=0.
-	// Its qs start at data[16+16]=data[32]. data[32]=0 → q_low=0, q_high=0.
-	// result[32] = 5.0 * 0 - 0 = 0.0
-	if math.Abs(float64(result[32])) > 0.01 {
-		t.Errorf("result[32] = %.4f, want 0.0 (scale=5.0, q=0, min=0.0)", result[32])
-	}
-
-	t.Logf("Q4_K sub-block 0: result[0]=%.2f result[1]=%.2f (expect 5.0, 11.0)", result[0], result[1])
+	t.Logf("Q4_K group0: result[0]=%.2f result[32]=%.2f (expect 9.0, 25.0)", result[0], result[32])
 }
 
-// TestDequantizeQ4_K_ScaleExtraction verifies all 8 scale/min pairs extract correctly.
+// TestDequantizeQ4_K_ScaleExtraction verifies getScaleMinK4 unpacking and scale application.
+//
+// GGML getScaleMinK4 for q=[1,2,3,4,10,20,30,40,0,0,0,0]:
+//
+//	j=0: sc=q[0]&63=1, m=q[4]&63=10
+//	j=1: sc=q[1]&63=2, m=q[5]&63=20
+//	j=2: sc=q[2]&63=3, m=q[6]&63=30
+//	j=3: sc=q[3]&63=4, m=q[7]&63=40
+//	j=4: sc=(q[8]&0xF)|((q[0]>>6)<<4)=0, m=(q[8]>>4)|((q[4]>>6)<<4)=0
+//	j=5..7: sc=0, m=0
+//
+// With d=dmin=1.0, qs[0]=0x01 (lo_nibble=1):
+//
+//	group 0 (j=0,1): d1=1*1=1.0, m1v=1*10=10.0
+//	result[0] = 1.0*1 - 10.0 = -9.0
 func TestDequantizeQ4_K_ScaleExtraction(t *testing.T) {
 	data := make([]byte, 144)
-	binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d = 1.0
-	binary.LittleEndian.PutUint16(data[2:4], 0x3C00) // dmin = 1.0
+	binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
+	binary.LittleEndian.PutUint16(data[2:4], 0x3C00) // dmin=1.0
 
-	// Set distinct sc and m values for verification.
-	// sc[0..3] in low 6 bits of bytes [0..3], sc[4..7] in low 6 bits of bytes [4..7].
-	data[4+0] = 1  // sc[0] = 1
-	data[4+1] = 2  // sc[1] = 2
-	data[4+2] = 3  // sc[2] = 3
-	data[4+3] = 4  // sc[3] = 4
-	data[4+4] = 10 // sc[4] = 10
-	data[4+5] = 20 // sc[5] = 20
-	data[4+6] = 30 // sc[6] = 30
-	data[4+7] = 40 // sc[7] = 40
+	// q[0..7] set sc and m values via getScaleMinK4:
+	// j<4: sc=q[j]&63, m=q[j+4]&63
+	data[4+0] = 1  // q[0]: sc(j=0)=1
+	data[4+1] = 2  // q[1]: sc(j=1)=2
+	data[4+2] = 3  // q[2]: sc(j=2)=3
+	data[4+3] = 4  // q[3]: sc(j=3)=4
+	data[4+4] = 10 // q[4]: m(j=0)=10
+	data[4+5] = 20 // q[5]: m(j=1)=20
+	data[4+6] = 30 // q[6]: m(j=2)=30
+	data[4+7] = 40 // q[7]: m(j=3)=40
+	// q[8..11]=0 → j=4..7: sc=0, m=0
 
-	// Verify all-zero qs produce no error before setting qs values.
+	// Verify all-zero qs produce no error.
 	if _, err := DequantizeBlock(data, GGMLTypeQ4_K); err != nil {
 		t.Fatal(err)
 	}
 
-	// Set one qs byte to test scale extraction.
-	// All qs = 0, so result = scale*0 - min = 0.
-	// m values with high 2 bits = 0 → all m = 0.
-	data[16] = 0x01 // sub-block 0, elem 0: q=1
+	// Group 0 uses scale pair (j=0, j=1): d1=1*1=1.0, m1v=1*10=10.0
+	// qs[0]=0x01 → lo_nibble=1 → result[0] = 1.0*1 - 10.0 = -9.0
+	data[16] = 0x01
 	result, _ := DequantizeBlock(data, GGMLTypeQ4_K)
 
-	// result[0] = d * sc[0] * 1 - dmin * m[0] = 1.0 * 1 * 1 - 1.0 * 0 = 1.0
-	if math.Abs(float64(result[0]-1.0)) > 0.01 {
-		t.Errorf("sc[0] extraction: result[0] = %.4f, want 1.0", result[0])
+	if math.Abs(float64(result[0]+9.0)) > 0.01 {
+		t.Errorf("sc(j=0)/m(j=0) extraction: result[0] = %.4f, want -9.0 (d1=1, lo=1, m1v=10)", result[0])
 	}
 
-	// Test sub-block 4 (uses sc[4] = 10).
-	data[16+64] = 0x01 // sub-block 4, elem 0: q=1
+	// Group 2 (j=2) uses scale pair (j=4, j=5): both sc=0, m=0 (q[8..11]=0).
+	// qs[64]=0x01 → lo_nibble=1 → result[128] = 0*1 - 0 = 0.0
+	data[16+64] = 0x01
 	result, _ = DequantizeBlock(data, GGMLTypeQ4_K)
 
-	// result[128] = d * sc[4] * 1 - dmin * m[4] = 1.0 * 10 * 1 - 0 = 10.0
-	if math.Abs(float64(result[128]-10.0)) > 0.01 {
-		t.Errorf("sc[4] extraction: result[128] = %.4f, want 10.0", result[128])
+	if math.Abs(float64(result[128])) > 0.01 {
+		t.Errorf("sc(j=4) extraction: result[128] = %.4f, want 0.0 (sc=0 because q[8]=0)", result[128])
 	}
 }
 
-// TestDequantizeQ5_K tests 5-bit K-quant (256 elements).
+// TestDequantizeQ5_K tests 5-bit K-quant dequantization against the GGML reference algorithm.
 //
 // Block layout (176 bytes):
 //
-//	[0:2]   d    (F16 super-scale)
-//	[2:4]   dmin (F16 super-min)
-//	[4:16]  scales[12] (packed 6-bit, same layout as Q4_K)
-//	[16:48] qh[32] (1 high bit per element = 256 bits)
-//	[48:176] qs[128] (4 low bits per element = 512 bits)
+//	[0:2]    d    (F16 super-scale)
+//	[2:4]    dmin (F16 super-min)
+//	[4:16]   scales[12] (packed via getScaleMinK4, same layout as Q4_K)
+//	[16:48]  qh[32] (high bits, bit-packed: qh[elem/8] bit (elem%8))
+//	[48:176] qs[128] (low 4 bits per element)
+//
+// GGML element ordering: 4 groups of 64. Each group j (j=0..3):
+//   - first 32 outputs: lo nibbles + qh high bit, using d1=d*sc(is),   m1v=dmin*m(is)
+//   - next  32 outputs: hi nibbles + qh high bit, using d2=d*sc(is+1), m2v=dmin*m(is+1)
+//
+// Key difference from old Born implementation: hi-nibble elements now occupy positions
+// [32..63] within each group-of-64, NOT interleaved with lo-nibble elements.
 //
 //nolint:gocognit // Table-driven test: multiple subtests with inline closures inflate gocognit score.
 func TestDequantizeQ5_K(t *testing.T) {
@@ -405,17 +429,16 @@ func TestDequantizeQ5_K(t *testing.T) {
 		{
 			name: "all_zero_qs_no_high_bits",
 			setup: func(data []byte) {
-				// d=1.0, dmin=0.0, scales[0]=1 (sc[0]=1), qh=0, qs=0.
+				// d=1.0, dmin=0.0, q[0]=1 → sc(j=0)=1, m(j=0)=q[4]&63=0.
+				// qh=0 → all high bits zero. qs=0 → all q=0.
+				// result[0..31] (group0 lo-nibble pass): d1=1.0, m1v=0.0, q=0 → 0.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
-				data[4] = 0x01                                    // sc[0]=1 → scales[0]=1, mins[0]=0
-				// qh all zero → no high bits.
-				// qs all zero → all q=0.
-				// result[0..31]: scale=1.0*1=1.0, minv=0.0*0=0.0, q=0 → 0.0
+				data[4] = 0x01                                    // q[0]: sc(j=0)=1
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
-				// Sub-block 0: scale=1.0, minv=0.0, qs all zero, qh all zero → 0.0
+				// Group 0 lo-nibble pass (result[0..31]): d1=1.0, qs=0, qh=0 → 0.0.
 				for i := 0; i < 32; i++ {
 					if result[i] != 0.0 {
 						t.Errorf("result[%d] = %v, want 0.0", i, result[i])
@@ -426,80 +449,95 @@ func TestDequantizeQ5_K(t *testing.T) {
 		{
 			name: "known_nibbles_no_high_bits",
 			setup: func(data []byte) {
-				// d=1.0, dmin=0.0, scales[0]=1, qs[48]=0x32 → q_lo=2, q_hi=3.
-				// qh all zero → no 5th bit.
-				// result[0] = 1.0*2 - 0 = 2.0
-				// result[1] = 1.0*3 - 0 = 3.0
+				// d=1.0, dmin=0.0.
+				// q[0]=1 → sc(j=0)=1, m(j=0)=0; q[1]=0 → sc(j=1)=0, m(j=1)=0.
+				// d1=1.0, m1v=0.0; d2=0.0, m2v=0.0.
+				// qh=0 → all high bits zero.
+				// ql[0]=0x32 → lo_nibble=2, hi_nibble=3.
+				// result[0]  = d1 * (lo_nibble(ql[0]) | 0<<4) - m1v = 1.0*2 - 0 = 2.0
+				// result[1]  = d1 * (lo_nibble(ql[1]=0) | 0) - m1v = 0.0
+				// result[32] = d2 * (hi_nibble(ql[0]) | 0<<4) - m2v = 0.0*3 - 0 = 0.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
-				data[4] = 0x01                                    // scales[0]=1
-				data[48] = 0x32                                   // qs[0]=0x32: lo=2, hi=3
+				data[4] = 0x01                                    // q[0]: sc(j=0)=1
+				data[48] = 0x32                                   // ql[0]=0x32: lo=2, hi=3
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
 				if math.Abs(float64(result[0]-2.0)) > 1e-6 {
-					t.Errorf("result[0] = %v, want 2.0 (scale=1.0, q=2, no high bit)", result[0])
+					t.Errorf("result[0] = %v, want 2.0 (d1=1.0, lo_nibble=2, no high bit)", result[0])
 				}
-				if math.Abs(float64(result[1]-3.0)) > 1e-6 {
-					t.Errorf("result[1] = %v, want 3.0 (scale=1.0, q=3, no high bit)", result[1])
+				// result[1]: ql[1]=0, no high bit → 0.0 (NOT 3.0 — hi nibble is at result[32]).
+				if math.Abs(float64(result[1])) > 1e-6 {
+					t.Errorf("result[1] = %v, want 0.0 (ql[1]=0, lo pass)", result[1])
+				}
+				// result[32]: hi-nibble pass, d2=sc(j=1)=0 → 0.0 regardless of nibble value.
+				if math.Abs(float64(result[32])) > 1e-6 {
+					t.Errorf("result[32] = %v, want 0.0 (d2=0 because sc(j=1)=0)", result[32])
 				}
 			},
 		},
 		{
 			name: "high_bits_set_for_first_two_elements",
 			setup: func(data []byte) {
-				// d=1.0, dmin=0.0, scales[0]=1.
-				// qh[16] (data[16]) = 0x03 → bit0=1 for elem0, bit1=1 for elem1.
-				// qs[48] = 0x32 → lo nibble=2, hi nibble=3.
-				// q0 = 2|(1<<4) = 18, q1 = 3|(1<<4) = 19.
-				// result[0] = 1.0*18 = 18.0, result[1] = 1.0*19 = 19.0
+				// d=1.0, dmin=0.0.
+				// q[0]=1 → sc(j=0)=1, m(j=0)=0; sc(j=1)=0.
+				// d1=1.0, m1v=0.0; d2=0.0.
+				// qh[0]=0x03 → bit0=1 (elem0 high), bit1=1 (elem1 high).
+				// ql[0]=0x32: lo=2, hi=3; ql[1]=0.
+				// elem0: global=0, qh[0] bit0=1 → q5=(2|16)=18 → result[0]=1.0*18=18.0
+				// elem1: global=1, qh[0] bit1=1 → q5=(lo(ql[1])|16)=16 → result[1]=1.0*16=16.0
+				// elem32: global=32, qh[4]=0 bit0=0 → q5=hi(ql[0])=3, d2=0 → result[32]=0.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
-				data[4] = 0x01                                    // scales[0]=1
-				data[16] = 0x03                                   // qh: bit0 and bit1 set
-				data[48] = 0x32                                   // qs[0]=0x32: lo=2, hi=3
+				data[4] = 0x01                                    // q[0]: sc(j=0)=1
+				data[16] = 0x03                                   // qh[0]: bit0=1 (elem0), bit1=1 (elem1)
+				data[48] = 0x32                                   // ql[0]=0x32: lo=2, hi=3
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
 				if math.Abs(float64(result[0]-18.0)) > 1e-6 {
-					t.Errorf("result[0] = %v, want 18.0 (2|16)", result[0])
+					t.Errorf("result[0] = %v, want 18.0 (lo=2, high_bit=1 → q=18)", result[0])
 				}
-				if math.Abs(float64(result[1]-19.0)) > 1e-6 {
-					t.Errorf("result[1] = %v, want 19.0 (3|16)", result[1])
+				// elem1: ql[1]=0 lo nibble=0, high_bit from qh[0] bit1=1 → q5=0|16=16.
+				if math.Abs(float64(result[1]-16.0)) > 1e-6 {
+					t.Errorf("result[1] = %v, want 16.0 (lo=0, high_bit=1 → q=16)", result[1])
+				}
+				// elem32 is hi-nibble pass, d2=0 → result[32]=0.0.
+				if math.Abs(float64(result[32])) > 1e-6 {
+					t.Errorf("result[32] = %v, want 0.0 (d2=0 because sc(j=1)=0)", result[32])
 				}
 			},
 		},
 		{
 			name: "with_dmin_non_zero",
 			setup: func(data []byte) {
-				// d=1.0, dmin=1.0, scales[0]=1, mins[0]=2.
-				// sc[0]=1 | (0<<6)=1, sc[8]=(2&0xF)<<0 = 2 → low nibble of sc[8]=2
-				// scales[0] = sc[0]&0x3F = 1
-				// mins[0] = (sc[0]>>6) | ((sc[8]&0x0F)<<2) = 0 | (2<<2) = 8
-				// scale=1.0*1=1.0, minv=1.0*8=8.0
-				// qs[48]=0x08 → lo=8, hi=0
-				// result[0] = 1.0*8 - 8.0 = 0.0
-				// result[1] = 1.0*0 - 8.0 = -8.0
+				// d=1.0, dmin=1.0.
+				// getScaleMinK4(j=0, q): sc=q[0]&63=1, m=q[4]&63=data[8]&63=8.
+				// d1=1.0, m1v=1.0*8=8.0.
+				// ql[0]=0x08 → lo_nibble=8.
+				// result[0] = d1 * 8 - m1v = 1.0*8 - 8.0 = 0.0
+				// result[1] = d1 * lo(ql[1]=0) - m1v = 0.0 - 8.0 = -8.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x3C00) // dmin=1.0
-				data[4] = 0x01                                    // sc[0]: scales[0]=1, mins[0] high 2 bits=0
-				data[12] = 0x02                                   // sc[8]: low nibble=2 → mins[0] = 0|(2<<2)=8
-				data[48] = 0x08                                   // qs[0]: lo=8, hi=0
+				data[4] = 0x01   // q[0]: sc(j=0)=1
+				data[4+4] = 0x08 // q[4]: m(j=0)=8
+				data[48] = 0x08  // ql[0]: lo_nibble=8, hi_nibble=0
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
 				if math.Abs(float64(result[0]-0.0)) > 1e-5 {
-					t.Errorf("result[0] = %v, want 0.0 (1.0*8 - 8.0)", result[0])
+					t.Errorf("result[0] = %v, want 0.0 (d1*8 - m1v*8 = 0)", result[0])
 				}
 				if math.Abs(float64(result[1]+8.0)) > 1e-5 {
-					t.Errorf("result[1] = %v, want -8.0 (1.0*0 - 8.0)", result[1])
+					t.Errorf("result[1] = %v, want -8.0 (d1*0 - m1v*8 = -8)", result[1])
 				}
 			},
 		},
 		{
 			name: "returns_256_elements",
 			setup: func(_ []byte) {
-				// Empty data (all zeros) — just verify element count.
+				// All-zero data — just verify element count.
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
