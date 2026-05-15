@@ -480,25 +480,19 @@ func dequantizeBlockQ6_K(data []byte) ([]float32, error) {
 
 		for l := 0; l < 32; l++ {
 			is := l / 16
-			qhByte := int(data[qhBase+l>>2])
-			shift := 2 * (l & 3) // 0, 2, 4, 6 for l % 4 = 0..3
+			qhByte := int(data[qhBase+l])
 
-			// lo-nibble elements: ql[l] and ql[l+32], both paired with qh bits at `shift`.
+			// Each of q1..q4 uses a DIFFERENT 2-bit field from qh:
+			//   q1: bits [0:1], q2: bits [2:3], q3: bits [4:5], q4: bits [6:7]
 			qLoA := int(data[qlBase+l]) & 0xF
 			qLoB := int(data[qlBase+l+32]) & 0xF
-			qhLo := (qhByte >> shift) & 0x3
-
-			// hi-nibble elements: ql[l]>>4 and ql[l+32]>>4, paired with qh bits at `shift+4`.
-			// shift+4 exceeds 7 for l%4 = 2,3 → integer shift in Go produces 0,
-			// matching the GGML C reference (C integer promotion gives same result).
 			qHiA := int(data[qlBase+l]) >> 4
 			qHiB := int(data[qlBase+l+32]) >> 4
-			qhHi := (qhByte >> (shift + 4)) & 0x3
 
-			q1 := int8((qLoA | qhLo<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
-			q2 := int8((qLoB | qhLo<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
-			q3 := int8((qHiA | qhHi<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
-			q4 := int8((qHiB | qhHi<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
+			q1 := int8((qLoA | (((qhByte >> 0) & 3) << 4)) - 32) //nolint:gosec // G115: 6-bit range
+			q2 := int8((qLoB | (((qhByte >> 2) & 3) << 4)) - 32) //nolint:gosec // G115: 6-bit range
+			q3 := int8((qHiA | (((qhByte >> 4) & 3) << 4)) - 32) //nolint:gosec // G115: 6-bit range
+			q4 := int8((qHiB | (((qhByte >> 6) & 3) << 4)) - 32) //nolint:gosec // G115: 6-bit range
 
 			sc1 := float32(int8(data[192+scBase+is]))   //nolint:gosec // G115: signed scale byte
 			sc2 := float32(int8(data[192+scBase+is+2])) //nolint:gosec // G115: signed scale byte
