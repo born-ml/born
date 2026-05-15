@@ -434,12 +434,32 @@ func dequantizeBlockQ5_K(data []byte) ([]float32, error) {
 }
 
 // Q6_K: 256 elements per block, 6-bit K-quant.
-// Structure:
 //
-//	uint8_t ql[128] (128 bytes) - low 4 bits
-//	uint8_t qh[64] (64 bytes) - high 2 bits
-//	int8_t scales[16] (16 bytes) - signed scales
-//	half d (2 bytes)
+// Structure (210 bytes total):
+//
+//	uint8_t ql[128]   - low 4 bits of each quant (2 elements per byte)
+//	uint8_t qh[64]    - high 2 bits of each quant (4 elements per byte)
+//	int8_t  scales[16] - signed scales, one per 16-element sub-block
+//	half    d          - super-block scale (F16), at byte 208
+//
+// Formula: x[i] = d * scales[sub] * (q[i] - 32)
+// where q[i] = (ql_nibble[i] | (qh_bits[i] << 4)), range 0..63.
+//
+// Element layout matches ggml-quants.c dequantize_row_q6_K exactly:
+// Two passes (n=0,128), each producing 128 outputs from 64 ql bytes and 32 qh bytes.
+// Within each pass, inner loop l=0..31 produces 4 outputs per iteration:
+//
+//	y[l],    y[l+32]  — use ql[l] lo nibble and ql[l+32] lo nibble respectively
+//	y[l+64], y[l+96]  — use ql[l] hi nibble and ql[l+32] hi nibble respectively
+//
+// The 4 outputs within one l share the SAME qh byte (qh[l>>2]) but use different
+// 2-bit sub-fields of that byte (via bit-shift = 2*(l&3) for y[l]/y[l+32]).
+// For y[l+64]/y[l+96], the shift is 2*(l&3)+4; in C/Go integer arithmetic this
+// gives 0 for l=2,3 (shift 8,10 > 7) — identical to the GGML C reference.
+//
+// Scale indices: y[l] uses sc[l/16], y[l+32] uses sc[l/16+2],
+//
+//	y[l+64] uses sc[l/16+4], y[l+96] uses sc[l/16+6].
 //
 //nolint:revive // Function name matches GGML specification (Q6_K format).
 func dequantizeBlockQ6_K(data []byte) ([]float32, error) {
@@ -447,36 +467,48 @@ func dequantizeBlockQ6_K(data []byte) ([]float32, error) {
 		return nil, fmt.Errorf("insufficient data for Q6_K block: need 210 bytes, got %d", len(data))
 	}
 
-	// d is at the end.
 	d := Float16ToFloat32(binary.LittleEndian.Uint16(data[208:210]))
-
 	result := make([]float32, 256)
 
-	// 16 sub-blocks of 16 elements each.
-	for subBlock := 0; subBlock < 16; subBlock++ {
-		scale := d * float32(int8(data[192+subBlock])) //nolint:gosec // G115: integer overflow conversion byte -> int8
+	// Two passes of 128 elements each, matching the GGML reference loop structure.
+	// Block byte layout: ql[0..127] | qh[128..191] | scales[192..207] | d[208..209]
+	for n := 0; n < 256; n += 128 {
+		qlBase := n / 2   // ql section byte offset: 0, then 64
+		qhBase := 128 + n/4 // qh section starts at byte 128; pass offset: 0, then 32
+		scBase := n / 16  // scales section starts at byte 192 (added below); offset: 0, then 8
+		yBase := n
 
-		qlOffset := subBlock * 8
-		qhOffset := 128 + subBlock*4
+		for l := 0; l < 32; l++ {
+			is := l / 16
+			qhByte := int(data[qhBase+l>>2])
+			shift := 2 * (l & 3) // 0, 2, 4, 6 for l % 4 = 0..3
 
-		for i := 0; i < 8; i++ {
-			qlByte := data[qlOffset+i]
-			qhByte := data[qhOffset+i/2]
+			// lo-nibble elements: ql[l] and ql[l+32], both paired with qh bits at `shift`.
+			qLoA := int(data[qlBase+l]) & 0xF
+			qLoB := int(data[qlBase+l+32]) & 0xF
+			qhLo := (qhByte >> shift) & 0x3
 
-			// Each qlByte has 2 elements (4 bits each).
-			// Each qhByte has 4 elements (2 bits each).
+			// hi-nibble elements: ql[l]>>4 and ql[l+32]>>4, paired with qh bits at `shift+4`.
+			// shift+4 exceeds 7 for l%4 = 2,3 → integer shift in Go produces 0,
+			// matching the GGML C reference (C integer promotion gives same result).
+			qHiA := int(data[qlBase+l]) >> 4
+			qHiB := int(data[qlBase+l+32]) >> 4
+			qhHi := (qhByte >> (shift + 4)) & 0x3
 
-			// Low element.
-			q0Low := qlByte & 0x0F
-			q0High := (qhByte >> ((i % 2) * 4)) & 0x3
-			q0 := q0Low | (q0High << 4)
-			result[subBlock*16+i*2] = scale * float32(int8(q0)-32) //nolint:gosec // G115: integer overflow conversion byte -> int8
+			q1 := int8((qLoA | qhLo<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
+			q2 := int8((qLoB | qhLo<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
+			q3 := int8((qHiA | qhHi<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
+			q4 := int8((qHiB | qhHi<<4) - 32) //nolint:gosec // G115: 6-bit quant in range 0..63, minus 32 fits int8
 
-			// High element.
-			q1Low := qlByte >> 4
-			q1High := (qhByte >> ((i%2)*4 + 2)) & 0x3
-			q1 := q1Low | (q1High << 4)
-			result[subBlock*16+i*2+1] = scale * float32(int8(q1)-32) //nolint:gosec // G115: integer overflow conversion byte -> int8
+			sc1 := float32(int8(data[192+scBase+is]))   //nolint:gosec // G115: signed scale byte
+			sc2 := float32(int8(data[192+scBase+is+2])) //nolint:gosec // G115: signed scale byte
+			sc3 := float32(int8(data[192+scBase+is+4])) //nolint:gosec // G115: signed scale byte
+			sc4 := float32(int8(data[192+scBase+is+6])) //nolint:gosec // G115: signed scale byte
+
+			result[yBase+l] = d * sc1 * float32(q1)
+			result[yBase+l+32] = d * sc2 * float32(q2)
+			result[yBase+l+64] = d * sc3 * float32(q3)
+			result[yBase+l+96] = d * sc4 * float32(q4)
 		}
 	}
 

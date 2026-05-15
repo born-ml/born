@@ -533,8 +533,16 @@ func TestDequantizeQ5_K(t *testing.T) {
 //	[192:208] scales[16] (signed int8, one per 16-element sub-block)
 //	[208:210] d          (F16 super-scale)
 //
-// Formula: x[i] = d * scales[sub] * (q[i] - 32)
-// where q[i] is a 6-bit unsigned value assembled as: ql[i]|(qh[i]<<4), range 0..63.
+// GGML output element ordering (matches ggml-quants.c dequantize_row_q6_K):
+// Two passes of 128 elements each. Within each pass, inner loop l=0..31 produces:
+//
+//	y[l]:    d * sc[l/16]   * q1  where q1 = (ql[l]     lo nibble | qhLo << 4) - 32
+//	y[l+32]: d * sc[l/16+2] * q2  where q2 = (ql[l+32]  lo nibble | qhLo << 4) - 32
+//	y[l+64]: d * sc[l/16+4] * q3  where q3 = (ql[l]     hi nibble | qhHi << 4) - 32
+//	y[l+96]: d * sc[l/16+6] * q4  where q4 = (ql[l+32]  hi nibble | qhHi << 4) - 32
+//
+// qhLo = (qh[l>>2] >> (2*(l&3)))   & 3
+// qhHi = (qh[l>>2] >> (2*(l&3)+4)) & 3  — shift >7 gives 0 for l%4 ∈ {2,3}.
 //
 //nolint:gocognit // Table-driven test: multiple subtests with inline closures inflate gocognit score.
 func TestDequantizeQ6_K(t *testing.T) {
@@ -545,7 +553,7 @@ func TestDequantizeQ6_K(t *testing.T) {
 	}{
 		{
 			name: "all_zero_quants_positive_scale",
-			// ql=0, qh=0 → q=0; scale=1*1=1.0; formula: 1.0*(0-32) = -32.0
+			// ql=0, qh=0 → q = (0|0<<4)-32 = -32; d=1.0, scales=+1 → result = -32.0
 			setup: func(data []byte) {
 				for i := 0; i < 16; i++ {
 					data[192+i] = 0x01 // signed int8 scale = +1
@@ -557,7 +565,6 @@ func TestDequantizeQ6_K(t *testing.T) {
 				if len(result) != 256 {
 					t.Fatalf("expected 256 elements, got %d", len(result))
 				}
-				// All ql=0, qh=0 → q=0. scale=1.0*1=1.0. result=-32.0
 				expected := float32(-32.0)
 				for i := 0; i < 256; i++ {
 					if math.Abs(float64(result[i]-expected)) > 1e-5 {
@@ -568,38 +575,58 @@ func TestDequantizeQ6_K(t *testing.T) {
 		},
 		{
 			name: "max_quant_value",
-			// ql byte = 0xFF → lo=0xF, hi=0xF; qh byte = 0xFF → high2bits for each=0x3.
-			// q = 0xF | (0x3 << 4) = 0xF | 0x30 = 0x3F = 63.
-			// scale=1*1=1.0; result = 1.0*(63-32) = 31.0
+			// ql=0xFF (all nibbles=0xF), qh=0xFF, scales=+1, d=1.0.
+			//
+			// For lo-nibble elements (y[l] and y[l+32]):
+			//   qhLo = (0xFF >> shift) & 3 = 3 for any shift in {0,2,4,6}.
+			//   q = (0xF | 3<<4) - 32 = 63 - 32 = 31 → result = 31.0.
+			//
+			// For hi-nibble elements (y[l+64] and y[l+96]):
+			//   shift+4 ∈ {4,6,8,10} for l%4 ∈ {0,1,2,3}.
+			//   l%4=0,1: qhHi = (0xFF >> 4) & 3 = 3 or (0xFF >> 6) & 3 = 3 → q=63 → 31.0.
+			//   l%4=2,3: shift+4=8 or 10, integer shift overflows → qhHi=0.
+			//            q = (0xF | 0<<4) - 32 = 15 - 32 = -17 → result = -17.0.
+			//
+			// 192 elements = 31.0, 64 elements = -17.0.
 			setup: func(data []byte) {
 				for i := 0; i < 128; i++ {
-					data[i] = 0xFF // ql all 0xF nibbles
+					data[i] = 0xFF
 				}
 				for i := 0; i < 64; i++ {
-					data[128+i] = 0xFF // qh all 0x3 pairs
+					data[128+i] = 0xFF
 				}
 				for i := 0; i < 16; i++ {
-					data[192+i] = 0x01 // scale=+1
+					data[192+i] = 0x01
 				}
 				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
-				expected := float32(31.0) // (63-32)*1.0*1.0
 				for i := 0; i < 256; i++ {
-					if math.Abs(float64(result[i]-expected)) > 1e-5 {
-						t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+					// y[l+64] and y[l+96] for l%4 ∈ {2,3} get qhHi=0 due to shift overflow.
+					// These positions are: n + (l%4 ∈ {2,3}) + 64 or 96, for both n=0 and n=128.
+					// Simplified: positions where (i/32)%2 == 1 within the hi-nibble groups.
+					// Equivalently: i ∈ y[l+64] or y[l+96] when l = i%32 and (l&3) >= 2.
+					group := (i % 128) / 32  // 0,1,2,3
+					l := i % 32
+					isHiNibble := group >= 2
+					shiftOverflow := isHiNibble && (l&3) >= 2
+					want := float32(31.0)
+					if shiftOverflow {
+						want = float32(-17.0) // q = 0xF-32 = -17
+					}
+					if math.Abs(float64(result[i]-want)) > 1e-5 {
+						t.Errorf("result[%d] = %v, want %v (group=%d l=%d isHi=%v overflow=%v)",
+							i, result[i], want, group, l, isHiNibble, shiftOverflow)
 					}
 				}
 			},
 		},
 		{
 			name: "negative_scale",
-			// scale = -1 (int8 0xFF), d=1.0, ql=0 (q=0).
-			// result = 1.0 * (-1) * (0-32) = 32.0
+			// scale = -1 (int8 0xFF), d=1.0, ql=0, qh=0 → q=-32.
+			// result = 1.0 * (-1) * (-32) = 32.0 for all elements.
 			setup: func(data []byte) {
-				// ql and qh all zero.
-				// 0xFF == byte representation of int8(-1).
 				for i := 0; i < 16; i++ {
 					data[192+i] = 0xFF // int8(-1) stored as 0xFF
 				}
@@ -616,26 +643,34 @@ func TestDequantizeQ6_K(t *testing.T) {
 			},
 		},
 		{
-			name: "mixed_scale_and_known_nibble",
-			// Sub-block 0: scale=2, d=1.0.
-			// ql[0]=0x25: low=5, high=2 (two elements per byte).
-			// qh[0]=0x00 → qh bits for elem0 and elem1 are 0.
-			// q0 = 5|(0<<4) = 5, q1 = 2|(0<<4) = 2.
-			// result[0] = 1.0*2*(5-32) = -54.0
-			// result[1] = 1.0*2*(2-32) = -60.0
+			name: "lo_nibble_goes_to_y0_not_y1",
+			// Verifies GGML element ordering: ql[0] lo-nibble → y[0], ql[0] hi-nibble → y[64].
+			// ql[0]=0x25 (lo=5, hi=2), all other ql=0, qh=0, scales[0]=2, d=1.0.
+			//
+			// GGML: l=0, n=0:
+			//   y[0]  = d*sc[0]*q1 = 1.0*2*((5|0<<4)-32) = 1.0*2*(-27) = -54.0
+			//   y[64] = d*sc[4]*q3 = 1.0*sc[4]*((2|0<<4)-32); sc[4]=data[196]=0 → y[64]=0.0
+			//   y[1]  = l=1: ql[1]=0; q1=(0|0)-32=-32; d*sc[0]*-32 = 1.0*2*(-32) = -64.0
+			//
+			// (Old Born had hi-nibble at y[1]=-60.0, which was wrong.)
 			setup: func(data []byte) {
-				data[0] = 0x25 // ql[0]: lo=5, hi=2
-				// qh[0] = 0 by default (no high bits set)
-				data[192] = 0x02 // sub-block 0 scale = +2
+				data[0] = 0x25  // ql[0]: lo nibble=5, hi nibble=2
+				data[192] = 0x02 // scales[0] = +2
 				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
+				// y[0]: ql[0] lo nibble=5, qh=0 → q1=(5|0)-32=-27; sc[0]=2; result=-54.0
 				if math.Abs(float64(result[0]+54.0)) > 1e-5 {
-					t.Errorf("result[0] = %v, want -54.0 (d*scale*(5-32))", result[0])
+					t.Errorf("result[0] = %v, want -54.0 (ql[0]lo=5, sc[0]=2, d*sc*q=1*2*(5-32))", result[0])
 				}
-				if math.Abs(float64(result[1]+60.0)) > 1e-5 {
-					t.Errorf("result[1] = %v, want -60.0 (d*scale*(2-32))", result[1])
+				// y[1]: ql[1]=0, qh=0 → q1=(0|0)-32=-32; sc[0]=2; result=-64.0
+				if math.Abs(float64(result[1]+64.0)) > 1e-5 {
+					t.Errorf("result[1] = %v, want -64.0 (ql[1]lo=0, sc[0]=2, d*sc*q=1*2*(0-32))", result[1])
+				}
+				// y[64]: ql[0] hi nibble=2, qhHi=0 → q3=(2|0)-32=-30; sc[4]=data[196]=0; result=0.0
+				if math.Abs(float64(result[64])) > 1e-5 {
+					t.Errorf("result[64] = %v, want 0.0 (ql[0]hi=2, sc[4]=0)", result[64])
 				}
 			},
 		},
