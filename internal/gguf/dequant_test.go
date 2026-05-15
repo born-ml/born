@@ -176,37 +176,100 @@ func TestDequantizeQ4_1(t *testing.T) {
 	}
 }
 
-// TestDequantizeQ5_0 tests 5-bit quantization.
+// TestDequantizeQ5_0 tests 5-bit quantization (Q5_0).
+//
+// Block layout (22 bytes):
+//
+//	[0:2]  d (F16)
+//	[2:6]  qh (uint32 — high bits for all 32 elements, 1 bit each)
+//	[6:22] qs[16] (4 low bits per element, 2 per byte)
+//
+// Formula: x[i] = d * (q[i] - 16)  where q[i] is 5-bit unsigned (0..31).
+//
+//nolint:gocognit // Table-driven test: multiple subtests with inline closures inflate gocognit score.
 func TestDequantizeQ5_0(t *testing.T) {
-	// Create Q5_0 block: d=1.0, qh=0, qs=0.
-	data := make([]byte, 22)
-
-	// d = 1.0 in F16.
-	binary.LittleEndian.PutUint16(data[0:2], 0x3C00)
-
-	// qh = 0 (no high bits set).
-	binary.LittleEndian.PutUint32(data[2:6], 0)
-
-	// qs = 0 (all zeros).
-	for i := 0; i < 16; i++ {
-		data[6+i] = 0
+	tests := []struct {
+		name  string
+		d     uint16
+		qh    uint32
+		qs    []byte
+		check func(t *testing.T, result []float32)
+	}{
+		{
+			name: "all_zero_no_high_bits",
+			// q=0, d=1.0 → result = 1.0*(0-16) = -16.0
+			d:  0x3C00,
+			qh: 0,
+			qs: make([]byte, 16),
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				expected := float32(-16.0)
+				for i := 0; i < 32; i++ {
+					if math.Abs(float64(result[i]-expected)) > 1e-6 {
+						t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+					}
+				}
+			},
+		},
+		{
+			name: "high_bits_set_makes_max_value",
+			// qs=0xFF (lo=0xF, hi=0xF per byte), qh=0xFFFFFFFF (all high bits set).
+			// q = 0xF | (1<<4) = 31, d=1.0 → result = 1.0*(31-16) = 15.0
+			d:  0x3C00,
+			qh: 0xFFFFFFFF,
+			qs: []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+				0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				expected := float32(15.0) // d*(31-16)
+				for i := 0; i < 32; i++ {
+					if math.Abs(float64(result[i]-expected)) > 1e-6 {
+						t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+					}
+				}
+			},
+		},
+		{
+			name: "mixed_nibbles_known_high_bits",
+			// qs[0] = 0x53 → lo=3, hi=5 (two elements).
+			// qh = 0x00000003 → bit0=1 (elem0 high), bit1=0 (elem1 high=0).
+			// q0 = 3|(1<<4) = 19, q1 = 5|(0<<4) = 5
+			// d=1.0: result[0] = 1.0*(19-16)=3.0, result[1]=1.0*(5-16)=-11.0
+			d:  0x3C00,
+			qh: 0x00000001, // only bit0 set
+			qs: func() []byte {
+				b := make([]byte, 16)
+				b[0] = 0x53
+				return b
+			}(),
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if math.Abs(float64(result[0]-3.0)) > 1e-6 {
+					t.Errorf("result[0] = %v, want 3.0 (q=3|16=19, 19-16=3)", result[0])
+				}
+				if math.Abs(float64(result[1]+11.0)) > 1e-6 {
+					t.Errorf("result[1] = %v, want -11.0 (q=5, 5-16=-11)", result[1])
+				}
+			},
+		},
 	}
 
-	result, err := DequantizeBlock(data, GGMLTypeQ5_0)
-	if err != nil {
-		t.Fatalf("DequantizeBlock failed: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := make([]byte, 22)
+			binary.LittleEndian.PutUint16(data[0:2], tt.d)
+			binary.LittleEndian.PutUint32(data[2:6], tt.qh)
+			copy(data[6:22], tt.qs)
 
-	if len(result) != 32 {
-		t.Fatalf("expected 32 elements, got %d", len(result))
-	}
-
-	// Formula: d * (q - 16) = 1.0 * (0 - 16) = -16.0.
-	expected := float32(-16.0)
-	for i := 0; i < 32; i++ {
-		if math.Abs(float64(result[i]-expected)) > 1e-6 {
-			t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
-		}
+			result, err := DequantizeBlock(data, GGMLTypeQ5_0)
+			if err != nil {
+				t.Fatalf("DequantizeBlock failed: %v", err)
+			}
+			if len(result) != 32 {
+				t.Fatalf("expected 32 elements, got %d", len(result))
+			}
+			tt.check(t, result)
+		})
 	}
 }
 
@@ -323,80 +386,272 @@ func TestDequantizeQ4_K_ScaleExtraction(t *testing.T) {
 }
 
 // TestDequantizeQ5_K tests 5-bit K-quant (256 elements).
+//
+// Block layout (176 bytes):
+//
+//	[0:2]   d    (F16 super-scale)
+//	[2:4]   dmin (F16 super-min)
+//	[4:16]  scales[12] (packed 6-bit, same layout as Q4_K)
+//	[16:48] qh[32] (1 high bit per element = 256 bits)
+//	[48:176] qs[128] (4 low bits per element = 512 bits)
+//
+//nolint:gocognit // Table-driven test: multiple subtests with inline closures inflate gocognit score.
 func TestDequantizeQ5_K(t *testing.T) {
-	// Create Q5_K block with simple values.
-	data := make([]byte, 176)
-
-	// d = 1.0 in F16.
-	binary.LittleEndian.PutUint16(data[0:2], 0x3C00)
-	// dmin = 0.0 in F16.
-	binary.LittleEndian.PutUint16(data[2:4], 0x0000)
-
-	// scales[12]: set all to minimal values.
-	for i := 0; i < 12; i++ {
-		data[4+i] = 0x01
+	tests := []struct {
+		name  string
+		setup func(data []byte)
+		check func(t *testing.T, result []float32)
+	}{
+		{
+			name: "all_zero_qs_no_high_bits",
+			setup: func(data []byte) {
+				// d=1.0, dmin=0.0, scales[0]=1 (sc[0]=1), qh=0, qs=0.
+				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
+				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
+				data[4] = 0x01                                    // sc[0]=1 → scales[0]=1, mins[0]=0
+				// qh all zero → no high bits.
+				// qs all zero → all q=0.
+				// result[0..31]: scale=1.0*1=1.0, minv=0.0*0=0.0, q=0 → 0.0
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				// Sub-block 0: scale=1.0, minv=0.0, qs all zero, qh all zero → 0.0
+				for i := 0; i < 32; i++ {
+					if result[i] != 0.0 {
+						t.Errorf("result[%d] = %v, want 0.0", i, result[i])
+					}
+				}
+			},
+		},
+		{
+			name: "known_nibbles_no_high_bits",
+			setup: func(data []byte) {
+				// d=1.0, dmin=0.0, scales[0]=1, qs[48]=0x32 → q_lo=2, q_hi=3.
+				// qh all zero → no 5th bit.
+				// result[0] = 1.0*2 - 0 = 2.0
+				// result[1] = 1.0*3 - 0 = 3.0
+				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
+				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
+				data[4] = 0x01                                    // scales[0]=1
+				data[48] = 0x32                                   // qs[0]=0x32: lo=2, hi=3
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if math.Abs(float64(result[0]-2.0)) > 1e-6 {
+					t.Errorf("result[0] = %v, want 2.0 (scale=1.0, q=2, no high bit)", result[0])
+				}
+				if math.Abs(float64(result[1]-3.0)) > 1e-6 {
+					t.Errorf("result[1] = %v, want 3.0 (scale=1.0, q=3, no high bit)", result[1])
+				}
+			},
+		},
+		{
+			name: "high_bits_set_for_first_two_elements",
+			setup: func(data []byte) {
+				// d=1.0, dmin=0.0, scales[0]=1.
+				// qh[16] (data[16]) = 0x03 → bit0=1 for elem0, bit1=1 for elem1.
+				// qs[48] = 0x32 → lo nibble=2, hi nibble=3.
+				// q0 = 2|(1<<4) = 18, q1 = 3|(1<<4) = 19.
+				// result[0] = 1.0*18 = 18.0, result[1] = 1.0*19 = 19.0
+				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
+				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
+				data[4] = 0x01                                    // scales[0]=1
+				data[16] = 0x03                                   // qh: bit0 and bit1 set
+				data[48] = 0x32                                   // qs[0]=0x32: lo=2, hi=3
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if math.Abs(float64(result[0]-18.0)) > 1e-6 {
+					t.Errorf("result[0] = %v, want 18.0 (2|16)", result[0])
+				}
+				if math.Abs(float64(result[1]-19.0)) > 1e-6 {
+					t.Errorf("result[1] = %v, want 19.0 (3|16)", result[1])
+				}
+			},
+		},
+		{
+			name: "with_dmin_non_zero",
+			setup: func(data []byte) {
+				// d=1.0, dmin=1.0, scales[0]=1, mins[0]=2.
+				// sc[0]=1 | (0<<6)=1, sc[8]=(2&0xF)<<0 = 2 → low nibble of sc[8]=2
+				// scales[0] = sc[0]&0x3F = 1
+				// mins[0] = (sc[0]>>6) | ((sc[8]&0x0F)<<2) = 0 | (2<<2) = 8
+				// scale=1.0*1=1.0, minv=1.0*8=8.0
+				// qs[48]=0x08 → lo=8, hi=0
+				// result[0] = 1.0*8 - 8.0 = 0.0
+				// result[1] = 1.0*0 - 8.0 = -8.0
+				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
+				binary.LittleEndian.PutUint16(data[2:4], 0x3C00) // dmin=1.0
+				data[4] = 0x01                                    // sc[0]: scales[0]=1, mins[0] high 2 bits=0
+				data[12] = 0x02                                   // sc[8]: low nibble=2 → mins[0] = 0|(2<<2)=8
+				data[48] = 0x08                                   // qs[0]: lo=8, hi=0
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if math.Abs(float64(result[0]-0.0)) > 1e-5 {
+					t.Errorf("result[0] = %v, want 0.0 (1.0*8 - 8.0)", result[0])
+				}
+				if math.Abs(float64(result[1]+8.0)) > 1e-5 {
+					t.Errorf("result[1] = %v, want -8.0 (1.0*0 - 8.0)", result[1])
+				}
+			},
+		},
+		{
+			name: "returns_256_elements",
+			setup: func(_ []byte) {
+				// Empty data (all zeros) — just verify element count.
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if len(result) != 256 {
+					t.Errorf("expected 256 elements, got %d", len(result))
+				}
+			},
+		},
 	}
 
-	// qh[32]: high bits.
-	for i := 0; i < 32; i++ {
-		data[16+i] = 0x00
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := make([]byte, 176)
+			tt.setup(data)
 
-	// qs[128]: low bits.
-	for i := 0; i < 128; i++ {
-		data[48+i] = 0x00
+			result, err := DequantizeBlock(data, GGMLTypeQ5_K)
+			if err != nil {
+				t.Fatalf("DequantizeBlock failed: %v", err)
+			}
+			tt.check(t, result)
+		})
 	}
-
-	result, err := DequantizeBlock(data, GGMLTypeQ5_K)
-	if err != nil {
-		t.Fatalf("DequantizeBlock failed: %v", err)
-	}
-
-	if len(result) != 256 {
-		t.Fatalf("expected 256 elements, got %d", len(result))
-	}
-
-	t.Logf("Q5_K dequantization produced %d elements", len(result))
 }
 
 // TestDequantizeQ6_K tests 6-bit K-quant (256 elements).
+//
+// Block layout (210 bytes):
+//
+//	[0:128]   ql[128]    (4 low bits per element, 2 elements per byte)
+//	[128:192] qh[64]     (2 high bits per element, 4 elements per byte)
+//	[192:208] scales[16] (signed int8, one per 16-element sub-block)
+//	[208:210] d          (F16 super-scale)
+//
+// Formula: x[i] = d * scales[sub] * (q[i] - 32)
+// where q[i] is a 6-bit unsigned value assembled as: ql[i]|(qh[i]<<4), range 0..63.
+//
+//nolint:gocognit // Table-driven test: multiple subtests with inline closures inflate gocognit score.
 func TestDequantizeQ6_K(t *testing.T) {
-	// Create Q6_K block with simple values.
-	data := make([]byte, 210)
-
-	// ql[128]: low 4 bits.
-	for i := 0; i < 128; i++ {
-		data[i] = 0x00
+	tests := []struct {
+		name  string
+		setup func(data []byte)
+		check func(t *testing.T, result []float32)
+	}{
+		{
+			name: "all_zero_quants_positive_scale",
+			// ql=0, qh=0 → q=0; scale=1*1=1.0; formula: 1.0*(0-32) = -32.0
+			setup: func(data []byte) {
+				for i := 0; i < 16; i++ {
+					data[192+i] = 0x01 // signed int8 scale = +1
+				}
+				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if len(result) != 256 {
+					t.Fatalf("expected 256 elements, got %d", len(result))
+				}
+				// All ql=0, qh=0 → q=0. scale=1.0*1=1.0. result=-32.0
+				expected := float32(-32.0)
+				for i := 0; i < 256; i++ {
+					if math.Abs(float64(result[i]-expected)) > 1e-5 {
+						t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+					}
+				}
+			},
+		},
+		{
+			name: "max_quant_value",
+			// ql byte = 0xFF → lo=0xF, hi=0xF; qh byte = 0xFF → high2bits for each=0x3.
+			// q = 0xF | (0x3 << 4) = 0xF | 0x30 = 0x3F = 63.
+			// scale=1*1=1.0; result = 1.0*(63-32) = 31.0
+			setup: func(data []byte) {
+				for i := 0; i < 128; i++ {
+					data[i] = 0xFF // ql all 0xF nibbles
+				}
+				for i := 0; i < 64; i++ {
+					data[128+i] = 0xFF // qh all 0x3 pairs
+				}
+				for i := 0; i < 16; i++ {
+					data[192+i] = 0x01 // scale=+1
+				}
+				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				expected := float32(31.0) // (63-32)*1.0*1.0
+				for i := 0; i < 256; i++ {
+					if math.Abs(float64(result[i]-expected)) > 1e-5 {
+						t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+					}
+				}
+			},
+		},
+		{
+			name: "negative_scale",
+			// scale = -1 (int8 0xFF), d=1.0, ql=0 (q=0).
+			// result = 1.0 * (-1) * (0-32) = 32.0
+			setup: func(data []byte) {
+				// ql and qh all zero.
+				// 0xFF == byte representation of int8(-1).
+				for i := 0; i < 16; i++ {
+					data[192+i] = 0xFF // int8(-1) stored as 0xFF
+				}
+				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				expected := float32(32.0) // 1.0 * (-1) * (0 - 32) = 32.0
+				for i := 0; i < 256; i++ {
+					if math.Abs(float64(result[i]-expected)) > 1e-5 {
+						t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+					}
+				}
+			},
+		},
+		{
+			name: "mixed_scale_and_known_nibble",
+			// Sub-block 0: scale=2, d=1.0.
+			// ql[0]=0x25: low=5, high=2 (two elements per byte).
+			// qh[0]=0x00 → qh bits for elem0 and elem1 are 0.
+			// q0 = 5|(0<<4) = 5, q1 = 2|(0<<4) = 2.
+			// result[0] = 1.0*2*(5-32) = -54.0
+			// result[1] = 1.0*2*(2-32) = -60.0
+			setup: func(data []byte) {
+				data[0] = 0x25 // ql[0]: lo=5, hi=2
+				// qh[0] = 0 by default (no high bits set)
+				data[192] = 0x02 // sub-block 0 scale = +2
+				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
+			},
+			check: func(t *testing.T, result []float32) {
+				t.Helper()
+				if math.Abs(float64(result[0]+54.0)) > 1e-5 {
+					t.Errorf("result[0] = %v, want -54.0 (d*scale*(5-32))", result[0])
+				}
+				if math.Abs(float64(result[1]+60.0)) > 1e-5 {
+					t.Errorf("result[1] = %v, want -60.0 (d*scale*(2-32))", result[1])
+				}
+			},
+		},
 	}
 
-	// qh[64]: high 2 bits.
-	for i := 0; i < 64; i++ {
-		data[128+i] = 0x00
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := make([]byte, 210)
+			tt.setup(data)
 
-	// scales[16]: signed scales.
-	for i := 0; i < 16; i++ {
-		data[192+i] = 0x01 // scale = 1.
-	}
-
-	// d = 1.0 in F16.
-	binary.LittleEndian.PutUint16(data[208:210], 0x3C00)
-
-	result, err := DequantizeBlock(data, GGMLTypeQ6_K)
-	if err != nil {
-		t.Fatalf("DequantizeBlock failed: %v", err)
-	}
-
-	if len(result) != 256 {
-		t.Fatalf("expected 256 elements, got %d", len(result))
-	}
-
-	// Formula: scale * (q - 32) = 1.0 * (0 - 32) = -32.0.
-	expected := float32(-32.0)
-	for i := 0; i < 16; i++ { // Check first sub-block.
-		if math.Abs(float64(result[i]-expected)) > 1e-5 {
-			t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
-		}
+			result, err := DequantizeBlock(data, GGMLTypeQ6_K)
+			if err != nil {
+				t.Fatalf("DequantizeBlock failed: %v", err)
+			}
+			tt.check(t, result)
+		})
 	}
 }
 
@@ -428,15 +683,21 @@ func TestDequantizeInsufficientData(t *testing.T) {
 	}
 }
 
-// TestDequantizeBlockQ8_1 tests Q8_1 with sum offset.
+// TestDequantizeBlockQ8_1 tests Q8_1 dequantization.
+//
+// Q8_1 block layout: d (F16), s (F16), qs[32] (int8).
+// The 's' field = sum(qs)*d is stored for GGML dot-product acceleration only
+// and is NOT part of the element-wise dequantization formula.
+//
+// Reference: ggml-quants.c dequantize_row_q8_1 — formula is x[i] = d * qs[i].
 func TestDequantizeBlockQ8_1(t *testing.T) {
-	// Create Q8_1 block: d=0.1, s=0.01, qs=[1, 2, 3, ...].
 	data := make([]byte, 36)
 
 	// d = 0.1 in F16 (approx 0x2E66).
 	binary.LittleEndian.PutUint16(data[0:2], 0x2E66)
-	// s = 0.01 in F16 (approx 0x2028).
-	binary.LittleEndian.PutUint16(data[2:4], 0x2028)
+	// s = sum(qs)*d precomputed field — set to a non-zero value to confirm it is not used.
+	// If the formula incorrectly adds s*sum, this test will catch it.
+	binary.LittleEndian.PutUint16(data[2:4], 0x2028) // ~0.008118
 
 	// qs: 32 int8 values [1, 2, 3, ..., 32].
 	for i := 0; i < 32; i++ {
@@ -447,21 +708,59 @@ func TestDequantizeBlockQ8_1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DequantizeBlock failed: %v", err)
 	}
-
 	if len(result) != 32 {
 		t.Fatalf("expected 32 elements, got %d", len(result))
 	}
 
-	// sum = 1 + 2 + ... + 32 = 32 * 33 / 2 = 528.
-	// Formula: x[i] = d * q[i] + s * sum.
+	// Correct formula: x[i] = d * qs[i].
 	d := Float16ToFloat32(0x2E66)
-	s := Float16ToFloat32(0x2028)
-	sum := float32(528)
 
 	for i := 0; i < 32; i++ {
-		expected := d*float32(i+1) + s*sum
-		if math.Abs(float64(result[i]-expected)) > 1e-3 {
-			t.Errorf("result[%d] = %v, want %v", i, result[i], expected)
+		expected := d * float32(i+1)
+		if math.Abs(float64(result[i]-expected)) > 1e-4 {
+			t.Errorf("result[%d] = %v, want %v (d*%d)", i, result[i], expected, i+1)
+		}
+	}
+}
+
+// TestDequantizeBlockQ8_1_NegativeValues tests Q8_1 with negative int8 values
+// to confirm signed reinterpretation is correct.
+func TestDequantizeBlockQ8_1_NegativeValues(t *testing.T) {
+	data := make([]byte, 36)
+
+	// d = 1.0 in F16.
+	binary.LittleEndian.PutUint16(data[0:2], 0x3C00)
+	// s field irrelevant for dequant.
+	binary.LittleEndian.PutUint16(data[2:4], 0x0000)
+
+	// qs: [-16, -8, 0, 8, 16, 0, ...].
+	// Using a slice of named constants expressed as hex to avoid compile-time
+	// "constant overflows byte" errors while keeping intent clear.
+	// 0xF0 = byte(-16), 0xF8 = byte(-8), 0x00 = 0, 0x08 = 8, 0x10 = 16.
+	data[4] = 0xF0 // int8(-16)
+	data[5] = 0xF8 // int8(-8)
+	data[6] = 0x00 // int8(0)
+	data[7] = 0x08 // int8(8)
+	data[8] = 0x10 // int8(16)
+
+	result, err := DequantizeBlock(data, GGMLTypeQ8_1)
+	if err != nil {
+		t.Fatalf("DequantizeBlock failed: %v", err)
+	}
+
+	tests := []struct {
+		idx  int
+		want float32
+	}{
+		{0, -16.0},
+		{1, -8.0},
+		{2, 0.0},
+		{3, 8.0},
+		{4, 16.0},
+	}
+	for _, tt := range tests {
+		if math.Abs(float64(result[tt.idx]-tt.want)) > 1e-6 {
+			t.Errorf("result[%d] = %v, want %v", tt.idx, result[tt.idx], tt.want)
 		}
 	}
 }

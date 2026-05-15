@@ -284,27 +284,28 @@ func dequantizeBlockQ8_0(data []byte) ([]float32, error) {
 	return result, nil
 }
 
-// Q8_1: 32 elements per block, 8 bits per element with offset.
+// Q8_1: 32 elements per block, 8 bits per element.
 // Structure: half d (2 bytes), half s (2 bytes), int8_t qs[32] (32 bytes).
-// Formula: x[i] = d * q[i] + s * sum(q).
+//
+// NOTE: The 's' field (s = sum(qs) * d) is stored for optimized dot-product
+// kernels inside GGML and is NOT used during standard dequantization.
+// Reference: ggml-quants.c dequantize_row_q8_1 — formula is simply x[i] = d * qs[i].
+//
+// Formula: x[i] = d * q[i].
 func dequantizeBlockQ8_1(data []byte) ([]float32, error) {
 	if len(data) < 36 {
 		return nil, fmt.Errorf("insufficient data for Q8_1 block: need 36 bytes, got %d", len(data))
 	}
 
 	d := Float16ToFloat32(binary.LittleEndian.Uint16(data[0:2]))
-	s := Float16ToFloat32(binary.LittleEndian.Uint16(data[2:4]))
 
-	// Calculate sum of quantized values.
-	sum := int32(0)
-	for i := 0; i < 32; i++ {
-		sum += int32(int8(data[4+i])) //nolint:gosec // G115: intentional byte-to-signed reinterpretation for Q8_1 quantized weights
-	}
+	// NOTE: s (data[2:4]) = sum(qs)*d is a precomputed dot-product accelerator;
+	// it is intentionally not used in element-wise dequantization.
 
 	result := make([]float32, 32)
 	for i := 0; i < 32; i++ {
 		q := int8(data[4+i]) //nolint:gosec // G115: intentional byte-to-signed reinterpretation for Q8_1 quantized weights
-		result[i] = d*float32(q) + s*float32(sum)
+		result[i] = d * float32(q)
 	}
 
 	return result, nil
