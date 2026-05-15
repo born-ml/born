@@ -319,7 +319,6 @@ func dequantizeBlockQ8_1(data []byte) ([]float32, error) {
 //	q[0..3]:  low 6 bits = sc[0..3]; bits [6:7] = high 2 bits of sc[4..7]
 //	q[4..7]:  low 6 bits = m[0..3];  bits [6:7] = high 2 bits of m[4..7]
 //	q[8..11]: low nibble = low 4 bits of sc[4..7]; high nibble = low 4 bits of m[4..7]
-//
 func getScaleMinK4(j int, q []byte) (sc, m uint8) {
 	if j < 4 {
 		sc = q[j] & 63
@@ -496,9 +495,9 @@ func dequantizeBlockQ6_K(data []byte) ([]float32, error) {
 	// Two passes of 128 elements each, matching the GGML reference loop structure.
 	// Block byte layout: ql[0..127] | qh[128..191] | scales[192..207] | d[208..209]
 	for n := 0; n < 256; n += 128 {
-		qlBase := n / 2   // ql section byte offset: 0, then 64
+		qlBase := n / 2     // ql section byte offset: 0, then 64
 		qhBase := 128 + n/4 // qh section starts at byte 128; pass offset: 0, then 32
-		scBase := n / 16  // scales section starts at byte 192 (added below); offset: 0, then 8
+		scBase := n / 16    // scales section starts at byte 192 (added below); offset: 0, then 8
 		yBase := n
 
 		for l := 0; l < 32; l++ {

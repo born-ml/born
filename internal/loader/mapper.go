@@ -21,9 +21,9 @@ const (
 
 // GGML tensor names for the standard weights.
 const (
-	ggmlTokenEmbed  = "token_embd.weight" //nolint:gosec // G101 false positive: this is a tensor name, not a credential
-	ggmlOutput      = "output.weight"
-	ggmlOutputNorm  = "output_norm.weight"
+	ggmlTokenEmbed = "token_embd.weight" //nolint:gosec // G101 false positive: this is a tensor name, not a credential
+	ggmlOutput     = "output.weight"
+	ggmlOutputNorm = "output_norm.weight"
 )
 
 // WeightMapper maps model-specific weight names to standard Born names.

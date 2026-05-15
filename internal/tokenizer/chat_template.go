@@ -14,9 +14,9 @@ const (
 
 // Chat template names.
 const (
-	templateChatML  = "chatml"
-	templateLLaMA   = "llama"
-	templateMistral = "mistral"
+	templateChatML     = "chatml"
+	templateLLaMA      = "llama"
+	templateMistral    = "mistral"
 	templateNameChatML = "ChatML"
 )
 

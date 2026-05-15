@@ -73,8 +73,8 @@ func TestFormatString(t *testing.T) {
 // TestDetectArchitecture verifies architecture detection from weight name lists.
 func TestDetectArchitecture(t *testing.T) {
 	tests := []struct {
-		name   string
-		names  []string
+		name     string
+		names    []string
 		wantArch string
 	}{
 		{

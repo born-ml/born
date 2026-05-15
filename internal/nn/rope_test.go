@@ -332,10 +332,10 @@ func TestRotaryEncodingRotateHalfConvention(t *testing.T) {
 	sin001 := float32(math.Sin(0.01))
 
 	expected := []float32{
-		1*cos1 - 3*sin1,       // out[0]: x[0]*cos[0] - x[halfDim+0]*sin[0]
-		2*cos001 - 4*sin001,   // out[1]: x[1]*cos[1] - x[halfDim+1]*sin[1]
-		3*cos1 + 1*sin1,       // out[2]: x[halfDim+0]*cos[0] + x[0]*sin[0]
-		4*cos001 + 2*sin001,   // out[3]: x[halfDim+1]*cos[1] + x[1]*sin[1]
+		1*cos1 - 3*sin1,     // out[0]: x[0]*cos[0] - x[halfDim+0]*sin[0]
+		2*cos001 - 4*sin001, // out[1]: x[1]*cos[1] - x[halfDim+1]*sin[1]
+		3*cos1 + 1*sin1,     // out[2]: x[halfDim+0]*cos[0] + x[0]*sin[0]
+		4*cos001 + 2*sin001, // out[3]: x[halfDim+1]*cos[1] + x[1]*sin[1]
 	}
 
 	out1 := rope.ForwardWithOffset(x, 1)

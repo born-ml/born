@@ -55,15 +55,15 @@ func TestConfigFromGGUF_MockMetadata(t *testing.T) {
 		{
 			name: "llama2_7b_style",
 			metadata: map[string]interface{}{
-				"general.architecture":                     "llama",
-				"llama.embedding_length":                   uint32(4096),
-				"llama.block_count":                        uint32(32),
-				"llama.attention.head_count":               uint32(32),
-				"llama.attention.head_count_kv":            uint32(32),
-				"llama.feed_forward_length":                uint32(11008),
-				"llama.context_length":                     uint32(4096),
-				"llama.rope.freq_base":                     float32(10000.0),
-				"llama.attention.layer_norm_rms_epsilon":   float32(1e-5),
+				"general.architecture":                   "llama",
+				"llama.embedding_length":                 uint32(4096),
+				"llama.block_count":                      uint32(32),
+				"llama.attention.head_count":             uint32(32),
+				"llama.attention.head_count_kv":          uint32(32),
+				"llama.feed_forward_length":              uint32(11008),
+				"llama.context_length":                   uint32(4096),
+				"llama.rope.freq_base":                   float32(10000.0),
+				"llama.attention.layer_norm_rms_epsilon": float32(1e-5),
 			},
 			tokens: makeTokens(32000),
 			wantCfg: Config{
@@ -82,15 +82,15 @@ func TestConfigFromGGUF_MockMetadata(t *testing.T) {
 		{
 			name: "llama3_8b_gqa",
 			metadata: map[string]interface{}{
-				"general.architecture":                     "llama",
-				"llama.embedding_length":                   uint32(4096),
-				"llama.block_count":                        uint32(32),
-				"llama.attention.head_count":               uint32(32),
-				"llama.attention.head_count_kv":            uint32(8),
-				"llama.feed_forward_length":                uint32(14336),
-				"llama.context_length":                     uint32(8192),
-				"llama.rope.freq_base":                     float32(500000.0),
-				"llama.attention.layer_norm_rms_epsilon":   float32(1e-5),
+				"general.architecture":                   "llama",
+				"llama.embedding_length":                 uint32(4096),
+				"llama.block_count":                      uint32(32),
+				"llama.attention.head_count":             uint32(32),
+				"llama.attention.head_count_kv":          uint32(8),
+				"llama.feed_forward_length":              uint32(14336),
+				"llama.context_length":                   uint32(8192),
+				"llama.rope.freq_base":                   float32(500000.0),
+				"llama.attention.layer_norm_rms_epsilon": float32(1e-5),
 			},
 			tokens: makeTokens(128256),
 			wantCfg: Config{
@@ -154,7 +154,7 @@ func assertConfigEqual(t *testing.T, got, want Config) {
 	t.Helper()
 
 	intFields := []struct {
-		name     string
+		name      string
 		got, want int
 	}{
 		{"VocabSize", got.VocabSize, want.VocabSize},

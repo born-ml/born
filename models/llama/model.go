@@ -65,7 +65,7 @@ type Layer[B tensor.Backend] struct {
 	VProj    *nn.Linear[B]  // Value projection [hidden, n_kv_heads * head_dim].
 	OProj    *nn.Linear[B]  // Output projection [n_q_heads * head_dim, hidden].
 	Rope     *nn.RotaryEncoding[B]
-	FFNNorm  *nn.RMSNorm[B]  // Pre-FFN layer norm.
+	FFNNorm  *nn.RMSNorm[B]   // Pre-FFN layer norm.
 	FFN      *nn.SwiGLUFFN[B] // SwiGLU feed-forward network.
 
 	config  Config

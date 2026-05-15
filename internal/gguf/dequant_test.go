@@ -434,7 +434,7 @@ func TestDequantizeQ5_K(t *testing.T) {
 				// result[0..31] (group0 lo-nibble pass): d1=1.0, m1v=0.0, q=0 → 0.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
-				data[4] = 0x01                                    // q[0]: sc(j=0)=1
+				data[4] = 0x01                                   // q[0]: sc(j=0)=1
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
@@ -459,8 +459,8 @@ func TestDequantizeQ5_K(t *testing.T) {
 				// result[32] = d2 * (hi_nibble(ql[0]) | 0<<4) - m2v = 0.0*3 - 0 = 0.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
-				data[4] = 0x01                                    // q[0]: sc(j=0)=1
-				data[48] = 0x32                                   // ql[0]=0x32: lo=2, hi=3
+				data[4] = 0x01                                   // q[0]: sc(j=0)=1
+				data[48] = 0x32                                  // ql[0]=0x32: lo=2, hi=3
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
@@ -490,9 +490,9 @@ func TestDequantizeQ5_K(t *testing.T) {
 				// elem32: global=32, qh[4]=0 bit0=0 → q5=hi(ql[0])=3, d2=0 → result[32]=0.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x0000) // dmin=0
-				data[4] = 0x01                                    // q[0]: sc(j=0)=1
-				data[16] = 0x03                                   // qh[0]: bit0=1 (elem0), bit1=1 (elem1)
-				data[48] = 0x32                                   // ql[0]=0x32: lo=2, hi=3
+				data[4] = 0x01                                   // q[0]: sc(j=0)=1
+				data[16] = 0x03                                  // qh[0]: bit0=1 (elem0), bit1=1 (elem1)
+				data[48] = 0x32                                  // ql[0]=0x32: lo=2, hi=3
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
@@ -520,9 +520,9 @@ func TestDequantizeQ5_K(t *testing.T) {
 				// result[1] = d1 * lo(ql[1]=0) - m1v = 0.0 - 8.0 = -8.0
 				binary.LittleEndian.PutUint16(data[0:2], 0x3C00) // d=1.0
 				binary.LittleEndian.PutUint16(data[2:4], 0x3C00) // dmin=1.0
-				data[4] = 0x01   // q[0]: sc(j=0)=1
-				data[4+4] = 0x08 // q[4]: m(j=0)=8
-				data[48] = 0x08  // ql[0]: lo_nibble=8, hi_nibble=0
+				data[4] = 0x01                                   // q[0]: sc(j=0)=1
+				data[4+4] = 0x08                                 // q[4]: m(j=0)=8
+				data[48] = 0x08                                  // ql[0]: lo_nibble=8, hi_nibble=0
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
@@ -677,8 +677,8 @@ func TestDequantizeQ6_K(t *testing.T) {
 			//
 			// (Old Born had hi-nibble at y[1]=-60.0, which was wrong.)
 			setup: func(data []byte) {
-				data[0] = 0x25  // ql[0]: lo nibble=5, hi nibble=2
-				data[192] = 0x02 // scales[0] = +2
+				data[0] = 0x25                                       // ql[0]: lo nibble=5, hi nibble=2
+				data[192] = 0x02                                     // scales[0] = +2
 				binary.LittleEndian.PutUint16(data[208:210], 0x3C00) // d=1.0
 			},
 			check: func(t *testing.T, result []float32) {
