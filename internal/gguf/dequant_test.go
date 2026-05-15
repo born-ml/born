@@ -575,19 +575,16 @@ func TestDequantizeQ6_K(t *testing.T) {
 		},
 		{
 			name: "max_quant_value",
-			// ql=0xFF (all nibbles=0xF), qh=0xFF, scales=+1, d=1.0.
+			// ql=0xFF (all nibbles=0xF), qh=0xFF for every byte, scales=+1, d=1.0.
 			//
-			// For lo-nibble elements (y[l] and y[l+32]):
-			//   qhLo = (0xFF >> shift) & 3 = 3 for any shift in {0,2,4,6}.
-			//   q = (0xF | 3<<4) - 32 = 63 - 32 = 31 → result = 31.0.
+			// With correct qh indexing (data[qhBase+l], one byte per l):
+			//   qhByte = 0xFF for every l.
+			//   q1: (0xFF>>0)&3 = 3 → q = (0xF | 3<<4) - 32 = 63-32 = 31 → 31.0
+			//   q2: (0xFF>>2)&3 = 3 → q = 31 → 31.0
+			//   q3: (0xFF>>4)&3 = 3 → q = 31 → 31.0
+			//   q4: (0xFF>>6)&3 = 3 → q = 31 → 31.0
 			//
-			// For hi-nibble elements (y[l+64] and y[l+96]):
-			//   shift+4 ∈ {4,6,8,10} for l%4 ∈ {0,1,2,3}.
-			//   l%4=0,1: qhHi = (0xFF >> 4) & 3 = 3 or (0xFF >> 6) & 3 = 3 → q=63 → 31.0.
-			//   l%4=2,3: shift+4=8 or 10, integer shift overflows → qhHi=0.
-			//            q = (0xF | 0<<4) - 32 = 15 - 32 = -17 → result = -17.0.
-			//
-			// 192 elements = 31.0, 64 elements = -17.0.
+			// All 256 elements = d * sc * 31 = 1.0 * 1 * 31 = 31.0.
 			setup: func(data []byte) {
 				for i := 0; i < 128; i++ {
 					data[i] = 0xFF
@@ -602,22 +599,10 @@ func TestDequantizeQ6_K(t *testing.T) {
 			},
 			check: func(t *testing.T, result []float32) {
 				t.Helper()
+				want := float32(31.0)
 				for i := 0; i < 256; i++ {
-					// y[l+64] and y[l+96] for l%4 ∈ {2,3} get qhHi=0 due to shift overflow.
-					// These positions are: n + (l%4 ∈ {2,3}) + 64 or 96, for both n=0 and n=128.
-					// Simplified: positions where (i/32)%2 == 1 within the hi-nibble groups.
-					// Equivalently: i ∈ y[l+64] or y[l+96] when l = i%32 and (l&3) >= 2.
-					group := (i % 128) / 32  // 0,1,2,3
-					l := i % 32
-					isHiNibble := group >= 2
-					shiftOverflow := isHiNibble && (l&3) >= 2
-					want := float32(31.0)
-					if shiftOverflow {
-						want = float32(-17.0) // q = 0xF-32 = -17
-					}
 					if math.Abs(float64(result[i]-want)) > 1e-5 {
-						t.Errorf("result[%d] = %v, want %v (group=%d l=%d isHi=%v overflow=%v)",
-							i, result[i], want, group, l, isHiNibble, shiftOverflow)
+						t.Errorf("result[%d] = %v, want %v", i, result[i], want)
 					}
 				}
 			},
