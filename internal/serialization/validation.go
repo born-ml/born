@@ -14,6 +14,14 @@ const (
 	MaxMetadataSize  = 10 * 1024 * 1024  // 10MB - maximum metadata size
 )
 
+// ValidationError type strings.
+const (
+	errTypeTooManyTensors = "too_many_tensors"
+	errTypeOutOfBounds    = "out_of_bounds"
+	errTypeOffsetOverlap  = "offset_overlap"
+	errTypeInvalidName    = "invalid_name"
+)
+
 // ValidationLevel controls the strictness of validation.
 type ValidationLevel int
 
@@ -31,7 +39,7 @@ const (
 func ValidateTensorOffsets(tensors []TensorMeta, dataSize int64) error {
 	if len(tensors) > MaxTensorCount {
 		return &ValidationError{
-			Type:    "too_many_tensors",
+			Type:    errTypeTooManyTensors,
 			Details: fmt.Sprintf("got %d, max %d", len(tensors), MaxTensorCount),
 		}
 	}
@@ -56,7 +64,7 @@ func ValidateTensorOffsets(tensors []TensorMeta, dataSize int64) error {
 		// Check bounds - prevent reading beyond file.
 		if t.Offset+t.Size > dataSize {
 			return &ValidationError{
-				Type:    "out_of_bounds",
+				Type:    errTypeOutOfBounds,
 				Tensor:  t.Name,
 				Details: fmt.Sprintf("offset %d + size %d > data_size %d", t.Offset, t.Size, dataSize),
 			}
@@ -67,7 +75,7 @@ func ValidateTensorOffsets(tensors []TensorMeta, dataSize int64) error {
 			next := sorted[i+1]
 			if t.Offset+t.Size > next.Offset {
 				return &ValidationError{
-					Type:    "offset_overlap",
+					Type:    errTypeOffsetOverlap,
 					Tensor:  t.Name,
 					Tensor2: next.Name,
 					Details: fmt.Sprintf("regions [%d-%d] and [%d-%d] overlap",
@@ -93,7 +101,7 @@ func ValidateTensorName(name string) error {
 	// Path traversal prevention - critical for security.
 	if strings.Contains(name, "..") {
 		return &ValidationError{
-			Type:    "invalid_name",
+			Type:    errTypeInvalidName,
 			Tensor:  name,
 			Details: "contains '..' (path traversal attempt)",
 		}
@@ -102,7 +110,7 @@ func ValidateTensorName(name string) error {
 	// Prevent absolute paths and directory separators.
 	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
 		return &ValidationError{
-			Type:    "invalid_name",
+			Type:    errTypeInvalidName,
 			Tensor:  name,
 			Details: "contains path separator (/ or \\)",
 		}
@@ -111,7 +119,7 @@ func ValidateTensorName(name string) error {
 	// Prevent null bytes (can bypass length checks in some contexts).
 	if strings.Contains(name, "\x00") {
 		return &ValidationError{
-			Type:    "invalid_name",
+			Type:    errTypeInvalidName,
 			Tensor:  name,
 			Details: "contains null byte",
 		}
@@ -129,7 +137,7 @@ func ValidateHeader(h *Header, dataSize int64, level ValidationLevel) error {
 	// Validate tensor count (DoS prevention).
 	if len(h.Tensors) > MaxTensorCount {
 		return &ValidationError{
-			Type:    "too_many_tensors",
+			Type:    errTypeTooManyTensors,
 			Details: fmt.Sprintf("got %d, max %d", len(h.Tensors), MaxTensorCount),
 		}
 	}

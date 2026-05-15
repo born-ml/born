@@ -3,7 +3,7 @@
 > **Strategic Approach**: PyTorch-inspired API, Burn-inspired architecture, Go best practices
 > **Philosophy**: Correctness → Performance → Features
 
-**Last Updated**: 2026-04-10 | **Current Version**: v0.7.16 | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.7.16 RELEASED! → v0.8.0 → v1.0.0 LTS (After API Freeze)
+**Last Updated**: 2026-05-15 | **Current Version**: v0.8.1-dev | **Strategy**: Core → GPU → LLM → ONNX → Inference Opt → Production → v1.0 LTS | **Milestone**: v0.8.0 (GoGPU Migration) → v0.8.1 (LLaMA Inference) → v1.0.0 LTS
 
 ---
 
@@ -74,13 +74,15 @@ v0.7.14 (ONNX Equal — Community PR) ✅ RELEASED (2026-03-04)
        ↓ (erf operator — community contribution)
 v0.7.15 (Erf Operator — Community PR) ✅ RELEASED (2026-04-07)
        ↓ (community contributions, bugfixes, ONNX ops)
-v0.7.16 (Community PRs, ONNX 49 ops, Bugfixes) ✅ CURRENT (2026-04-10)
-       ↓ (quantization & efficiency)
-v0.8.0 (Quantization, Model Zoo, Jupyter) → Feb 2026
-       ↓ (production serving)
-v0.9.0 (PagedAttention, Continuous Batching, Kernel Fusion) → Mar 2026
+v0.7.16 (Community PRs, ONNX 49 ops, Bugfixes) ✅ RELEASED (2026-04-10)
+       ↓ (WebGPU migration to pure Go)
+v0.8.0 (GoGPU/wgpu Migration — Pure Go, Zero CGO) ✅ RELEASED (2026-04-26)
+       ↓ (LLaMA inference, GGUF loading, reproducibility)
+v0.8.1 (LLaMA Inference, GGUF Model Loading) → CURRENT (2026-05-15)
+       ↓ (CPU multi-threading, quantization improvements)
+v0.9.0 (CPU Multi-thread, PagedAttention, Kernel Fusion) → June 2026
        ↓ (scale & stability)
-v0.10.0 (Multi-GPU, SIMD, Gradient Checkpointing) → Apr 2026
+v0.10.0 (Multi-GPU, SIMD, Gradient Checkpointing) → Aug 2026
        ↓ (API freeze period)
 v1.0.0 LTS → After API stabilization
 ```
@@ -167,18 +169,26 @@ v1.0.0 LTS → After API stabilization
 - New `internal/parallel` package
 - Extended Backend interface with backward methods
 
-**v0.8.0** = Quantization & Efficiency → February 2026
-- Post-training quantization (GPTQ/AWQ, 4x smaller)
-- KV Cache compression (2-4x memory reduction)
-- Jupyter Kernel (interactive ML development)
-- Model Zoo (10+ pre-trained models)
+**v0.8.0** = GoGPU/wgpu Migration ✅ RELEASED (2026-04-26)
+- WebGPU backend migrated from go-webgpu (Rust FFI) to gogpu/wgpu (pure Go)
+- Zero CGO, zero runtime deps — `go build` produces GPU-ready binary
+- Vulkan primary compute backend
 
-**v0.9.0** = Production Serving → March 2026
+**v0.8.1** = LLaMA Inference & GGUF Loading → CURRENT (2026-05-15)
+- `models/llama`: Full LLaMA model (GQA, RoPE, SwiGLU FFN, KV cache)
+- `loader`: Public GGUF/SafeTensors loading API
+- `LoadGGUF`: Auto-dequantize Q4_K, Q5_K, Q6_K, Q8_0, F16, F32
+- Injectable attention (`WithAttentionFunc`) for research experiments
+- `nn.SetSeed()` for reproducible weight initialization
+- Tested: TinyLlama 1.1B Q8_0 — "Paris" top-1 for "The capital of France is"
+- Fixed: RoPE rotate-half, GGML naming, Q4_K/Q5_K scales, F16 subnormals, tied embeddings
+
+**v0.9.0** = CPU Multi-thread & Production Serving → June 2026
+- CPU multi-threaded MatMul/BatchMatMul (TASK-133)
 - PagedAttention (>90% GPU utilization)
 - Continuous Batching (10-23x throughput)
 - Kernel Fusion (30-50% speedup)
 - MoE Support (Mixtral, DeepSeek)
-- OpenAI-compatible API server
 
 **v0.10.0** = Scale & Stability → April 2026
 - Multi-GPU Data Parallelism (pure Go)

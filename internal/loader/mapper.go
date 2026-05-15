@@ -12,6 +12,20 @@ const (
 	ArchitectureDeepSeek = "deepseek"
 )
 
+// Standard Born weight names used across all model architectures.
+const (
+	weightEmbedding = "embedding.weight"
+	weightNorm      = "norm.weight"
+	weightLMHead    = "lm_head.weight"
+)
+
+// GGML tensor names for the standard weights.
+const (
+	ggmlTokenEmbed  = "token_embd.weight" //nolint:gosec // G101 false positive: this is a tensor name, not a credential
+	ggmlOutput      = "output.weight"
+	ggmlOutputNorm  = "output_norm.weight"
+)
+
 // WeightMapper maps model-specific weight names to standard Born names.
 type WeightMapper interface {
 	// MapName converts a model-specific weight name to Born standard name.
@@ -39,17 +53,17 @@ func NewLLaMAMapper() *LLaMAMapper {
 func (m *LLaMAMapper) MapName(name string) (string, error) {
 	// Embedding
 	if strings.HasPrefix(name, "model.embed_tokens.weight") {
-		return "embedding.weight", nil
+		return weightEmbedding, nil
 	}
 
 	// Final norm
 	if strings.HasPrefix(name, "model.norm.weight") {
-		return "norm.weight", nil
+		return weightNorm, nil
 	}
 
 	// Output/LM head
 	if strings.HasPrefix(name, "lm_head.weight") {
-		return "lm_head.weight", nil
+		return weightLMHead, nil
 	}
 
 	// Layer-specific weights
@@ -235,12 +249,12 @@ func NewGGMLMapper() *GGMLMapper {
 // MapName converts GGUF-native tensor names to Born standard names.
 func (m *GGMLMapper) MapName(name string) (string, error) {
 	switch {
-	case name == "token_embd.weight":
-		return "embedding.weight", nil
-	case name == "output.weight":
-		return "lm_head.weight", nil
-	case name == "output_norm.weight":
-		return "norm.weight", nil
+	case name == ggmlTokenEmbed:
+		return weightEmbedding, nil
+	case name == ggmlOutput:
+		return weightLMHead, nil
+	case name == ggmlOutputNorm:
+		return weightNorm, nil
 	case strings.HasPrefix(name, "blk."):
 		return m.mapBlockWeight(name)
 	}
@@ -293,7 +307,7 @@ const (
 // DetectNaming identifies whether tensor names use HuggingFace or GGML convention.
 func DetectNaming(names []string) string {
 	for _, name := range names {
-		if strings.HasPrefix(name, "blk.") || name == "token_embd.weight" {
+		if strings.HasPrefix(name, "blk.") || name == ggmlTokenEmbed {
 			return NamingGGML
 		}
 		if strings.HasPrefix(name, "model.") {

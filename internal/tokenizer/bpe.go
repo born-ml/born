@@ -242,9 +242,9 @@ func LoadBPEFromHuggingFace(path string) (*BPETokenizer, error) {
 			// Try to identify standard special tokens.
 			content := strings.ToLower(addedToken.Content)
 			switch {
-			case strings.Contains(content, "bos") || content == "<s>":
+			case strings.Contains(content, "bos") || content == specialTokenBOS:
 				tokenizer.bosToken = id
-			case strings.Contains(content, "eos") || content == "</s>":
+			case strings.Contains(content, "eos") || content == specialTokenEOS:
 				tokenizer.eosToken = id
 			case strings.Contains(content, "pad"):
 				tokenizer.padToken = id

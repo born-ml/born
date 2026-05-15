@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/born-ml/born/internal/tensor"
 )
 
 // GGUF format (v3):
@@ -380,23 +378,6 @@ func (r *GGUFReader) calculateTensorSize(info *GGUFTensorInfo) uint64 {
 	}
 
 	return numElements * bytesPerElement
-}
-
-// ggufDTypeToDataType converts GGUF dtype to Born DataType.
-// Returns error for quantized types (Q4_0, Q8_0) as they require dequantization.
-//
-//nolint:unparam // Returns 0 for error cases, which is expected for type conversion failures
-func ggufDTypeToDataType(dtype GGUFDType) (tensor.DataType, error) {
-	switch dtype {
-	case GGUFDTypeF32:
-		return tensor.Float32, nil
-	case GGUFDTypeF16:
-		return 0, fmt.Errorf("F16 requires conversion (not directly supported)")
-	case GGUFDTypeQ4_0, GGUFDTypeQ4_1, GGUFDTypeQ8_0:
-		return 0, fmt.Errorf("quantized dtype %d requires dequantization", dtype)
-	default:
-		return 0, fmt.Errorf("unsupported dtype: %d", dtype)
-	}
 }
 
 // alignOffset aligns an offset to the specified alignment.

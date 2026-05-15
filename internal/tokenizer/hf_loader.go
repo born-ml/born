@@ -24,6 +24,18 @@ const (
 	HFTypeUnknown HFTokenizerType = "Unknown"
 )
 
+// Special token strings used in HuggingFace tokenizer.json files.
+const (
+	specialTokenBOS    = "<s>"
+	specialTokenAltBOS = "<bos>"
+	specialTokenCLS    = "[CLS]"
+	specialTokenEOS    = "</s>"
+	specialTokenAltEOS = "<eos>"
+	specialTokenSEP    = "[SEP]"
+	modelGPT35Turbo    = "gpt-3.5-turbo"
+	modelGPT4          = "gpt-4"
+)
+
 // HFTokenizerMetadata contains metadata from tokenizer.json.
 type HFTokenizerMetadata struct {
 	Type          HFTokenizerType
@@ -60,9 +72,9 @@ func DetectHFTokenizerType(path string) (*HFTokenizerMetadata, error) {
 		if tokType, ok := model["type"].(string); ok {
 			metadata.TokenizerType = tokType
 			switch tokType {
-			case "BPE":
+			case string(HFTypeBPE):
 				metadata.Type = HFTypeBPE
-			case "WordPiece":
+			case string(HFTypeWordPiece):
 				metadata.Type = HFTypeWordPiece
 			case "Unigram":
 				metadata.Type = HFTypeUnigram
@@ -81,9 +93,9 @@ func DetectHFTokenizerType(path string) (*HFTokenizerMetadata, error) {
 			if token, ok := tokenRaw.(map[string]interface{}); ok {
 				if content, ok := token["content"].(string); ok {
 					switch content {
-					case "<s>", "<bos>", "[CLS]":
+					case specialTokenBOS, specialTokenAltBOS, specialTokenCLS:
 						metadata.HasBOS = true
-					case "</s>", "<eos>", "[SEP]":
+					case specialTokenEOS, specialTokenAltEOS, specialTokenSEP:
 						metadata.HasEOS = true
 					case "<pad>", "[PAD]":
 						metadata.HasPAD = true
@@ -129,11 +141,11 @@ func LoadFromHuggingFace(modelPath string) (Tokenizer, error) {
 func TryLoadTikToken(modelName string) (Tokenizer, error) {
 	// Map common model names to tiktoken encodings.
 	encodingMap := map[string]string{
-		"gpt-4":                  "cl100k_base",
-		"gpt-3.5-turbo":          "cl100k_base",
-		"gpt-3":                  "p50k_base",
-		"text-davinci-003":       "p50k_base",
-		"text-embedding-ada-002": "cl100k_base",
+		modelGPT4:                encodingCL100kBase,
+		modelGPT35Turbo:          encodingCL100kBase,
+		"gpt-3":                  encodingP50kBase,
+		"text-davinci-003":       encodingP50kBase,
+		"text-embedding-ada-002": encodingCL100kBase,
 	}
 
 	if encoding, ok := encodingMap[modelName]; ok {

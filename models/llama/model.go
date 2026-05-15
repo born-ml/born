@@ -68,10 +68,9 @@ type Layer[B tensor.Backend] struct {
 	FFNNorm  *nn.RMSNorm[B]  // Pre-FFN layer norm.
 	FFN      *nn.SwiGLUFFN[B] // SwiGLU feed-forward network.
 
-	config      Config
-	attnFn      AttentionFunc[B]
-	disableMask bool // debug only
-	backend     B
+	config  Config
+	attnFn  AttentionFunc[B]
+	backend B
 }
 
 // newLayer creates a new transformer Layer.
@@ -105,14 +104,11 @@ func newLayer[B tensor.Backend](cfg Config, opts *modelOptions[B], backend B) *L
 	}
 }
 
-// Forward computes the output of a single transformer layer.
+// DebugForward is like Forward but returns intermediate attention and FFN contributions
+// for diagnostic inspection.
 //
-// Input x: [batch, seq_len, hidden_size]
-// Returns: [batch, seq_len, hidden_size]
-//
-// cache and startPos are used for incremental KV-cache decoding during inference.
-// Pass cache=nil for training or non-cached inference.
-// DebugForward is like Forward but returns intermediate values for diagnostics.
+// Input x: [batch, seq_len, hidden_size].
+// Returns out (final output), attnContrib, and ffnContrib tensors.
 func (l *Layer[B]) DebugForward(
 	x *tensor.Tensor[float32, B],
 	cache *nn.KVCache[B],
@@ -128,6 +124,13 @@ func (l *Layer[B]) DebugForward(
 	return
 }
 
+// Forward computes the output of a single transformer layer.
+//
+// Input x: [batch, seq_len, hidden_size].
+// Returns output with the same shape.
+//
+// cache and startPos are used for incremental KV-cache decoding during inference.
+// Pass cache=nil for training or non-cached inference.
 func (l *Layer[B]) Forward(
 	x *tensor.Tensor[float32, B],
 	cache *nn.KVCache[B],
@@ -180,15 +183,12 @@ func (l *Layer[B]) selfAttention(
 
 	// Build causal mask when multiple query tokens are present.
 	var mask *tensor.Tensor[float32, B]
-	if !l.disableMask {
+	if seqLen > 1 {
+		seqK := seqLen
 		if cache != nil {
-			seqK := k.Shape()[2]
-			if seqLen > 1 {
-				mask = nn.CausalMask(seqK, l.backend)
-			}
-		} else if seqLen > 1 {
-			mask = nn.CausalMask(seqLen, l.backend)
+			seqK = k.Shape()[2]
 		}
+		mask = nn.CausalMask(seqK, l.backend)
 	}
 
 	// Compute attention — use injected function if provided, else default SDPA.
@@ -391,13 +391,6 @@ func (m *Model[B]) VocabSize() int {
 func (m *Model[B]) SetAttentionFunc(fn AttentionFunc[B]) {
 	for _, l := range m.Layers {
 		l.attnFn = fn
-	}
-}
-
-// SetDisableMask disables causal mask on all layers (debug only).
-func (m *Model[B]) SetDisableMask(disable bool) {
-	for _, l := range m.Layers {
-		l.disableMask = disable
 	}
 }
 

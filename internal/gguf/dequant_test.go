@@ -296,18 +296,16 @@ func TestDequantizeQ4_K_ScaleExtraction(t *testing.T) {
 	data[4+6] = 30 // sc[6] = 30
 	data[4+7] = 40 // sc[7] = 40
 
-	result, err := DequantizeBlock(data, GGMLTypeQ4_K)
-	if err != nil {
+	// Verify all-zero qs produce no error before setting qs values.
+	if _, err := DequantizeBlock(data, GGMLTypeQ4_K); err != nil {
 		t.Fatal(err)
 	}
 
-	// All qs = 0, so result = scale*0 - min = -min.
-	// m values with high 2 bits = 0 and bytes[8..11] = 0 → all m = 0.
-	// So all elements = -dmin*0 = 0.
-
-	// But the scales should be non-zero. Set one qs byte to test.
+	// Set one qs byte to test scale extraction.
+	// All qs = 0, so result = scale*0 - min = 0.
+	// m values with high 2 bits = 0 → all m = 0.
 	data[16] = 0x01 // sub-block 0, elem 0: q=1
-	result, _ = DequantizeBlock(data, GGMLTypeQ4_K)
+	result, _ := DequantizeBlock(data, GGMLTypeQ4_K)
 
 	// result[0] = d * sc[0] * 1 - dmin * m[0] = 1.0 * 1 * 1 - 1.0 * 0 = 1.0
 	if math.Abs(float64(result[0]-1.0)) > 0.01 {

@@ -8,7 +8,7 @@ import (
 // globalRNG is the package-level random number generator for tensor creation.
 // When nil, falls back to math/rand global functions.
 var (
-	globalRNG   *rand.Rand //nolint:gosec // ML uses math/rand intentionally
+	globalRNG   *rand.Rand
 	globalRNGMu sync.Mutex
 )
 

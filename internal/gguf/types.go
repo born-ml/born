@@ -49,22 +49,40 @@ const (
 	ValueTypeFloat64 ValueType = 12
 )
 
+// valueTypeNames maps ValueType constants to their string representations.
+// These match the GGUF specification type names.
+const (
+	valueTypeNameUint8   = "uint8"
+	valueTypeNameInt8    = "int8"
+	valueTypeNameUint16  = "uint16"
+	valueTypeNameInt16   = "int16"
+	valueTypeNameUint32  = "uint32"
+	valueTypeNameInt32   = "int32"
+	valueTypeNameFloat32 = "float32"
+	valueTypeNameBool    = "bool"
+	valueTypeNameString  = "string"
+	valueTypeNameArray   = "array"
+	valueTypeNameUint64  = "uint64"
+	valueTypeNameInt64   = "int64"
+	valueTypeNameFloat64 = "float64"
+)
+
 // String returns the string representation of the value type.
 func (t ValueType) String() string {
 	names := map[ValueType]string{
-		ValueTypeUint8:   "uint8",
-		ValueTypeInt8:    "int8",
-		ValueTypeUint16:  "uint16",
-		ValueTypeInt16:   "int16",
-		ValueTypeUint32:  "uint32",
-		ValueTypeInt32:   "int32",
-		ValueTypeFloat32: "float32",
-		ValueTypeBool:    "bool",
-		ValueTypeString:  "string",
-		ValueTypeArray:   "array",
-		ValueTypeUint64:  "uint64",
-		ValueTypeInt64:   "int64",
-		ValueTypeFloat64: "float64",
+		ValueTypeUint8:   valueTypeNameUint8,
+		ValueTypeInt8:    valueTypeNameInt8,
+		ValueTypeUint16:  valueTypeNameUint16,
+		ValueTypeInt16:   valueTypeNameInt16,
+		ValueTypeUint32:  valueTypeNameUint32,
+		ValueTypeInt32:   valueTypeNameInt32,
+		ValueTypeFloat32: valueTypeNameFloat32,
+		ValueTypeBool:    valueTypeNameBool,
+		ValueTypeString:  valueTypeNameString,
+		ValueTypeArray:   valueTypeNameArray,
+		ValueTypeUint64:  valueTypeNameUint64,
+		ValueTypeInt64:   valueTypeNameInt64,
+		ValueTypeFloat64: valueTypeNameFloat64,
 	}
 	if name, ok := names[t]; ok {
 		return name

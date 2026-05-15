@@ -5,6 +5,21 @@ import (
 	"strings"
 )
 
+// Chat role names.
+const (
+	roleSystem    = "system"
+	roleUser      = "user"
+	roleAssistant = "assistant"
+)
+
+// Chat template names.
+const (
+	templateChatML  = "chatml"
+	templateLLaMA   = "llama"
+	templateMistral = "mistral"
+	templateNameChatML = "ChatML"
+)
+
 // ChatMLTemplate implements the ChatML format used by OpenAI and DeepSeek.
 //
 // Format: <|im_start|>role\ncontent<|im_end|>.
@@ -35,7 +50,7 @@ func (t *ChatMLTemplate) Apply(messages []ChatMessage) string {
 
 // Name returns the template name.
 func (t *ChatMLTemplate) Name() string {
-	return "ChatML"
+	return templateNameChatML
 }
 
 // LLaMATemplate implements the LLaMA chat format.
@@ -49,8 +64,8 @@ type LLaMATemplate struct {
 // NewLLaMATemplate creates a new LLaMA chat template.
 func NewLLaMATemplate() *LLaMATemplate {
 	return &LLaMATemplate{
-		bosToken: "<s>",
-		eosToken: "</s>",
+		bosToken: specialTokenBOS,
+		eosToken: specialTokenEOS,
 	}
 }
 
@@ -65,7 +80,7 @@ func (t *LLaMATemplate) Apply(messages []ChatMessage) string {
 	var conversation []ChatMessage
 
 	for _, msg := range messages {
-		if msg.Role == "system" {
+		if msg.Role == roleSystem {
 			systemPrompt = msg.Content
 		} else {
 			conversation = append(conversation, msg)
@@ -77,7 +92,7 @@ func (t *LLaMATemplate) Apply(messages []ChatMessage) string {
 		msg := conversation[i]
 
 		switch msg.Role {
-		case "user":
+		case roleUser:
 			sb.WriteString("[INST] ")
 			if i == 0 && systemPrompt != "" {
 				// Include system prompt in first user message.
@@ -87,7 +102,7 @@ func (t *LLaMATemplate) Apply(messages []ChatMessage) string {
 			}
 			sb.WriteString(msg.Content)
 			sb.WriteString(" [/INST]")
-		case "assistant":
+		case roleAssistant:
 			sb.WriteString(" ")
 			sb.WriteString(msg.Content)
 			sb.WriteString(t.eosToken)
@@ -114,8 +129,8 @@ type MistralTemplate struct {
 // NewMistralTemplate creates a new Mistral chat template.
 func NewMistralTemplate() *MistralTemplate {
 	return &MistralTemplate{
-		bosToken: "<s>",
-		eosToken: "</s>",
+		bosToken: specialTokenBOS,
+		eosToken: specialTokenEOS,
 	}
 }
 
@@ -127,11 +142,11 @@ func (t *MistralTemplate) Apply(messages []ChatMessage) string {
 
 	for i, msg := range messages {
 		switch msg.Role {
-		case "user":
+		case roleUser:
 			sb.WriteString("[INST] ")
 			sb.WriteString(msg.Content)
 			sb.WriteString(" [/INST]")
-		case "assistant":
+		case roleAssistant:
 			if i > 0 {
 				sb.WriteString(" ")
 			}
@@ -140,7 +155,7 @@ func (t *MistralTemplate) Apply(messages []ChatMessage) string {
 			if i < len(messages)-1 {
 				sb.WriteString(t.bosToken)
 			}
-		case "system":
+		case roleSystem:
 			// Mistral doesn't have explicit system role, prepend to first user message.
 			// We'll handle this in a simplified way.
 			if i == 0 {
@@ -162,11 +177,11 @@ func (t *MistralTemplate) Name() string {
 // GetChatTemplate returns a chat template by name.
 func GetChatTemplate(name string) (ChatTemplate, error) {
 	switch strings.ToLower(name) {
-	case "chatml":
+	case templateChatML:
 		return NewChatMLTemplate(), nil
-	case "llama":
+	case templateLLaMA:
 		return NewLLaMATemplate(), nil
-	case "mistral":
+	case templateMistral:
 		return NewMistralTemplate(), nil
 	default:
 		return nil, fmt.Errorf("unknown chat template: %s", name)
