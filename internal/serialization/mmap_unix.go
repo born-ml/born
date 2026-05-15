@@ -10,7 +10,7 @@ import (
 // mmapFile memory-maps a file for reading (Unix implementation).
 func mmapFile(f *os.File, size int64) ([]byte, error) {
 	return syscall.Mmap(
-		int(f.Fd()), //nolint:gosec // G115: file descriptor fits in int
+		int(f.Fd()),
 		0,
 		int(size),
 		syscall.PROT_READ,
