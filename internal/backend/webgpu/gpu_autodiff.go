@@ -5,6 +5,7 @@ package webgpu
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
@@ -93,7 +94,9 @@ func (tape *GPUTape) Backward(loss *GPUTensor) map[*GPUTensor]*GPUTensor {
 		// Compute input gradients
 		inputGrads := op.backward(outputGrad)
 
-		// Accumulate gradients for each input
+		// Accumulate gradients for each input. When a gradient already exists
+		// (fan-out in the computation graph), sum the partial gradients and
+		// release the old intermediate buffer immediately.
 		for j, input := range op.inputs {
 			if j >= len(inputGrads) || inputGrads[j] == nil {
 				continue
@@ -101,7 +104,9 @@ func (tape *GPUTape) Backward(loss *GPUTensor) map[*GPUTensor]*GPUTensor {
 
 			if existing, ok := grads[input]; ok {
 				// Accumulate: grad += inputGrad (on GPU!)
-				grads[input] = tape.backend.AddGPU(existing, inputGrads[j])
+				newGrad := tape.backend.AddGPU(existing, inputGrads[j])
+				existing.Release() // Release old intermediate gradient buffer.
+				grads[input] = newGrad
 			} else {
 				grads[input] = inputGrads[j]
 			}
@@ -154,9 +159,8 @@ func (b *Backend) SubBackwardGPU(_, _, grad *GPUTensor) (*GPUTensor, *GPUTensor)
 	// grad_a = grad
 	gradA := grad
 
-	// grad_b = -grad (negate on GPU)
+	// grad_b = -grad (negate on GPU). negOne is cache-owned — do not release.
 	negOne := b.scalarGPU(-1.0, grad.shape, grad.dtype)
-	defer negOne.Release()
 	gradB := b.MulGPU(grad, negOne)
 
 	return gradA, gradB
@@ -180,9 +184,8 @@ func (b *Backend) DivBackwardGPU(a, c, grad *GPUTensor) (*GPUTensor, *GPUTensor)
 	// grad_a = grad / b
 	gradA := b.DivGPU(grad, c)
 
-	// grad_b = -grad * a / (b * b)
+	// grad_b = -grad * a / (b * b). negGrad is cache-owned — do not release.
 	negGrad := b.scalarGPU(-1.0, grad.shape, grad.dtype)
-	defer negGrad.Release()
 	temp1 := b.MulGPU(grad, negGrad)
 	defer temp1.Release()
 	temp2 := b.MulGPU(temp1, a)
@@ -265,9 +268,8 @@ func (b *Backend) ReLUBackwardGPU(input, grad *GPUTensor) *GPUTensor {
 // SigmoidBackwardGPU computes gradients for sigmoid activation.
 // d(sigmoid(x))/dx = sigmoid(x) * (1 - sigmoid(x)).
 func (b *Backend) SigmoidBackwardGPU(output, grad *GPUTensor) *GPUTensor {
-	// grad_input = grad * output * (1 - output)
+	// grad_input = grad * output * (1 - output). one is cache-owned — do not release.
 	one := b.scalarGPU(1.0, output.shape, output.dtype)
-	defer one.Release()
 	oneMinusOutput := b.SubGPU(one, output)
 	defer oneMinusOutput.Release()
 	temp := b.MulGPU(output, oneMinusOutput)
@@ -278,9 +280,8 @@ func (b *Backend) SigmoidBackwardGPU(output, grad *GPUTensor) *GPUTensor {
 // TanhBackwardGPU computes gradients for tanh activation.
 // d(tanh(x))/dx = 1 - tanh(x)^2.
 func (b *Backend) TanhBackwardGPU(output, grad *GPUTensor) *GPUTensor {
-	// grad_input = grad * (1 - output^2)
+	// grad_input = grad * (1 - output^2). one is cache-owned — do not release.
 	one := b.scalarGPU(1.0, output.shape, output.dtype)
-	defer one.Release()
 	outputSquared := b.MulGPU(output, output)
 	defer outputSquared.Release()
 	oneMinusSquared := b.SubGPU(one, outputSquared)
@@ -442,16 +443,43 @@ func (b *Backend) SumDimGPU(t *GPUTensor, dim int, keepDim bool) *GPUTensor {
 	}
 }
 
-// Helper: create scalar tensor on GPU filled with a constant value.
+// scalarCacheKey encodes (value, numElements, dtype) into a single uint64 for
+// use as a map key. Top 32 bits hold the float32 bit pattern; bottom 32 bits
+// hold numElements XOR-masked with the dtype in the upper byte.
+//
+//nolint:gosec // G115: numElements and dtype are small positive integers
+func scalarCacheKey(value float32, numElements int, dtype tensor.DataType) uint64 {
+	valBits := uint64(math.Float32bits(value)) << 32
+	elemBits := uint64(uint32(numElements) ^ (uint32(dtype) << 24))
+	return valBits | elemBits
+}
+
+// scalarGPU returns a GPU tensor filled with the given constant value and
+// matching the shape and dtype of a reference tensor. Results are cached by
+// (value, numElements, dtype) so that repeated backward ops (e.g. -1.0 in
+// SubBackward, 1.0 in SigmoidBackward) upload the constant only once per
+// unique shape+dtype combination.
+//
+// IMPORTANT: callers must NOT call Release on the returned tensor — it is
+// owned by the cache and will be released in Backend.Release(). Use defer
+// only on tensors returned by ops that create new buffers (MulGPU etc.).
 func (b *Backend) scalarGPU(value float32, shape tensor.Shape, dtype tensor.DataType) *GPUTensor {
-	// Create CPU tensor filled with value
+	numElements := shape.NumElements()
+	key := scalarCacheKey(value, numElements, dtype)
+
+	b.scalarCacheMu.RLock()
+	if cached, ok := b.scalarCache[key]; ok {
+		b.scalarCacheMu.RUnlock()
+		return cached
+	}
+	b.scalarCacheMu.RUnlock()
+
+	// Cache miss — allocate and upload.
 	raw, err := tensor.NewRaw(shape, dtype, tensor.CPU)
 	if err != nil {
 		panic(fmt.Sprintf("webgpu: scalarGPU: failed to create raw tensor: %v", err))
 	}
 
-	// Fill with value based on dtype
-	numElements := shape.NumElements()
 	switch dtype {
 	case tensor.Float32:
 		data := raw.AsFloat32()
@@ -472,6 +500,17 @@ func (b *Backend) scalarGPU(value float32, shape tensor.Shape, dtype tensor.Data
 		panic(fmt.Sprintf("webgpu: scalarGPU: unsupported dtype: %v", dtype))
 	}
 
-	// Upload to GPU
-	return b.UploadTensor(raw)
+	t := b.UploadTensor(raw)
+
+	b.scalarCacheMu.Lock()
+	// Check again under write lock in case another goroutine raced us.
+	if existing, ok := b.scalarCache[key]; ok {
+		b.scalarCacheMu.Unlock()
+		t.Release() // Discard the duplicate we just uploaded.
+		return existing
+	}
+	b.scalarCache[key] = t
+	b.scalarCacheMu.Unlock()
+
+	return t
 }

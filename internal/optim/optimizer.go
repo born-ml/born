@@ -100,6 +100,29 @@ type Config struct {
 	LR float32 // Learning rate
 }
 
+// CacheInvalidator is an optional interface that backends implement when they
+// maintain an input-buffer cache keyed by *RawTensor identity.
+//
+// After an optimizer step the weight RawTensors stored in Parameters are
+// replaced by new ones (via SetTensor). The old *RawTensor pointers no longer
+// represent the current weights; any backend cache entry under those keys is
+// stale. Calling ClearInputBufferCache() forces the next forward pass to
+// re-upload the freshly computed weights from the new RawTensors.
+//
+// Optimizers call this via a type-assertion at the end of Step() — backends
+// that do not maintain such a cache simply don't implement the interface.
+type CacheInvalidator interface {
+	ClearInputBufferCache()
+}
+
+// invalidateCacheIfNeeded type-asserts backend to CacheInvalidator and calls
+// ClearInputBufferCache() if the backend supports it.
+func invalidateCacheIfNeeded(backend any) {
+	if ci, ok := backend.(CacheInvalidator); ok {
+		ci.ClearInputBufferCache()
+	}
+}
+
 // getGradient safely retrieves gradient for a parameter.
 //
 // Returns nil if no gradient is found (parameter wasn't part of computation graph).

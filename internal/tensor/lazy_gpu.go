@@ -4,7 +4,6 @@
 package tensor
 
 import (
-	"runtime"
 	"sync"
 	"unsafe"
 )
@@ -13,41 +12,56 @@ import (
 // The backend must implement ReadGPUBuffer to transfer data from GPU to CPU.
 type LazyBackend interface {
 	// ReadGPUBuffer reads data from a GPU buffer to CPU memory.
-	// bufferPtr is unsafe.Pointer to *wgpu.Buffer (or similar GPU buffer type).
-	// size is the number of bytes to read.
-	// Returns the CPU data or an error.
 	ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, error)
 
 	// ReleaseGPUBuffer releases the GPU buffer when no longer needed.
 	ReleaseGPUBuffer(bufferPtr unsafe.Pointer)
+
+	// DeferReleaseGPUBuffer queues a GPU buffer for release after the next
+	// flushCommands/Submit cycle. Used when a buffer may still be referenced
+	// by pending command buffers in the shared encoder batch.
+	DeferReleaseGPUBuffer(bufferPtr unsafe.Pointer)
+
+	// RegisterLiveGPU registers a LazyGPUData with the backend's live tensor
+	// set. UnregisterLiveGPU removes it. ReclaimMemory releases all registered
+	// tensors that are not marked persistent. This enables deterministic GPU
+	// memory reclamation for ALL intermediate tensors — including those created
+	// outside the autodiff tape (NoGrad blocks, carry state, masks).
+	RegisterLiveGPU(l *LazyGPUData)
+	UnregisterLiveGPU(l *LazyGPUData)
 }
 
 // LazyGPUData holds a reference to GPU-resident data for lazy evaluation.
 // When Data() is called on a RawTensor with LazyGPUData, the data is
 // transferred from GPU to CPU only at that point (lazy realization).
 type LazyGPUData struct {
-	bufferPtr unsafe.Pointer // Pointer to GPU buffer (*wgpu.Buffer)
-	size      uint64         // Buffer size in bytes
-	backend   LazyBackend    // Backend for reading/releasing buffer
-	realized  bool           // Whether data has been transferred to CPU
-	mu        sync.Mutex     // Protects realized flag and transfer
+	bufferPtr  unsafe.Pointer // Pointer to GPU buffer (*wgpu.Buffer) for unsafe casting
+	bufferRef  any            // Strong reference to *wgpu.Buffer — prevents GC collection
+	size       uint64         // Buffer size in bytes
+	backend    LazyBackend    // Backend for reading/releasing buffer
+	realized   bool           // Whether data has been transferred to CPU
+	persistent bool           // If true, ReclaimMemory skips this tensor
+	refCount   int32          // Number of RawTensors sharing this LazyGPUData (Clone/Detach)
+	mu         sync.Mutex     // Protects realized flag and transfer
 }
 
 // NewLazyGPUData creates a new LazyGPUData referencing a GPU buffer.
-// The GPU buffer will be automatically released when garbage collected.
-func NewLazyGPUData(bufferPtr unsafe.Pointer, size uint64, backend LazyBackend) *LazyGPUData {
+// bufferPtr is the unsafe.Pointer for casting in Read/Release operations.
+// bufferRef is a strong reference (typically *wgpu.Buffer) that prevents
+// the Go GC from collecting the buffer object while LazyGPUData is alive.
+// Without bufferRef, the GC would collect *wgpu.Buffer immediately after
+// createLazyResult returns (unsafe.Pointer does not prevent GC collection),
+// triggering wgpu's runtime.AddCleanup prematurely.
+func NewLazyGPUData(bufferPtr unsafe.Pointer, bufferRef any, size uint64, backend LazyBackend) *LazyGPUData {
 	l := &LazyGPUData{
 		bufferPtr: bufferPtr,
+		bufferRef: bufferRef,
 		size:      size,
 		backend:   backend,
+		refCount:  1,
 		realized:  false,
 	}
-
-	// Release GPU buffer when garbage collected to prevent memory leaks
-	runtime.SetFinalizer(l, func(lg *LazyGPUData) {
-		lg.Release()
-	})
-
+	backend.RegisterLiveGPU(l)
 	return l
 }
 
@@ -78,11 +92,9 @@ func (l *LazyGPUData) Realize() ([]byte, error) {
 		return nil, nil
 	}
 
-	// Read data from GPU. KeepAlive prevents GC from collecting this
-	// LazyGPUData (and running its finalizer) while ReadGPUBuffer
-	// is using bufferPtr.
+	// Read data from GPU. The mutex held above keeps this LazyGPUData
+	// alive on the call stack for the duration of ReadGPUBuffer.
 	data, err := l.backend.ReadGPUBuffer(l.bufferPtr, l.size)
-	runtime.KeepAlive(l)
 	if err != nil {
 		return nil, err
 	}
@@ -91,23 +103,89 @@ func (l *LazyGPUData) Realize() ([]byte, error) {
 
 	// Release GPU buffer after copying to CPU - we don't need it anymore
 	if l.bufferPtr != nil && l.backend != nil {
+		l.backend.UnregisterLiveGPU(l)
 		l.backend.ReleaseGPUBuffer(l.bufferPtr)
 		l.bufferPtr = nil
+		l.bufferRef = nil
 	}
 
 	return data, nil
 }
 
-// Release releases the GPU buffer.
-// Called when the tensor is no longer needed.
+// Release decrements refcount and releases the GPU buffer when no references remain.
 func (l *LazyGPUData) Release() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	l.refCount--
+	if l.refCount > 0 {
+		return
+	}
+
 	if l.bufferPtr != nil && l.backend != nil {
+		l.backend.UnregisterLiveGPU(l)
 		l.backend.ReleaseGPUBuffer(l.bufferPtr)
 		l.bufferPtr = nil
+		l.bufferRef = nil
 	}
+}
+
+// ScheduleRelease queues the GPU buffer for deferred release after the next
+// flushCommands/Submit cycle.
+//
+// Deferred release is required because Born creates bind groups referencing the
+// buffer BEFORE the compute pass is encoded and submitted. wgpu Phase 2
+// (SetBindGroup Clone) only protects buffers AFTER SetBindGroup is called.
+// If Release fires before Submit, the command buffer references a destroyed buffer.
+//
+// With wgpu v0.28.9+ onZero callback: once the deferred Release fires after Submit,
+// Phase 2 tracked refs keep the buffer alive if GPU is still using it.
+func (l *LazyGPUData) ScheduleRelease() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.refCount--
+	if l.refCount > 0 {
+		return // other RawTensors still reference this GPU data
+	}
+
+	if l.bufferPtr != nil && l.backend != nil {
+		l.backend.UnregisterLiveGPU(l)
+		l.backend.DeferReleaseGPUBuffer(l.bufferPtr)
+		l.bufferPtr = nil
+		l.bufferRef = nil
+	}
+}
+
+// AddRef increments the reference count. Called when RawTensor.Clone() shares this LazyGPUData.
+func (l *LazyGPUData) AddRef() {
+	l.mu.Lock()
+	l.refCount++
+	l.mu.Unlock()
+}
+
+// RefCount returns the number of RawTensors sharing this GPU data.
+func (l *LazyGPUData) RefCount() int32 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.refCount
+}
+
+// SetPersistent marks this GPU data as persistent. Persistent tensors
+// survive ReclaimMemory — they are NOT released when the backend drains
+// the live tensor registry. Use for optimizer moments, model parameters,
+// and any tensor that must persist across training steps.
+func (l *LazyGPUData) SetPersistent(persistent bool) {
+	l.mu.Lock()
+	l.persistent = persistent
+	l.mu.Unlock()
+}
+
+// IsPersistent returns whether this GPU data is marked as persistent.
+func (l *LazyGPUData) IsPersistent() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.persistent
 }
 
 // BufferPtr returns the underlying GPU buffer pointer.
@@ -128,12 +206,12 @@ func NewLazyRaw(shape Shape, dtype DataType, device Device, gpuData *LazyGPUData
 		return nil, err
 	}
 
-	numElements := shape.NumElements()
-	byteSize := numElements * dtype.Size()
-
-	// Create buffer but don't allocate CPU memory yet - it will be filled lazily
+	// NO CPU buffer allocation — data lives on GPU only.
+	// CPU buffer is allocated lazily on first Data() call (GPU→CPU readback).
+	// This prevents 18K × 100KB = 1.8GB CPU RAM waste per training step
+	// for intermediate tensors that never leave the GPU.
 	return &RawTensor{
-		buffer:  newTensorBuffer(byteSize),
+		buffer:  nil,
 		shape:   shape.Clone(),
 		stride:  shape.ComputeStrides(),
 		dtype:   dtype,

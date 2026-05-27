@@ -2013,3 +2013,147 @@ fn main(
     }
 }
 `
+
+// sumDimLazyShader reduces input along one arbitrary dimension.
+//
+// Each invocation handles one output element, indexed as (outer, inner).
+// outer = product of dims before the reduced dim; inner = product of dims after.
+// The reduced dimension has size dim_size.
+//
+// Params layout (16 bytes, std140):
+//
+//	bytes 0-3:  num_output   = outer_size * inner_size
+//	bytes 4-7:  dim_size     = shape[dim]
+//	bytes 8-11: inner_size   = product of shape[dim+1..]
+//	bytes 12-15: _pad
+const sumDimLazyShader = `
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<f32>;
+
+struct Params {
+    num_output: u32,
+    dim_size:   u32,
+    inner_size: u32,
+    _pad:       u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    if (idx >= params.num_output) { return; }
+
+    let outer = idx / params.inner_size;
+    let inner = idx % params.inner_size;
+
+    var acc: f32 = 0.0;
+    for (var d: u32 = 0u; d < params.dim_size; d = d + 1u) {
+        let in_idx = outer * params.dim_size * params.inner_size
+                   + d * params.inner_size
+                   + inner;
+        acc = acc + input[in_idx];
+    }
+    output[idx] = acc;
+}
+`
+
+// catShader copies one input tensor segment into the output buffer.
+//
+// Called once per input tensor in Cat(). Each invocation handles one element
+// of the current input.
+//
+// Params layout (32 bytes, std140):
+//
+//	bytes  0-3:  num_elements     = total elements in this input tensor
+//	bytes  4-7:  out_dim_size     = output shape[dim] (total concat length)
+//	bytes  8-11: dim_offset       = cumulative offset along dim for this input
+//	bytes 12-15: dim_stride_out   = stride along dim in output (= inner_size_out)
+//	bytes 16-19: inner_size_in    = product of shape[dim+1..] for this input
+//	bytes 20-23: dim_size_in      = shape[dim] for this input
+//	bytes 24-27: outer_stride_in  = dim_size_in * inner_size_in (stride for outer idx in input)
+//	bytes 28-31: _pad
+const catShader = `
+@group(0) @binding(0) var<storage, read>       input:  array<f32>;
+@group(0) @binding(1) var<storage, read_write>  output: array<f32>;
+
+struct Params {
+    num_elements:    u32,
+    out_dim_size:    u32,
+    dim_offset:      u32,
+    dim_stride_out:  u32,
+    inner_size_in:   u32,
+    dim_size_in:     u32,
+    outer_stride_in: u32,
+    _pad:            u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.num_elements) { return; }
+
+    // Decompose linear index into (outer, d, inner) relative to this input.
+    let outer = i / params.outer_stride_in;
+    let rem   = i % params.outer_stride_in;
+    let d     = rem / params.inner_size_in;
+    let inner = rem % params.inner_size_in;
+
+    // Map to output linear index. Out outer_stride = out_dim_size * dim_stride_out.
+    let out_idx = outer * (params.out_dim_size * params.dim_stride_out)
+                + (params.dim_offset + d) * params.dim_stride_out
+                + inner;
+    output[out_idx] = input[i];
+}
+`
+
+// chunkShader copies one slice from the input tensor into an output chunk buffer.
+//
+// Called once per output chunk in Chunk(). Each invocation handles one element
+// of the output chunk.
+//
+// Params layout (32 bytes, std140):
+//
+//	bytes  0-3:  num_elements   = total elements in this output chunk
+//	bytes  4-7:  in_dim_size    = input shape[dim]
+//	bytes  8-11: chunk_offset   = chunk_idx * chunk_size (offset along dim in input)
+//	bytes 12-15: dim_stride_in  = inner_size (stride along dim in input)
+//	bytes 16-19: inner_size     = product of shape[dim+1..] (same for input and output)
+//	bytes 20-23: chunk_size     = output shape[dim] (size of one chunk along dim)
+//	bytes 24-27: outer_stride_out = chunk_size * inner_size
+//	bytes 28-31: _pad
+const chunkShader = `
+@group(0) @binding(0) var<storage, read>       input:  array<f32>;
+@group(0) @binding(1) var<storage, read_write>  output: array<f32>;
+
+struct Params {
+    num_elements:     u32,
+    in_dim_size:      u32,
+    chunk_offset:     u32,
+    dim_stride_in:    u32,
+    inner_size:       u32,
+    chunk_size:       u32,
+    outer_stride_out: u32,
+    _pad:             u32,
+}
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= params.num_elements) { return; }
+
+    // Decompose output linear index into (outer, d_local, inner).
+    let outer   = i / params.outer_stride_out;
+    let rem     = i % params.outer_stride_out;
+    let d_local = rem / params.inner_size;
+    let inner   = rem % params.inner_size;
+
+    // Map to input: d in input = chunk_offset + d_local.
+    // in_outer_stride = in_dim_size * inner_size.
+    let in_idx = outer * (params.in_dim_size * params.inner_size)
+               + (params.chunk_offset + d_local) * params.inner_size
+               + inner;
+    output[i] = input[in_idx];
+}
+`

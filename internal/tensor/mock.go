@@ -1181,6 +1181,35 @@ func (m *MockBackend) Log(x *RawTensor) *RawTensor {
 
 // Activation functions.
 
+// ReLU applies ReLU activation: max(0, x).
+func (m *MockBackend) ReLU(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, func(v float64) float64 {
+		if v > 0 {
+			return v
+		}
+		return 0
+	})
+}
+
+// Sigmoid applies sigmoid activation: 1 / (1 + exp(-x)).
+func (m *MockBackend) Sigmoid(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, func(v float64) float64 {
+		return 1.0 / (1.0 + math.Exp(-v))
+	})
+}
+
+// Tanh applies hyperbolic tangent activation.
+func (m *MockBackend) Tanh(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, math.Tanh)
+}
+
+// SiLU applies SiLU (Swish) activation: x * sigmoid(x).
+func (m *MockBackend) SiLU(x *RawTensor) *RawTensor {
+	return m.unaryOp(x, func(v float64) float64 {
+		return v / (1.0 + math.Exp(-v))
+	})
+}
+
 // Softmax applies softmax activation along the specified dimension (mock stub).
 func (m *MockBackend) Softmax(_ *RawTensor, _ int) *RawTensor {
 	panic("mock: Softmax not implemented (use CPU backend)")

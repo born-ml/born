@@ -1,7 +1,7 @@
 # Born ML Framework - Philosophy & Design Principles
 
 **Status**: Living Document
-**Last Updated**: 2026-05-16
+**Last Updated**: 2026-05-27
 
 ---
 
@@ -223,15 +223,11 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 ### ❌ Not Ideal for Born (Yet)
 
-**1. Large-Scale Training**
-- Distributed training not implemented (Phase 4)
-- No multi-GPU support yet (Phase 2-3)
+**1. Large-Scale Distributed Training**
+- Multi-GPU data parallelism planned (v0.10.0)
+- Multi-node training planned (v0.12.0)
 
-**2. Complex Pre-Trained Models**
-- Model zoo not ready (Phase 4)
-- ONNX import planned (Phase 3)
-
-**3. Pure Algorithm Research**
+**2. Pure Algorithm Research**
 - If you're Python-first ecosystem
 - If you need latest transformers/diffusion models
 - If ecosystem size > all else
@@ -268,17 +264,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 - `nn.SetSeed()` for reproducible weight initialization
 - Tokenizers (TikToken, BPE), streaming text generation
 
-### Phase 4: Cross-Platform & ONNX - Planned
-- Linux/macOS WebGPU support
-- ONNX import (PyTorch/TF models)
-- Model quantization (INT8, FP16)
-- Pre-trained model loading
+### Phase 4: Performance ✅ COMPLETE
+- CPU parallel MatMul, cache-tiled blocking, AVX2 SIMD (Go 1.26 `goexperiment.simd`)
+- GPU shared encoder (ADR-012): utilization 55→80%
+- GPU memory pool (ADR-016/017): TieredPool from device.Limits(), explicit Release lifecycle
+- GPU buffer leak eliminated: 0 GC warnings (was 43K/step)
+- Tensor.Persist()/Unpersist() for cross-step GPU tensor lifecycle
+- GPU training example: MLP 77.8 steps/sec
 
-### Long-Term: Production Features
-- Training utilities (BatchNorm, Dropout)
-- Distributed training
-- Advanced optimizations
-- Model zoo
+### Phase 5: Scale — In Progress
+- Multi-GPU data parallelism (v0.10.0)
+- Distributed multi-node training (v0.12.0)
+- Resource budget enforcement (GPU/CPU memory limits)
 
 **See [ROADMAP.md](../ROADMAP.md) for detailed timeline and milestones.**
 

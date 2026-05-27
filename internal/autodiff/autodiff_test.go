@@ -738,6 +738,220 @@ func TestNoGrad_Nested(t *testing.T) {
 	}
 }
 
+// TestSigmoid_Forward tests Sigmoid forward pass: σ(x) = 1/(1+exp(-x)).
+func TestSigmoid_Forward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	input, _ := tensor.FromSlice([]float32{-2, -1, 0, 1, 2}, tensor.Shape{5}, backend)
+
+	result := backend.Sigmoid(input.Raw())
+	actual := result.AsFloat32()
+
+	eps := float32(1e-5)
+	inputs := []float64{-2, -1, 0, 1, 2}
+	for i, x := range inputs {
+		expected := float32(1.0 / (1.0 + math.Exp(-x)))
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("Sigmoid[%d] = %f, want %f", i, actual[i], expected)
+		}
+	}
+}
+
+// TestSigmoid_Backward tests Sigmoid backward pass: ∂σ/∂x = σ(x)·(1-σ(x)).
+func TestSigmoid_Backward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{-2, -1, 0, 1, 2}, tensor.Shape{5}, backend)
+
+	resultRaw := backend.Sigmoid(x.Raw())
+	result := tensor.New[float32](resultRaw, backend)
+
+	if tape.NumOps() == 0 {
+		t.Fatal("tape should have recorded Sigmoid op")
+	}
+
+	gradients := autodiff.Backward(result, backend)
+
+	gradX := gradients[x.Raw()]
+	if gradX == nil {
+		t.Fatal("expected gradient for x")
+	}
+
+	eps := float32(1e-4)
+	actual := gradX.AsFloat32()
+	sigmoidVals := resultRaw.AsFloat32()
+	for i, sv := range sigmoidVals {
+		expected := sv * (1 - sv)
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("grad_x[%d] = %f, want %f (σ·(1-σ) = %f·%f)", i, actual[i], expected, sv, 1-sv)
+		}
+	}
+}
+
+// TestTanh_Forward tests Tanh forward pass: tanh(x).
+func TestTanh_Forward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	input, _ := tensor.FromSlice([]float32{-2, -1, 0, 1, 2}, tensor.Shape{5}, backend)
+
+	result := backend.Tanh(input.Raw())
+	actual := result.AsFloat32()
+
+	eps := float32(1e-5)
+	inputs := []float64{-2, -1, 0, 1, 2}
+	for i, x := range inputs {
+		expected := float32(math.Tanh(x))
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("Tanh[%d] = %f, want %f", i, actual[i], expected)
+		}
+	}
+}
+
+// TestTanh_Backward tests Tanh backward pass: ∂tanh/∂x = 1 - tanh²(x).
+func TestTanh_Backward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{-2, -1, 0, 1, 2}, tensor.Shape{5}, backend)
+
+	resultRaw := backend.Tanh(x.Raw())
+	result := tensor.New[float32](resultRaw, backend)
+
+	if tape.NumOps() == 0 {
+		t.Fatal("tape should have recorded Tanh op")
+	}
+
+	gradients := autodiff.Backward(result, backend)
+
+	gradX := gradients[x.Raw()]
+	if gradX == nil {
+		t.Fatal("expected gradient for x")
+	}
+
+	eps := float32(1e-4)
+	actual := gradX.AsFloat32()
+	tanhVals := resultRaw.AsFloat32()
+	for i, tv := range tanhVals {
+		expected := 1 - tv*tv
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("grad_x[%d] = %f, want %f (1 - tanh²(x) = 1 - %f²)", i, actual[i], expected, tv)
+		}
+	}
+}
+
+// TestSiLU_Forward tests SiLU forward pass: SiLU(x) = x·σ(x).
+func TestSiLU_Forward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	input, _ := tensor.FromSlice([]float32{-2, -1, 0, 1, 2}, tensor.Shape{5}, backend)
+
+	result := backend.SiLU(input.Raw())
+	actual := result.AsFloat32()
+
+	eps := float32(1e-5)
+	inputs := []float64{-2, -1, 0, 1, 2}
+	for i, x := range inputs {
+		sig := 1.0 / (1.0 + math.Exp(-x))
+		expected := float32(x * sig)
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("SiLU[%d] = %f, want %f", i, actual[i], expected)
+		}
+	}
+}
+
+// TestSiLU_Backward tests SiLU backward: ∂SiLU/∂x = σ(x)·(1 + x·(1-σ(x))).
+func TestSiLU_Backward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{-2, -1, 0, 1, 2}, tensor.Shape{5}, backend)
+
+	resultRaw := backend.SiLU(x.Raw())
+	result := tensor.New[float32](resultRaw, backend)
+
+	if tape.NumOps() == 0 {
+		t.Fatal("tape should have recorded SiLU op")
+	}
+
+	gradients := autodiff.Backward(result, backend)
+
+	gradX := gradients[x.Raw()]
+	if gradX == nil {
+		t.Fatal("expected gradient for x")
+	}
+
+	eps := float32(1e-4)
+	actual := gradX.AsFloat32()
+	xVals := []float64{-2, -1, 0, 1, 2}
+	for i, xv := range xVals {
+		sig := 1.0 / (1.0 + math.Exp(-xv))
+		expected := float32(sig * (1 + xv*(1-sig)))
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("grad_x[%d] = %f, want %f", i, actual[i], expected)
+		}
+	}
+}
+
+// TestLog_Forward tests Log forward pass: log(x).
+func TestLog_Forward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+
+	input, _ := tensor.FromSlice([]float32{0.5, 1.0, 2.0, float32(math.E)}, tensor.Shape{4}, backend)
+
+	result := backend.Log(input.Raw())
+	actual := result.AsFloat32()
+
+	eps := float32(1e-5)
+	inputs := []float64{0.5, 1.0, 2.0, math.E}
+	for i, x := range inputs {
+		expected := float32(math.Log(x))
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("Log[%d] = %f, want %f", i, actual[i], expected)
+		}
+	}
+}
+
+// TestLog_Backward tests Log backward pass: ∂log/∂x = 1/x.
+func TestLog_Backward(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{0.5, 1.0, 2.0, float32(math.E)}, tensor.Shape{4}, backend)
+
+	resultRaw := backend.Log(x.Raw())
+	result := tensor.New[float32](resultRaw, backend)
+
+	if tape.NumOps() == 0 {
+		t.Fatal("tape should have recorded Log op")
+	}
+
+	gradients := autodiff.Backward(result, backend)
+
+	gradX := gradients[x.Raw()]
+	if gradX == nil {
+		t.Fatal("expected gradient for x")
+	}
+
+	eps := float32(1e-4)
+	actual := gradX.AsFloat32()
+	xVals := []float32{0.5, 1.0, 2.0, float32(math.E)}
+	for i, xv := range xVals {
+		expected := 1.0 / xv
+		if math.Abs(float64(actual[i]-expected)) > float64(eps) {
+			t.Errorf("grad_x[%d] = %f, want %f (1/x = 1/%f)", i, actual[i], expected, xv)
+		}
+	}
+}
+
 // shapesEqual compares two shapes for equality.
 func shapesEqual(a, b tensor.Shape) bool {
 	if len(a) != len(b) {

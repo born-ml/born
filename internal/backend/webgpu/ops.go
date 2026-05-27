@@ -159,8 +159,11 @@ func (b *Backend) MaxPool2D(input *tensor.RawTensor, kernelSize, stride int) *te
 	return result
 }
 
-// Reshape returns a tensor with new shape.
-// This is typically a metadata-only operation (zero-copy).
+// Reshape returns a tensor with new shape backed by the same data.
+//
+// In LazyMode, when the source tensor has unrealized GPU data, performs a
+// GPU-to-GPU buffer copy (zero CPU allocation) to create the reshaped result.
+// Falls back to CPU copy otherwise.
 func (b *Backend) Reshape(t *tensor.RawTensor, newShape tensor.Shape) *tensor.RawTensor {
 	if err := newShape.Validate(); err != nil {
 		panic("webgpu: reshape: invalid shape: " + err.Error())
@@ -170,13 +173,21 @@ func (b *Backend) Reshape(t *tensor.RawTensor, newShape tensor.Shape) *tensor.Ra
 		panic("webgpu: reshape: incompatible number of elements")
 	}
 
-	// Reshape is a view operation - create new tensor with same data
+	// LazyMode GPU path: source lives on GPU — perform GPU-to-GPU copy (zero CPU).
+	if b.LazyMode {
+		if gpuData := t.GPUData(); gpuData != nil && !gpuData.IsRealized() {
+			if result, err := b.runReshapeLazy(t, newShape); err == nil {
+				return result
+			}
+			// On error (e.g., unsupported dtype), fall through to CPU path.
+		}
+	}
+
+	// CPU path: allocate new tensor and copy data from host buffer.
 	result, err := tensor.NewRaw(newShape, t.DType(), tensor.WebGPU)
 	if err != nil {
 		panic("webgpu: reshape: " + err.Error())
 	}
-
-	// Copy data (for now - TODO: make this zero-copy when GPU buffers are implemented)
 	copy(result.Data(), t.Data())
 	return result
 }
@@ -252,7 +263,13 @@ func isValid2DAxes(axes []int) bool {
 
 // ReLU applies ReLU activation: max(0, x).
 func (b *Backend) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "relu", reluShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "relu", reluShader)
+	} else {
+		result, err = b.runUnaryOp(x, "relu", reluShader)
+	}
 	if err != nil {
 		panic("webgpu: ReLU: " + err.Error())
 	}
@@ -261,7 +278,13 @@ func (b *Backend) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Sigmoid applies sigmoid activation: 1 / (1 + exp(-x)).
 func (b *Backend) Sigmoid(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "sigmoid", sigmoidShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "sigmoid", sigmoidShader)
+	} else {
+		result, err = b.runUnaryOp(x, "sigmoid", sigmoidShader)
+	}
 	if err != nil {
 		panic("webgpu: Sigmoid: " + err.Error())
 	}
@@ -270,7 +293,13 @@ func (b *Backend) Sigmoid(x *tensor.RawTensor) *tensor.RawTensor {
 
 // Tanh applies tanh activation.
 func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "tanh", tanhShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "tanh", tanhShader)
+	} else {
+		result, err = b.runUnaryOp(x, "tanh", tanhShader)
+	}
 	if err != nil {
 		panic("webgpu: Tanh: " + err.Error())
 	}
@@ -279,7 +308,13 @@ func (b *Backend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
 
 // SiLU applies SiLU (Swish) activation: x * sigmoid(x).
 func (b *Backend) SiLU(x *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runUnaryOp(x, "silu", siluShader)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runUnaryOpLazy(x, "silu", siluShader)
+	} else {
+		result, err = b.runUnaryOp(x, "silu", siluShader)
+	}
 	if err != nil {
 		panic("webgpu: SiLU: " + err.Error())
 	}
@@ -437,12 +472,15 @@ func (b *Backend) Erf(x *tensor.RawTensor) *tensor.RawTensor {
 }
 
 // SumDim sums along a dimension.
-// Implemented on CPU as reduction operations are complex on GPU.
+//
+// In LazyMode, dispatches a GPU compute shader (sumDimGeneralShader) that keeps
+// data on GPU — zero CPU allocation for the result. Falls back to CPU reduction
+// when LazyMode is disabled or the source tensor is not GPU-resident.
 func (b *Backend) SumDim(x *tensor.RawTensor, dim int, keepDim bool) *tensor.RawTensor {
 	shape := x.Shape()
 	ndim := len(shape)
 
-	// Normalize negative dimension
+	// Normalize negative dimension.
 	if dim < 0 {
 		dim = ndim + dim
 	}
@@ -451,7 +489,16 @@ func (b *Backend) SumDim(x *tensor.RawTensor, dim int, keepDim bool) *tensor.Raw
 		panic("webgpu: SumDim: dimension out of range")
 	}
 
-	// Calculate output shape
+	// LazyMode GPU path.
+	if b.LazyMode && x.DType() == tensor.Float32 {
+		result, err := b.runSumDimLazy(x, dim, keepDim)
+		if err != nil {
+			panic("webgpu: SumDim: " + err.Error())
+		}
+		return result
+	}
+
+	// CPU fallback path.
 	var outShape tensor.Shape
 	if keepDim {
 		outShape = shape.Clone()
@@ -465,13 +512,11 @@ func (b *Backend) SumDim(x *tensor.RawTensor, dim int, keepDim bool) *tensor.Raw
 		}
 	}
 
-	// Create result tensor
 	result, err := tensor.NewRaw(outShape, x.DType(), tensor.WebGPU)
 	if err != nil {
 		panic("webgpu: SumDim: " + err.Error())
 	}
 
-	// Perform reduction on CPU
 	if x.DType() == tensor.Float32 {
 		sumDimFloat32(x.AsFloat32(), result.AsFloat32(), shape, dim)
 	} else {
@@ -510,9 +555,11 @@ func sumDimFloat32(data, result []float32, shape tensor.Shape, dim int) {
 }
 
 // MeanDim computes mean along a dimension.
+//
+// In LazyMode, composes the lazy SumDim GPU path with MulScalar(1/dimSize),
+// keeping all intermediate results on GPU — zero CPU allocation. Falls back to
+// CPU arithmetic when LazyMode is disabled.
 func (b *Backend) MeanDim(x *tensor.RawTensor, dim int, keepDim bool) *tensor.RawTensor {
-	sumResult := b.SumDim(x, dim, keepDim)
-
 	shape := x.Shape()
 	ndim := len(shape)
 	if dim < 0 {
@@ -520,15 +567,28 @@ func (b *Backend) MeanDim(x *tensor.RawTensor, dim int, keepDim bool) *tensor.Ra
 	}
 
 	divisor := float32(shape[dim])
+
+	// LazyMode GPU path: SumDim is already lazy; MulScalar is lazy too.
+	// No CPU data touches either intermediate tensor.
+	if b.LazyMode && x.DType() == tensor.Float32 {
+		sumResult := b.SumDim(x, dim, keepDim)     // returns lazy GPU tensor
+		return b.MulScalar(sumResult, 1.0/divisor) // returns lazy GPU tensor
+	}
+
+	// CPU fallback path.
+	sumResult := b.SumDim(x, dim, keepDim)
 	data := sumResult.AsFloat32()
 	for i := range data {
 		data[i] /= divisor
 	}
-
 	return sumResult
 }
 
 // Cat concatenates tensors along the specified dimension.
+//
+// In LazyMode with float32 inputs, dispatches GPU compute passes (catShader) to
+// copy each input into the correct region of a pre-allocated output buffer — zero
+// CPU allocation. Falls back to CPU concatenation otherwise.
 func (b *Backend) Cat(tensors []*tensor.RawTensor, dim int) *tensor.RawTensor {
 	if len(tensors) == 0 {
 		panic("webgpu: Cat: at least one tensor required")
@@ -546,13 +606,21 @@ func (b *Backend) Cat(tensors []*tensor.RawTensor, dim int) *tensor.RawTensor {
 		panic("webgpu: Cat: dimension out of range")
 	}
 
-	// Calculate total size along concat dimension
+	// LazyMode GPU path (float32 only).
+	if b.LazyMode && dtype == tensor.Float32 {
+		result, err := b.runCatLazy(tensors, dim)
+		if err != nil {
+			panic("webgpu: Cat: " + err.Error())
+		}
+		return result
+	}
+
+	// CPU fallback path.
 	totalDim := 0
 	for _, t := range tensors {
 		totalDim += t.Shape()[dim]
 	}
 
-	// Create output shape
 	outShape := shape.Clone()
 	outShape[dim] = totalDim
 
@@ -561,7 +629,6 @@ func (b *Backend) Cat(tensors []*tensor.RawTensor, dim int) *tensor.RawTensor {
 		panic("webgpu: Cat: " + err.Error())
 	}
 
-	// Concatenate on CPU
 	if dtype == tensor.Float32 {
 		catFloat32WebGPU(tensors, result, dim)
 	} else {
@@ -602,6 +669,10 @@ func catFloat32WebGPU(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim
 }
 
 // Chunk splits tensor into n equal parts along the specified dimension.
+//
+// In LazyMode with float32 inputs, dispatches GPU compute passes (chunkShader)
+// to copy each slice into a freshly-allocated output buffer — zero CPU allocation.
+// Falls back to CPU splitting otherwise.
 func (b *Backend) Chunk(x *tensor.RawTensor, n, dim int) []*tensor.RawTensor {
 	if n <= 0 {
 		panic("webgpu: Chunk: n must be positive")
@@ -623,6 +694,16 @@ func (b *Backend) Chunk(x *tensor.RawTensor, n, dim int) []*tensor.RawTensor {
 		panic("webgpu: Chunk: dimension not divisible by n")
 	}
 
+	// LazyMode GPU path (float32 only).
+	if b.LazyMode && x.DType() == tensor.Float32 {
+		results, err := b.runChunkLazy(x, n, dim)
+		if err != nil {
+			panic("webgpu: Chunk: " + err.Error())
+		}
+		return results
+	}
+
+	// CPU fallback path.
 	chunkSize := dimSize / n
 	chunkShape := shape.Clone()
 	chunkShape[dim] = chunkSize

@@ -1,7 +1,7 @@
 # Born ML Framework - Use Cases Guide
 
 **Status**: Living Document
-**Last Updated**: 2026-05-16
+**Last Updated**: 2026-05-27
 
 ---
 
@@ -238,7 +238,7 @@ Verified: TinyLlama 1.1B Q8_0 and Q4_K_M.
 
 ---
 
-### 7. ONNX Model Deployment (Planned Feature)
+### 7. ONNX Model Deployment
 
 **Scenario:**
 Train models in PyTorch/TensorFlow, deploy with Born.
@@ -251,14 +251,17 @@ torch.onnx.export(model, "model.onnx")
 ```
 
 ```go
-// 2. Deploy with Born (upcoming ONNX support)
-model := born.LoadONNX("model.onnx")
-prediction := model.Predict(input)
+// 2. Deploy with Born (49 ONNX operators supported)
+import "github.com/born-ml/born/internal/onnx"
+
+registry := onnx.NewRegistry(backend)
+model, _ := onnx.LoadModel("model.onnx", registry)
+output := model.Run(input)
 ```
 
 **Benefits:**
 - ✅ Use Python ecosystem for training
-- ✅ Deploy as Go binary
+- ✅ Deploy as Go binary — 49 ONNX operators supported
 - ✅ Best of both worlds
 
 ---
@@ -286,7 +289,7 @@ Born doesn't yet support distributed training (planned for future releases).
 No model zoo yet (planned future releases).
 
 **Workaround:**
-- Use ONNX import (upcoming ONNX support)
+- Use ONNX import (ONNX import (49 ops))
 - Port models manually (if simple)
 
 **When Born will be ready:**
@@ -379,13 +382,13 @@ No model zoo yet (planned future releases).
 
 ### From PyTorch to Born
 
-**Option 1: ONNX Import (upcoming ONNX support)**
+**Option 1: ONNX Import (ONNX import (49 ops))**
 ```python
 # PyTorch
 torch.onnx.export(model, "model.onnx")
 ```
 ```go
-// Born (upcoming ONNX support)
+// Born (ONNX import (49 ops))
 model := born.LoadONNX("model.onnx")
 ```
 
@@ -398,13 +401,13 @@ model := born.LoadONNX("model.onnx")
 
 ### From TensorFlow to Born
 
-**Option 1: ONNX Import (upcoming ONNX support)**
+**Option 1: ONNX Import (ONNX import (49 ops))**
 ```python
 # TensorFlow
 tf2onnx.convert.from_keras(model, output_path="model.onnx")
 ```
 ```go
-// Born (upcoming ONNX support)
+// Born (ONNX import (49 ops))
 model := born.LoadONNX("model.onnx")
 ```
 
@@ -498,11 +501,11 @@ model := born.LoadONNX("model.onnx")
 
 ### Q: Is Born stable enough?
 
-**A:** Current status (v0.9.0):
+**A:** Current status (v0.9.1):
 - ✅ Core API stable (tensor, nn, optim, autodiff)
-- ✅ Production-tested (MNIST 97%+, GPU 123x speedup)
+- ✅ Production-tested (MNIST 97%+, GPU 123x speedup, MLP GPU training 77.8 steps/sec)
 - ✅ LLM inference: LLaMA via `models/llama.LoadGGUF()`, verified on TinyLlama 1.1B Q8_0 and Q4_K_M
-- ✅ GPU training: backward ops run on GPU without CPU readback (Burn-aligned architecture)
+- ✅ GPU training: all forward+backward ops on GPU, explicit buffer lifecycle, TieredPool memory management
 - ✅ ONNX import (49 operators)
 - ⚠️ API may evolve before v1.0
 

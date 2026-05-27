@@ -6,17 +6,21 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 )
 
-// mulScalarTyped multiplies t by a scalar matched to the tensor's dtype.
-// MulScalar type-asserts the scalar, so we must pass the correct Go type.
-func mulScalarTyped(t *tensor.RawTensor, value float64, backend tensor.Backend) *tensor.RawTensor {
-	switch t.DType() {
+// typedScalar returns a Go value matching the tensor dtype for use with backend scalar ops.
+func typedScalar(dtype tensor.DataType, value float64) any {
+	switch dtype {
 	case tensor.Float32:
-		return backend.MulScalar(t, float32(value))
+		return float32(value)
 	case tensor.Float64:
-		return backend.MulScalar(t, value)
+		return value
 	default:
-		panic(fmt.Sprintf("mulScalarTyped: unsupported dtype %s", t.DType()))
+		panic(fmt.Sprintf("typedScalar: unsupported dtype %s", dtype))
 	}
+}
+
+// mulScalarTyped multiplies t by a scalar matched to the tensor's dtype.
+func mulScalarTyped(t *tensor.RawTensor, value float64, backend tensor.Backend) *tensor.RawTensor {
+	return backend.MulScalar(t, typedScalar(t.DType(), value))
 }
 
 // reduceBroadcast reduces a gradient tensor to match the target shape.

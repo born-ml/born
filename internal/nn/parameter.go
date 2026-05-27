@@ -36,6 +36,7 @@ type Parameter[B tensor.Backend] struct {
 //
 // Returns a new Parameter.
 func NewParameter[B tensor.Backend](name string, t *tensor.Tensor[float32, B]) *Parameter[B] {
+	t.Raw().SetGPUPersistent(true)
 	return &Parameter[B]{
 		name:   name,
 		tensor: t,
@@ -65,6 +66,27 @@ func (p *Parameter[B]) Grad() *tensor.Tensor[float32, B] {
 // This is typically called by the optimizer or during backward pass.
 func (p *Parameter[B]) SetGrad(grad *tensor.Tensor[float32, B]) {
 	p.grad = grad
+}
+
+// SetTensor replaces the parameter tensor without reading data to CPU.
+//
+// The incoming tensor is detached before storage: its grad pointer is cleared
+// and requiresGrad is set to false. This prevents the optimizer's computation
+// graph (Sub, MulScalar, etc.) from leaking into the next forward pass through
+// the parameter's grad field.
+//
+// The old tensor's GPU buffer is released IMMEDIATELY (GoMLX FinalizeAll pattern)
+// instead of waiting for Go's GC which is unaware of GPU memory pressure.
+//
+// Callers must ensure the new tensor has the same shape and dtype as the
+// original, otherwise downstream operations will panic.
+func (p *Parameter[B]) SetTensor(t *tensor.Tensor[float32, B]) {
+	// Release old GPU buffer immediately — do NOT wait for GC.
+	if p.tensor != nil {
+		p.tensor.Raw().ReleaseGPU()
+	}
+	p.tensor = t.Detach()
+	p.tensor.Raw().SetGPUPersistent(true)
 }
 
 // ZeroGrad clears the gradient tensor.

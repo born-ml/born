@@ -389,7 +389,7 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 - **[Use Cases](docs/USE_CASES.md)** - When to use Born (and when not)
 - **[Getting Started](docs/getting-started.md)** - Installation and first steps *(coming soon)*
 - **[API Reference](https://pkg.go.dev/github.com/born-ml/born)** - Complete API documentation
-- **[Examples](examples/)** - Sample code (MNIST MLP, CNN, GPU inference)
+- **[Examples](examples/)** - Sample code (MNIST MLP, CNN, GPU inference, GPU training)
 
 ### For Contributors
 

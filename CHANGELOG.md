@@ -5,29 +5,42 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-## [0.9.1] - 2026-05-19
+## [0.9.1] - 2026-05-27
 
 ### Added
 
 - **GPU shared encoder accumulator** ([ADR-012](docs/dev/ADR-012-gpu-encoder-batching-buffer-cache.md))
   - One CommandEncoder for N compute passes instead of N encoders
   - 128 Finish() calls → 1 per batch. GPU utilization 55% → 70-80%
-  - All 15 lazy ops simplified via `addComputePassToEncoder`
-  - Net -456 lines from lazy ops
-- **GPU input buffer cache**
-  - `getOrCreateInputBuffer`: caches tensor→GPU buffer by identity
-  - Weight matrices uploaded once, reused across forward+backward
-  - `clearInputBufferCache` for cleanup
-- **17 enterprise GPU tests**: shared encoder correctness (500-op chain), cache hit rate, invalidation, auto-flush, flush-on-readback, lazy chain, mixed-ops batching
+  - All 15 lazy ops simplified via `addComputePassToEncoder` (-456 lines)
+- **GPU input buffer cache** — `getOrCreateInputBuffer`: tensor→GPU buffer identity mapping, weight matrices uploaded once
+- **`Tensor.Persist()` / `Unpersist()` API** — marks GPU tensors to survive `ReclaimMemory` between training steps (carry state, rotary embeddings, model buffers)
+- **GPU training example** (`examples/gpu-training/`) — MLP on synthetic data, 77.8 steps/sec
+- **LazyMode for 11 ops** — Embedding, Cast, Or, And, Not, Eq, Ne, Ge, Le, Greater, Less — eliminates last CPU readbacks in forward pass
+- **TieredPool with device limits** (ADR-017) — 12 log-spaced buckets from `device.Limits()`, budget enforcement, onOOM callback
+- **FlushGPU + ReclaimMemory proxy** on AutodiffBackend
+- **40 new tests** — 17 shared encoder/buffer cache, 12 pool, 11 activation (Sigmoid, Tanh, SiLU, Log forward+backward)
+- **GPU training regression test** — 20-step MLP OOM test
+
+### Changed
+
+- **SumDim/MeanDim backward** — migrated from CPU broadcastTo/unsqueezeDim to `backend.Expand`/`backend.Reshape` (ADR-009 partial, -70 lines CPU code)
+- **Sigmoid/Tanh backward** — zero CPU allocation via scalar ops composition (ADR-009)
+- **CrossEntropy forward** — composed via backend ops, eliminates CPU readback
+- **All 42 AutodiffBackend methods** now delegate to `b.inner.XXX()` (TASK-149/150) — zero CPU bypass in forward pass
+- **Pool cleanup threshold** — gpuPoolFreeThresh 5→2 for faster deallocation of unused pages
+- **wgpu upgraded** v0.28.11 → v0.29.0 (triple-backend: Pure Go / Rust / WASM)
 
 ### Fixed
 
-- **GPU batched dispatch**: auto-flush pending command buffers every 128 dispatches
-  - Prevents Windows TDR timeout (VK_ERROR_DEVICE_LOST) on integrated GPUs
-  - Before: eval passes with 13K+ dispatches accumulated without flush → GPU killed by OS
-  - After: 128 ops per Submit — safe for all GPUs while still 128x fewer Submits than pre-v0.9.0
+- **GPU buffer leak** — `TieredPool.Release()` silently ignored non-pool buffers (params, uniforms, transient inputs). 43K buffers leaked per step. Now properly calls `buffer.Release()` for non-pool buffers
+- **Carry state crash** — `ReclaimMemory()` destroyed model-level persistent tensors between training steps. Fixed via Persist/Unpersist lifecycle
+- **GPU batched dispatch** — auto-flush pending command buffers every 128 dispatches. Prevents Windows TDR timeout (VK_ERROR_DEVICE_LOST) on integrated GPUs
+- **Adam.Step in NoGrad** — prevents optimizer ops from recording on autodiff tape
+- **Backward stop recording** — prevents ClearTape from killing optimizer moments
+- **DeferReleaseGPUBuffer** — returns to pool immediately when no encoder active
+- **backend.Release** — drains liveGPU + flushes pending, zero GC warnings on shutdown
+- **Pool bucket cap** at MaxBufferSize from device limits
 
 ## [0.9.0] - 2026-05-17
 

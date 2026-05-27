@@ -177,59 +177,51 @@ func (b *Backend) Softmax(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 // Greater performs element-wise greater-than comparison on GPU.
 // Always returns float32 tensor (0.0 for false, 1.0 for true).
 func (b *Backend) Greater(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runComparisonOp(a, other, "greater", greaterShader)
-	if err != nil {
-		panic("webgpu: Greater: " + err.Error())
-	}
-	return result
+	return b.comparisonOp(a, other, "greater", greaterShader)
 }
 
 // Lower performs element-wise less-than comparison on GPU.
 // Always returns float32 tensor (0.0 for false, 1.0 for true).
 func (b *Backend) Lower(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runComparisonOp(a, other, "lower", lowerShader)
-	if err != nil {
-		panic("webgpu: Lower: " + err.Error())
-	}
-	return result
+	return b.comparisonOp(a, other, "lower", lowerShader)
 }
 
 // GreaterEqual performs element-wise greater-or-equal comparison on GPU.
 // Always returns float32 tensor (0.0 for false, 1.0 for true).
 func (b *Backend) GreaterEqual(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runComparisonOp(a, other, "greaterEqual", greaterEqualShader)
-	if err != nil {
-		panic("webgpu: GreaterEqual: " + err.Error())
-	}
-	return result
+	return b.comparisonOp(a, other, "greaterEqual", greaterEqualShader)
 }
 
 // LowerEqual performs element-wise less-or-equal comparison on GPU.
 // Always returns float32 tensor (0.0 for false, 1.0 for true).
 func (b *Backend) LowerEqual(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runComparisonOp(a, other, "lowerEqual", lowerEqualShader)
-	if err != nil {
-		panic("webgpu: LowerEqual: " + err.Error())
-	}
-	return result
+	return b.comparisonOp(a, other, "lowerEqual", lowerEqualShader)
 }
 
 // Equal performs element-wise equality comparison on GPU.
 // Always returns float32 tensor (0.0 for false, 1.0 for true).
 func (b *Backend) Equal(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runComparisonOp(a, other, "equal", equalShader)
-	if err != nil {
-		panic("webgpu: Equal: " + err.Error())
-	}
-	return result
+	return b.comparisonOp(a, other, "equal", equalShader)
 }
 
 // NotEqual performs element-wise inequality comparison on GPU.
 // Always returns float32 tensor (0.0 for false, 1.0 for true).
 func (b *Backend) NotEqual(a, other *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runComparisonOp(a, other, "notEqual", notEqualShader)
+	return b.comparisonOp(a, other, "notEqual", notEqualShader)
+}
+
+// comparisonOp dispatches a comparison op with LazyMode support.
+// Comparison shaders have the same bind group layout as binary ops (2 in, 1 out, params).
+func (b *Backend) comparisonOp(a, other *tensor.RawTensor, shaderName, shaderCode string) *tensor.RawTensor {
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode && a.DType() == tensor.Float32 {
+		result, err = b.runBinaryOpLazy(a, other, shaderName, shaderCode)
+	} else {
+		result, err = b.runComparisonOp(a, other, shaderName, shaderCode)
+	}
 	if err != nil {
-		panic("webgpu: NotEqual: " + err.Error())
+		panic("webgpu: " + shaderName + ": " + err.Error())
 	}
 	return result
 }
@@ -249,6 +241,13 @@ func (b *Backend) Or(a, other *tensor.RawTensor) *tensor.RawTensor {
 		otherFloat = b.Cast(other, tensor.Float32)
 	}
 
+	if b.LazyMode && aFloat.DType() == tensor.Float32 {
+		result, err := b.runBinaryOpLazy(aFloat, otherFloat, "or", orShader)
+		if err != nil {
+			panic("webgpu: Or: " + err.Error())
+		}
+		return result
+	}
 	result, err := b.runBinaryOp(aFloat, otherFloat, "or", orShader)
 	if err != nil {
 		panic("webgpu: Or: " + err.Error())
@@ -269,6 +268,13 @@ func (b *Backend) And(a, other *tensor.RawTensor) *tensor.RawTensor {
 		otherFloat = b.Cast(other, tensor.Float32)
 	}
 
+	if b.LazyMode && aFloat.DType() == tensor.Float32 {
+		result, err := b.runBinaryOpLazy(aFloat, otherFloat, "and", andShader)
+		if err != nil {
+			panic("webgpu: And: " + err.Error())
+		}
+		return result
+	}
 	result, err := b.runBinaryOp(aFloat, otherFloat, "and", andShader)
 	if err != nil {
 		panic("webgpu: And: " + err.Error())
@@ -278,6 +284,13 @@ func (b *Backend) And(a, other *tensor.RawTensor) *tensor.RawTensor {
 
 // Not performs element-wise logical NOT on GPU.
 func (b *Backend) Not(x *tensor.RawTensor) *tensor.RawTensor {
+	if b.LazyMode && x.DType() == tensor.Float32 {
+		result, err := b.runUnaryOpLazy(x, "not", notShader)
+		if err != nil {
+			panic("webgpu: Not: " + err.Error())
+		}
+		return result
+	}
 	result, err := b.runUnaryOp(x, "not", notShader)
 	if err != nil {
 		panic("webgpu: Not: " + err.Error())
@@ -335,7 +348,11 @@ func (b *Backend) Expand(x *tensor.RawTensor, newShape tensor.Shape) *tensor.Raw
 // Supports float32 and int32 as target types.
 func (b *Backend) Cast(x *tensor.RawTensor, dtype tensor.DataType) *tensor.RawTensor {
 	if x.DType() == dtype {
-		// No conversion needed - just copy
+		// Same dtype: return input directly in LazyMode to avoid GPU→CPU→GPU round-trip.
+		// In non-lazy mode, copy to a new CPU-backed tensor (original behavior).
+		if b.LazyMode {
+			return x
+		}
 		result, err := tensor.NewRaw(x.Shape(), dtype, tensor.WebGPU)
 		if err != nil {
 			panic("webgpu: Cast: " + err.Error())

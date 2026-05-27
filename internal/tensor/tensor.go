@@ -118,12 +118,35 @@ func (t *Tensor[T, B]) SetGrad(grad *Tensor[T, B]) {
 //	    zL: zL.Detach(),
 //	}
 func (t *Tensor[T, B]) Detach() *Tensor[T, B] {
+	// Clone RawTensor so the detached tensor has independent GPU buffer lifecycle.
+	// Without Clone, ClearTape releasing the original's GPU data also kills the
+	// detached tensor's buffer — causing use-after-free in carry state across steps.
 	return &Tensor[T, B]{
-		raw:          t.raw, // Share data (zero-copy)
+		raw:          t.raw.Clone(),
 		backend:      t.backend,
-		grad:         nil, // No gradient tracking
+		grad:         nil,
 		requiresGrad: false,
 	}
+}
+
+// Persist marks this tensor's GPU data as persistent, so it survives
+// ReclaimMemory calls between training steps. Use for any tensor that
+// must live across step boundaries: carry state, running statistics,
+// auxiliary accumulators. Returns the tensor for chaining.
+//
+// Without Persist, ReclaimMemory releases all non-persistent GPU tensors
+// with refcount <= 1 — which includes carry state after ClearTape drops
+// the tape's reference.
+func (t *Tensor[T, B]) Persist() *Tensor[T, B] {
+	t.raw.SetGPUPersistent(true)
+	return t
+}
+
+// Unpersist removes the persistent flag, allowing ReclaimMemory to
+// release this tensor's GPU data. Use when carry state is no longer needed.
+func (t *Tensor[T, B]) Unpersist() *Tensor[T, B] {
+	t.raw.SetGPUPersistent(false)
+	return t
 }
 
 // Data returns a typed slice view of the tensor's data.

@@ -3,6 +3,7 @@ package cpu
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -191,6 +192,89 @@ func (cpu *CPUBackend) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
 		}
 	default:
 		panic(fmt.Sprintf("relu: unsupported dtype %s", x.DType()))
+	}
+
+	return result
+}
+
+// Sigmoid applies sigmoid activation: 1 / (1 + exp(-x)).
+func (cpu *CPUBackend) Sigmoid(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := tensor.NewRaw(x.Shape(), x.DType(), cpu.device)
+	if err != nil {
+		panic(fmt.Sprintf("sigmoid: %v", err))
+	}
+
+	switch x.DType() {
+	case tensor.Float32:
+		src := x.AsFloat32()
+		dst := result.AsFloat32()
+		for i, v := range src {
+			dst[i] = float32(1.0 / (1.0 + math.Exp(float64(-v))))
+		}
+	case tensor.Float64:
+		src := x.AsFloat64()
+		dst := result.AsFloat64()
+		for i, v := range src {
+			dst[i] = 1.0 / (1.0 + math.Exp(-v))
+		}
+	default:
+		panic(fmt.Sprintf("sigmoid: unsupported dtype %s", x.DType()))
+	}
+
+	return result
+}
+
+// Tanh applies hyperbolic tangent activation.
+func (cpu *CPUBackend) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := tensor.NewRaw(x.Shape(), x.DType(), cpu.device)
+	if err != nil {
+		panic(fmt.Sprintf("tanh: %v", err))
+	}
+
+	switch x.DType() {
+	case tensor.Float32:
+		src := x.AsFloat32()
+		dst := result.AsFloat32()
+		for i, v := range src {
+			dst[i] = float32(math.Tanh(float64(v)))
+		}
+	case tensor.Float64:
+		src := x.AsFloat64()
+		dst := result.AsFloat64()
+		for i, v := range src {
+			dst[i] = math.Tanh(v)
+		}
+	default:
+		panic(fmt.Sprintf("tanh: unsupported dtype %s", x.DType()))
+	}
+
+	return result
+}
+
+// SiLU applies SiLU (Swish) activation: x * sigmoid(x).
+func (cpu *CPUBackend) SiLU(x *tensor.RawTensor) *tensor.RawTensor {
+	result, err := tensor.NewRaw(x.Shape(), x.DType(), cpu.device)
+	if err != nil {
+		panic(fmt.Sprintf("silu: %v", err))
+	}
+
+	switch x.DType() {
+	case tensor.Float32:
+		src := x.AsFloat32()
+		dst := result.AsFloat32()
+		for i, v := range src {
+			sig := float32(1.0 / (1.0 + math.Exp(float64(-v))))
+			dst[i] = v * sig
+		}
+	case tensor.Float64:
+		src := x.AsFloat64()
+		dst := result.AsFloat64()
+		for i, v := range src {
+			sig := 1.0 / (1.0 + math.Exp(-v))
+			dst[i] = v * sig
+		}
+	default:
+		panic(fmt.Sprintf("silu: unsupported dtype %s", x.DType()))
 	}
 
 	return result

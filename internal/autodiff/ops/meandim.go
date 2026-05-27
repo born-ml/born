@@ -46,12 +46,10 @@ func (op *MeanDimOp) Backward(outputGrad *tensor.RawTensor, backend tensor.Backe
 	x := op.inputs[0]
 	grad := outputGrad
 
-	// If keepDim=false, we need to unsqueeze the gradient first
 	if !op.keepDim {
-		grad = unsqueezeDim(grad, op.dim, x.Shape())
+		grad = backend.Reshape(grad, unsqueezeDimShape(grad.Shape(), op.dim, x.Shape()))
 	}
 
-	// Broadcast gradient to input shape
 	gradX := broadcastTo(grad, x.Shape(), backend)
 
 	// Divide by the size of the reduced dimension via backend scalar multiply.

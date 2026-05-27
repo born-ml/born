@@ -52,9 +52,43 @@ func (t *GradientTape) Record(op ops.Operation) {
 
 // Clear resets the tape, removing all recorded operations.
 // Recording state is preserved.
+//
+// All intermediate GPU buffers from forward pass outputs are released
+// immediately via ReleaseGPU. Parameter tensors (inputs that are not outputs
+// of other ops) are not touched. This is the primary mechanism for
+// deterministic GPU memory reclamation under ADR-015.
 func (t *GradientTape) Clear() {
+	// Collect parameter pointers (inputs that are not produced by any op on the tape).
+	outputs := make(map[*tensor.RawTensor]struct{}, len(t.operations))
+	for _, op := range t.operations {
+		if mop, ok := op.(ops.MultiOutputOperation); ok {
+			for _, o := range mop.Outputs() {
+				outputs[o] = struct{}{}
+			}
+		} else {
+			outputs[op.Output()] = struct{}{}
+		}
+	}
+
+	// Release GPU buffers for intermediate outputs, skipping persistent tensors
+	// (optimizer moments, model weights). Without this check, ClearTape kills
+	// moment GPU buffers when optimizer ops are recorded on tape.
+	for out := range outputs {
+		if gpuData := out.GPUData(); gpuData != nil && gpuData.IsPersistent() {
+			continue
+		}
+		out.ReleaseGPU()
+	}
+
+	// Nil out slice elements so GC can collect Operation objects and their
+	// referenced RawTensors. Without this, the backing array retains pointers
+	// to all operations from the previous step — each holding input/output
+	// RawTensors with CPU buffers. This was the #1 memory leak: 6.7 GB / 97%
+	// of heap was unreachable tensorBuffers held alive by stale slice entries.
+	for i := range t.operations {
+		t.operations[i] = nil
+	}
 	t.operations = t.operations[:0]
-	// Note: recording state is preserved, call StopRecording() explicitly if needed
 }
 
 // Backward computes gradients for all inputs by walking the tape in reverse.
@@ -71,12 +105,17 @@ func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Bac
 		return make(map[*tensor.RawTensor]*tensor.RawTensor)
 	}
 
-	// Stop recording during backward pass to prevent recording gradient operations
+	// Temporarily stop recording so backward's own ops (gradient computation)
+	// are not captured on tape. Restore recording state after backward completes
+	// so callers that rely on persistent recording (e.g., HRM trainer) continue
+	// to record forward ops in subsequent steps.
+	//
+	// Optimizer.Step() ops that run AFTER Backward but BEFORE ClearTape will be
+	// recorded. ClearTape() stops recording and releases their GPU buffers safely
+	// because moments are replaced (not the same tensor objects as tape outputs).
 	wasRecording := t.recording
 	t.recording = false
-	defer func() {
-		t.recording = wasRecording
-	}()
+	defer func() { t.recording = wasRecording }()
 
 	// Map to accumulate gradients for each tensor
 	grads := make(map[*tensor.RawTensor]*tensor.RawTensor)
@@ -85,7 +124,10 @@ func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Bac
 	lastOp := t.operations[len(t.operations)-1]
 	grads[lastOp.Output()] = outputGrad
 
-	// Walk tape backwards
+	// Walk tape backwards, releasing forward-pass activations eagerly.
+	// Once an op's backward is computed, its saved output (activation) is
+	// no longer needed — releasing immediately prevents accumulating all
+	// 2000+ intermediate buffers simultaneously (ADR-015).
 	for i := len(t.operations) - 1; i >= 0; i-- {
 		op := t.operations[i]
 		inputGrads := t.computeInputGrads(op, grads, backend)
@@ -93,6 +135,11 @@ func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Bac
 			continue
 		}
 		t.accumulateGrads(op, inputGrads, grads, backend)
+
+		// NOTE: eager release removed (was commit 11a7999). op.Output() may be
+		// shared as input to another op (e.g. Transpose output used by MatMul).
+		// Releasing here causes use-after-free when that other op's backward
+		// tries to read the buffer. Buffers are freed in ClearTape() instead.
 	}
 
 	return grads
@@ -177,6 +224,9 @@ func (t *GradientTape) fillMissingGradsWithZeros(
 }
 
 // accumulateGrads accumulates gradients for each input tensor.
+// When a gradient already exists for an input (fan-out in the graph), the two
+// partial gradients are summed and the old buffer is released immediately to
+// avoid accumulating unreferenced GPU buffers across the backward pass.
 func (t *GradientTape) accumulateGrads(
 	op ops.Operation,
 	inputGrads []*tensor.RawTensor,
@@ -193,7 +243,9 @@ func (t *GradientTape) accumulateGrads(
 			continue
 		}
 		if existing, ok := grads[input]; ok {
-			grads[input] = backend.Add(existing, inputGrad)
+			newGrad := backend.Add(existing, inputGrad)
+			existing.ReleaseGPU() // Release the old intermediate gradient buffer.
+			grads[input] = newGrad
 		} else {
 			grads[input] = inputGrad
 		}

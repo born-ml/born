@@ -56,6 +56,10 @@ type Backend interface {
 	Clamp(x *RawTensor, minBound, maxBound any) *RawTensor // clamp values to [min, max]
 
 	// Activation functions
+	ReLU(x *RawTensor) *RawTensor             // max(0, x)
+	Sigmoid(x *RawTensor) *RawTensor          // 1 / (1 + exp(-x))
+	Tanh(x *RawTensor) *RawTensor             // hyperbolic tangent
+	SiLU(x *RawTensor) *RawTensor             // x * sigmoid(x)
 	Softmax(x *RawTensor, dim int) *RawTensor // softmax along dimension
 
 	// Comparison operations (element-wise, return bool tensor)
@@ -123,4 +127,17 @@ type Backend interface {
 	// Metadata
 	Name() string
 	Device() Device
+}
+
+// MemoryReclaimer is an optional interface for backends that manage GPU or
+// device memory. When implemented, callers can explicitly reclaim unreferenced
+// buffers at well-defined lifecycle points (e.g. after Tape.Clear) instead
+// of relying on the Go garbage collector. This is critical for GPU backends
+// where Go GC has no awareness of device memory pressure (ADR-015).
+type MemoryReclaimer interface {
+	// ReclaimMemory flushes pending GPU commands and triggers device-side
+	// cleanup of buffers queued for deferred destruction. This should be
+	// called after releasing a batch of intermediate tensors (e.g. at the
+	// end of a training step) to ensure GPU memory is actually freed.
+	ReclaimMemory()
 }

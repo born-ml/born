@@ -313,7 +313,7 @@ func TestEncoderBatch_AutoFlushAtThreshold(t *testing.T) {
 	copy(a.AsFloat32(), []float32{1, 1, 1, 1})
 
 	// Exceed the threshold by 10 — auto-flush must trigger mid-loop.
-	const totalOps = maxPendingBeforeFlush + 10
+	totalOps := maxPendingBeforeFlush + 10
 
 	result := a
 	for i := 0; i < totalOps; i++ {

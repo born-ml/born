@@ -39,12 +39,13 @@ func (op *SumDimOp) Backward(outputGrad *tensor.RawTensor, backend tensor.Backen
 	x := op.inputs[0]
 	grad := outputGrad
 
-	// If keepDim=false, we need to unsqueeze the gradient first
+	// If keepDim=false, unsqueeze grad to restore the reduced dim.
+	// Uses backend.Reshape — stays on GPU, no CPU readback.
 	if !op.keepDim {
-		grad = unsqueezeDim(grad, op.dim, x.Shape())
+		grad = backend.Reshape(grad, unsqueezeDimShape(grad.Shape(), op.dim, x.Shape()))
 	}
 
-	// Broadcast gradient to input shape
+	// Broadcast gradient to input shape via backend.Expand — stays on GPU.
 	gradX := broadcastTo(grad, x.Shape(), backend)
 
 	return []*tensor.RawTensor{gradX}
@@ -60,131 +61,38 @@ func (op *SumDimOp) Output() *tensor.RawTensor {
 	return op.output
 }
 
-// unsqueezeDim adds a dimension of size 1 at the specified position.
-func unsqueezeDim(t *tensor.RawTensor, dim int, targetShape tensor.Shape) *tensor.RawTensor {
-	// Normalize negative dim
+// unsqueezeDimShape computes the shape with a size-1 dimension inserted at dim.
+func unsqueezeDimShape(gradShape tensor.Shape, dim int, targetShape tensor.Shape) tensor.Shape {
 	ndim := len(targetShape)
 	if dim < 0 {
 		dim = ndim + dim
 	}
 
-	// Create new shape with dimension inserted
-	newShape := make(tensor.Shape, 0, len(t.Shape())+1)
+	newShape := make(tensor.Shape, 0, len(gradShape)+1)
 	for i := 0; i < ndim; i++ {
 		if i == dim {
 			newShape = append(newShape, 1)
-		} else if len(newShape) < len(t.Shape())+1 {
-			// Map from original shape
+		} else {
 			origIdx := i
 			if i > dim {
 				origIdx = i - 1
 			}
-			if origIdx < len(t.Shape()) {
-				newShape = append(newShape, t.Shape()[origIdx])
+			if origIdx < len(gradShape) {
+				newShape = append(newShape, gradShape[origIdx])
 			}
 		}
 	}
-
-	// Handle case where we need to append the dimension
-	if len(newShape) < len(t.Shape())+1 {
-		newShape = append(newShape, t.Shape()[len(newShape):]...)
+	if len(newShape) < len(gradShape)+1 {
+		newShape = append(newShape, gradShape[len(newShape):]...)
 	}
-
-	// Reshape tensor
-	result, err := tensor.NewRaw(newShape, t.DType(), t.Device())
-	if err != nil {
-		panic("unsqueezeDim: failed to create result tensor")
-	}
-
-	// Copy data (shape is different but data is same)
-	switch t.DType() {
-	case tensor.Float32:
-		copy(result.AsFloat32(), t.AsFloat32())
-	case tensor.Float64:
-		copy(result.AsFloat64(), t.AsFloat64())
-	}
-
-	return result
+	return newShape
 }
 
-// broadcastTo broadcasts a tensor to match target shape.
-func broadcastTo(t *tensor.RawTensor, targetShape tensor.Shape, _ tensor.Backend) *tensor.RawTensor {
-	// If shapes already match, return clone
+// broadcastTo broadcasts a tensor to match target shape via backend.Expand.
+// Stays on GPU — no CPU readback.
+func broadcastTo(t *tensor.RawTensor, targetShape tensor.Shape, backend tensor.Backend) *tensor.RawTensor {
 	if t.Shape().Equal(targetShape) {
 		return t.Clone()
 	}
-
-	// Create result tensor
-	result, err := tensor.NewRaw(targetShape, t.DType(), t.Device())
-	if err != nil {
-		panic("broadcastTo: failed to create result tensor")
-	}
-
-	// Broadcast data
-	switch t.DType() {
-	case tensor.Float32:
-		broadcastFloat32(t.AsFloat32(), result.AsFloat32(), t.Shape(), targetShape)
-	case tensor.Float64:
-		broadcastFloat64(t.AsFloat64(), result.AsFloat64(), t.Shape(), targetShape)
-	}
-
-	return result
-}
-
-// broadcastFloat32 broadcasts float32 data to target shape.
-func broadcastFloat32(src, dst []float32, srcShape, dstShape tensor.Shape) {
-	srcStrides := srcShape.ComputeStrides()
-	dstStrides := dstShape.ComputeStrides()
-	numElements := dstShape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		// Compute destination coordinates
-		srcIdx := 0
-		temp := i
-		for d := 0; d < len(dstShape); d++ {
-			coord := temp / dstStrides[d]
-			temp %= dstStrides[d]
-
-			// Map to source dimension
-			srcDim := d - (len(dstShape) - len(srcShape))
-			if srcDim >= 0 && srcDim < len(srcShape) {
-				// If source dimension is 1, always use coordinate 0
-				if srcShape[srcDim] == 1 {
-					coord = 0
-				}
-				srcIdx += coord * srcStrides[srcDim]
-			}
-		}
-
-		dst[i] = src[srcIdx]
-	}
-}
-
-// broadcastFloat64 broadcasts float64 data to target shape.
-func broadcastFloat64(src, dst []float64, srcShape, dstShape tensor.Shape) {
-	srcStrides := srcShape.ComputeStrides()
-	dstStrides := dstShape.ComputeStrides()
-	numElements := dstShape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		// Compute destination coordinates
-		srcIdx := 0
-		temp := i
-		for d := 0; d < len(dstShape); d++ {
-			coord := temp / dstStrides[d]
-			temp %= dstStrides[d]
-
-			// Map to source dimension
-			srcDim := d - (len(dstShape) - len(srcShape))
-			if srcDim >= 0 && srcDim < len(srcShape) {
-				// If source dimension is 1, always use coordinate 0
-				if srcShape[srcDim] == 1 {
-					coord = 0
-				}
-				srcIdx += coord * srcStrides[srcDim]
-			}
-		}
-
-		dst[i] = src[srcIdx]
-	}
+	return backend.Expand(t, targetShape)
 }

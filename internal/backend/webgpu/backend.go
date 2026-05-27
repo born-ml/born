@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 	"unsafe"
@@ -16,6 +17,7 @@ import (
 	"github.com/gogpu/gputypes"
 	wgpu "github.com/gogpu/wgpu"
 	_ "github.com/gogpu/wgpu/hal/allbackends"
+	"github.com/gogpu/wgpu/hal/software"
 )
 
 // pipelineEntry caches a compute pipeline together with its layouts.
@@ -28,35 +30,54 @@ type pipelineEntry struct {
 }
 
 // pendingSubmission holds a finished command buffer that has not yet been
-// submitted to the GPU queue, plus the intermediate result buffers that must
+// submitted to the GPU queue, plus the intermediate buffers that must
 // remain alive until after queue.Submit returns (BUG-LAZY-DEFER-RELEASE).
+//
+// lazyDatas holds LazyGPUData references for all result tensors in this batch.
+// This prevents GC from collecting LazyGPUData (and releasing their result
+// buffers via finalizer) while the command buffer that writes those buffers
+// is still pending. After Submit, the references are dropped so GC can
+// reclaim them when the lazy tensors are no longer needed.
 //
 // Populated by finishActiveBatchLocked (via addComputePassToEncoder) when
 // the shared encoder is sealed. All pending submissions are flushed in a
 // single queue.Submit call when any tensor's Data() triggers ReadGPUBuffer.
 type pendingSubmission struct {
 	cmdBuffer  *wgpu.CommandBuffer
-	resultBufs []*wgpu.Buffer    // released after queue.Submit completes
-	bindGroups []*wgpu.BindGroup // released after queue.Submit completes
+	resultBufs []*wgpu.Buffer        // params + transient inputs, released after Submit
+	bindGroups []*wgpu.BindGroup     // released after Submit
+	lazyDatas  []*tensor.LazyGPUData // kept alive until after Submit; NOT released here
 }
 
 // encoderBatch accumulates multiple compute passes into a single CommandEncoder.
 // All passes are recorded into the same encoder; flush (Finish+Submit) happens
 // at threshold or on Data() access. This eliminates per-op CreateCommandEncoder
 // overhead and reduces driver synchronization points.
+//
+// resultBufs holds params + transient input copies — NOT compute result buffers.
+// lazyDatas holds LazyGPUData refs to keep result buffers alive until Submit.
 type encoderBatch struct {
 	encoder    *wgpu.CommandEncoder
-	copies     []bufferCopyEntry    // CopyBufferToBuffer entries added before Finish
-	resultBufs []*wgpu.Buffer       // released after Submit
-	bindGroups []*wgpu.BindGroup    // released after Submit
+	resultBufs []*wgpu.Buffer        // params + transient inputs, released after Submit
+	bindGroups []*wgpu.BindGroup     // released after Submit
+	lazyDatas  []*tensor.LazyGPUData // kept alive until Submit; dropped after (not released)
 	count      int
+	allocBytes uint64 // total GPU bytes held by this batch
 }
 
-// bufferCopyEntry records a single CopyBufferToBuffer to be appended to the
-// active encoder immediately before Finish().
-type bufferCopyEntry struct {
-	src, dst *wgpu.Buffer
-	size     uint64
+// maxBatchAllocBytes limits GPU memory held by a single encoder batch.
+// Prevents OOM on iGPUs with shared memory (Iris Xe ~4GB usable).
+// 16MB is conservative — allows ~500 ops of [512,512] tensors.
+// Configurable via BORN_MAX_BATCH_MB environment variable.
+var maxBatchAllocBytes = uint64(getEnvIntOrBackend("BORN_MAX_BATCH_MB", 16)) * 1024 * 1024
+
+func getEnvIntOrBackend(key string, defaultVal int) int {
+	if s, ok := os.LookupEnv(key); ok {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			return v
+		}
+	}
+	return defaultVal
 }
 
 // cachedBuffer holds a GPU storage buffer that was created from a CPU RawTensor
@@ -84,6 +105,12 @@ type Backend struct {
 	// Buffer pool for memory management
 	bufferPool *BufferPool
 
+	// gpuPool reuses GPU result buffers across training steps (ADR-016/017).
+	// Multi-tier pool following Burn/CubeCL MemoryManagement pattern:
+	// log-spaced bucket sizes from 32KB to MaxStorageBufferBindingSize,
+	// each tier with its own dealloc period. Budget-aware via BORN_GPU_BUDGET_MB.
+	gpuPool *TieredPool
+
 	// Lazy mode: when true, operations return lazy tensors that keep data on GPU
 	// until Data() is explicitly called. This is the key optimization for
 	// Phase 3 Integration - eliminates readBuffer() bottleneck.
@@ -91,7 +118,7 @@ type Backend struct {
 	LazyMode bool
 
 	// Pending command buffers queued for batched submission.
-	// Populated by addComputePassToEncoder/finishAndQueueLazy; drained by flushCommands.
+	// Populated by addComputePassToEncoder; drained by flushCommands.
 	// Protected by pendingMu. This is the core of the batched-dispatch
 	// optimization: instead of 1 Submit per op (~500 µs each), all pending
 	// command buffers are submitted in a single queue.Submit call when the
@@ -120,6 +147,24 @@ type Backend struct {
 		cache map[*tensor.RawTensor]*cachedBuffer
 	}
 
+	// scalarCache caches GPU buffers for small constant tensors (e.g. -1.0, 1.0)
+	// used repeatedly in backward ops. Keyed by (float32Value, numElements, dtype)
+	// encoded as a uint64 to avoid struct allocation on the hot path.
+	// Buffers are owned by the cache and released in Backend.Release().
+	// Protected by scalarCacheMu.
+	scalarCache   map[uint64]*GPUTensor
+	scalarCacheMu sync.RWMutex
+
+	// liveGPU tracks ALL LazyGPUData created by this backend. Every
+	// createLazyResult registers here; Release/ScheduleRelease/Realize
+	// unregisters. ReclaimMemory releases all remaining entries — this is
+	// the mechanism for reclaiming GPU memory from tensors created outside
+	// the autodiff tape (NoGrad blocks, carry state, masks, metrics).
+	liveGPU struct {
+		mu      sync.Mutex
+		tensors map[*tensor.LazyGPUData]struct{}
+	}
+
 	// Memory tracking
 	memoryStats struct {
 		totalAllocatedBytes uint64
@@ -130,18 +175,50 @@ type Backend struct {
 }
 
 // New creates a new WebGPU backend.
-// Returns an error if WebGPU is not available or initialization fails.
+//
+// Backend selection via GOGPU_GRAPHICS_API environment variable (gogpu ecosystem standard):
+//
+//	GOGPU_GRAPHICS_API=auto      (default) wgpu selects best available
+//	GOGPU_GRAPHICS_API=vulkan    force Vulkan
+//	GOGPU_GRAPHICS_API=dx12      force DirectX 12
+//	GOGPU_GRAPHICS_API=metal     force Metal
+//	GOGPU_GRAPHICS_API=gl        force OpenGL/ES
+//	GOGPU_GRAPHICS_API=software  software compute — no GPU required (CI, testing)
 func New() (*Backend, error) {
-	// Create WebGPU instance. Vulkan is the primary compute backend —
-	// stable across all platforms and GPU vendors.
+	api := os.Getenv("GOGPU_GRAPHICS_API")
+
+	if api == "software" {
+		return newSoftwareBackend()
+	}
+
+	backends := wgpu.BackendsPrimary
+	switch api {
+	case "vulkan", "vk":
+		backends = wgpu.BackendsVulkan
+	case "dx12", "d3d12":
+		backends = wgpu.BackendsDX12
+	case "metal":
+		backends = wgpu.BackendsMetal
+	case "gl", "gles":
+		backends = wgpu.BackendsGL
+	}
+
+	b, err := newHardwareBackend(backends)
+	if err != nil && api == "" {
+		// Auto mode: hardware failed, fall back to software.
+		return newSoftwareBackend()
+	}
+	return b, err
+}
+
+func newHardwareBackend(backends wgpu.Backends) (*Backend, error) {
 	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{
-		Backends: wgpu.BackendsVulkan,
+		Backends: backends,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
 	}
 
-	// Request adapter (GPU).
 	adapter, err := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
 		PowerPreference: gputypes.PowerPreferenceHighPerformance,
 	})
@@ -150,10 +227,8 @@ func New() (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to request adapter: %w", err)
 	}
 
-	// Get adapter info. In gogpu/wgpu, Info() returns AdapterInfo by value.
 	info := adapter.Info()
 
-	// Request device.
 	device, err := adapter.RequestDevice(nil)
 	if err != nil {
 		adapter.Release()
@@ -161,7 +236,6 @@ func New() (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to request device: %w", err)
 	}
 
-	// Get default queue. In gogpu/wgpu the queue is accessed via device.Queue().
 	queue := device.Queue()
 	if queue == nil {
 		device.Release()
@@ -170,6 +244,46 @@ func New() (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to get queue")
 	}
 
+	return newBackendFromDevice(instance, adapter, device, queue, &info)
+}
+
+// newSoftwareBackend creates a Backend using the software HAL — CPU-based
+// compute with SPIR-V interpreter. No GPU hardware required.
+// Used when GOGPU_GRAPHICS_API=software (CI, testing, headless).
+func newSoftwareBackend() (*Backend, error) {
+	api := software.API{}
+	inst, err := api.CreateInstance(nil)
+	if err != nil {
+		return nil, fmt.Errorf("webgpu: software CreateInstance: %w", err)
+	}
+	adapters := inst.EnumerateAdapters(nil)
+	if len(adapters) == 0 {
+		inst.Destroy()
+		return nil, fmt.Errorf("webgpu: software backend: no adapters")
+	}
+	openDev, err := adapters[0].Adapter.Open(0, gputypes.DefaultLimits())
+	if err != nil {
+		inst.Destroy()
+		return nil, fmt.Errorf("webgpu: software Open: %w", err)
+	}
+
+	device, err := wgpu.NewDeviceFromHAL(
+		openDev.Device, openDev.Queue,
+		gputypes.Features(0), gputypes.DefaultLimits(),
+		"born-software",
+	)
+	if err != nil {
+		openDev.Device.Destroy()
+		inst.Destroy()
+		return nil, fmt.Errorf("webgpu: software NewDeviceFromHAL: %w", err)
+	}
+
+	queue := device.Queue()
+	info := wgpu.AdapterInfo{Name: "Software Renderer", DeviceType: gputypes.DeviceTypeCPU}
+	return newBackendFromDevice(nil, nil, device, queue, &info)
+}
+
+func newBackendFromDevice(instance *wgpu.Instance, adapter *wgpu.Adapter, device *wgpu.Device, queue *wgpu.Queue, info *wgpu.AdapterInfo) (*Backend, error) {
 	b := &Backend{
 		instance:    instance,
 		adapter:     adapter,
@@ -177,10 +291,20 @@ func New() (*Backend, error) {
 		queue:       queue,
 		shaders:     make(map[string]*wgpu.ShaderModule),
 		pipelines:   make(map[string]pipelineEntry),
-		adapterInfo: &info,
+		adapterInfo: info,
 		bufferPool:  NewBufferPool(device),
-		LazyMode:    true, // Default: lazy mode enabled for optimal performance
+		LazyMode:    true,
+		gpuPool:     nil,
+		scalarCache: make(map[uint64]*GPUTensor),
 	}
+	b.liveGPU.tensors = make(map[*tensor.LazyGPUData]struct{}, 1024)
+
+	pool := NewTieredPool(device)
+	pool.onOOM = func() {
+		b.flushCommands()
+		b.device.Poll(wgpu.PollWait)
+	}
+	b.gpuPool = pool
 
 	return b, nil
 }
@@ -227,42 +351,64 @@ func (b *Backend) flushCommands() {
 		panic("webgpu: flushCommands: submit failed: " + err.Error())
 	}
 
-	// Release intermediate resources now that Submit has registered them
-	// with the GPU's destroy queue (lastSubmissionIndex updated). wgpu defers
-	// the actual HAL destruction until the GPU completes this submission index.
+	// Return result buffers to pool for reuse (ADR-016) now that Submit
+	// has registered them with wgpu's Phase 2 tracked refs. Pool marks them
+	// as free; next Acquire reuses them without device.CreateBuffer().
+	// Params/uniform buffers and bind groups are NOT pooled — released directly.
 	for _, p := range pending {
 		for _, buf := range p.resultBufs {
-			buf.Release()
+			b.gpuPool.Release(buf)
 		}
 		for _, bg := range p.bindGroups {
 			bg.Release()
 		}
 	}
+
+	// Periodic GPU drain: every 8th flush, block until GPU completes all
+	// pending work so DestroyQueue.Triage can free HAL buffers. Without this,
+	// PollPoll (non-blocking) may never drain completions during a tight
+	// compute loop, and all buffers stay HAL-alive until ReclaimMemory.
+	// 8 flushes × 32 ops/flush = 256 ops between drains — balances throughput
+	// and memory on constrained iGPUs (5GB Iris Xe).
+	b.device.Poll(wgpu.PollPoll)
 }
 
 // Release releases all WebGPU resources.
 // Must be called when the backend is no longer needed.
 func (b *Backend) Release() {
-	// Flush any accumulated but not-yet-submitted encoder before shutdown.
-	// This prevents resource-leaked buffers from the active batch.
-	b.pendingMu.Lock()
-	b.finishActiveBatchLocked()
-	b.pendingMu.Unlock()
+	// Phase 1: Submit all pending GPU commands so resources are no longer
+	// referenced by command buffers. Releases BindGroups + transient buffers.
+	b.flushCommands()
 
-	// Ensure GPU is fully idle before destroying resources.
-	// Without this, rapid create/destroy cycles (e.g. test suites) can
-	// overwhelm the driver on iGPUs with shared memory.
-	if b.device != nil {
-		b.device.Poll(wgpu.PollWait)
+	// Phase 2: Release all tracked GPU resources back to pool.
+	b.liveGPU.mu.Lock()
+	toRelease := make([]*tensor.LazyGPUData, 0, len(b.liveGPU.tensors))
+	for l := range b.liveGPU.tensors {
+		toRelease = append(toRelease, l)
+	}
+	b.liveGPU.tensors = nil
+	b.liveGPU.mu.Unlock()
+	for _, l := range toRelease {
+		l.Release()
 	}
 
-	// Release cached input buffers before device teardown.
 	b.clearInputBufferCache()
+
+	b.scalarCacheMu.Lock()
+	for _, t := range b.scalarCache {
+		t.Release()
+	}
+	b.scalarCache = nil
+	b.scalarCacheMu.Unlock()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Release buffer pool
+	// Phase 3: Destroy pools — actually release GPU buffers to wgpu.
+	if b.gpuPool != nil {
+		b.gpuPool.Destroy()
+		b.gpuPool = nil
+	}
 	if b.bufferPool != nil {
 		b.bufferPool.Clear()
 		b.bufferPool = nil
@@ -283,6 +429,13 @@ func (b *Backend) Release() {
 		s.Release()
 	}
 	b.shaders = nil
+
+	// Phase 4: Block until GPU processes all deferred destructions.
+	// Without this, the Vulkan driver may not reclaim memory before device
+	// teardown, causing vkMapMemory failures in subsequent tests.
+	if b.device != nil {
+		b.device.Poll(wgpu.PollWait)
+	}
 
 	// Release WebGPU objects.
 	// Note: Queue is owned by Device in gogpu/wgpu and released via device.Release().
@@ -324,12 +477,20 @@ func (b *Backend) AdapterInfo() *wgpu.AdapterInfo {
 // and also returns false if the underlying driver panics (e.g., missing GPU
 // on CI runners). The panic recovery prevents process crashes on headless
 // systems such as GitHub Actions Windows runners that have no Vulkan driver.
-func IsAvailable() (available bool) {
-	// Recover from panics that originate inside the wgpu DLL on machines
-	// with no GPU or no Vulkan driver installed. Without this guard,
-	// CreateInstance/RequestAdapter can raise an access violation that
-	// propagates as a Go panic and crashes the entire test binary before
-	// any t.Skip() can execute.
+func IsAvailable() bool {
+	ch := make(chan bool, 1)
+	go func() {
+		ch <- isAvailableProbe()
+	}()
+	select {
+	case result := <-ch:
+		return result
+	case <-time.After(5 * time.Second):
+		return false
+	}
+}
+
+func isAvailableProbe() (available bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			available = false
@@ -342,8 +503,6 @@ func IsAvailable() (available bool) {
 	}
 	defer backend.Release()
 
-	// Verify compute shaders actually work by creating a minimal pipeline.
-	// Software renderers pass adapter/device creation but fail here.
 	shader, err := backend.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{
 		Label: "availability-check",
 		WGSL:  "@compute @workgroup_size(1) fn main() {}",
@@ -498,7 +657,13 @@ func (b *Backend) Where(condition, x, y *tensor.RawTensor) *tensor.RawTensor {
 // weight: [num_embeddings, embedding_dim], indices: int32 tensor.
 // Returns: [...indices_shape, embedding_dim].
 func (b *Backend) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor {
-	result, err := b.runEmbedding(weight, indices)
+	var result *tensor.RawTensor
+	var err error
+	if b.LazyMode {
+		result, err = b.runEmbeddingLazy(weight, indices)
+	} else {
+		result, err = b.runEmbedding(weight, indices)
+	}
 	if err != nil {
 		panic("webgpu: Embedding: " + err.Error())
 	}
@@ -506,21 +671,20 @@ func (b *Backend) Embedding(weight, indices *tensor.RawTensor) *tensor.RawTensor
 }
 
 // ReadGPUBuffer implements tensor.LazyBackend interface.
-// Reads data from a GPU staging buffer (MapRead | CopyDst) to CPU memory.
-// bufferPtr must point to a *wgpu.Buffer created with BufferUsageMapRead.
+// Reads data from a GPU Storage buffer (Storage | CopySrc) to CPU memory.
+// bufferPtr must point to a *wgpu.Buffer created with BufferUsageStorage|CopySrc.
 //
-// The lazy path (runBinaryOpLazy, runUnaryOpLazy, etc.) finishes each encoder
-// into a CommandBuffer and queues it in b.pending without submitting. On the
-// first Data() call, ReadGPUBuffer flushes the entire pending queue in a single
-// queue.Submit, collapsing N individual submits (~500 µs each) into one.
+// Deferred staging: a temporary MapRead buffer is created here on demand,
+// the result buffer is copied into it, and the staging buffer is released
+// immediately after readback. This means NO staging buffers exist during
+// op execution — only one result buffer per lazy tensor.
 //
 // Sequence:
-//  1. flushCommands() — submit all pending command buffers in one batch.
+//  1. flushCommands() — submit all pending compute command buffers in one batch.
 //  2. Poll(PollWait) — block until the GPU completes all submitted commands.
-//     Required: Map's internal Poll(PollPoll) may return a stale fence when
-//     multiple submissions are outstanding (DX12/Vulkan ordering artifact).
-//  3. Map the staging buffer (blocks until GPU fence resolves).
-//  4. Copy data to CPU slice, Unmap.
+//  3. Create a transient MapRead staging buffer.
+//  4. CopyBufferToBuffer(resultBuf → staging), Submit, Poll.
+//  5. Map staging, copy bytes to CPU slice, Unmap, release staging.
 func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, error) {
 	b.flushCommands()
 
@@ -532,22 +696,48 @@ func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, 
 		fmt.Fprintln(os.Stderr, "[ReadGPUBuffer] Poll(PollWait) done")
 	}
 
-	buffer := (*wgpu.Buffer)(bufferPtr)
+	resultBuf := (*wgpu.Buffer)(bufferPtr)
 
+	// Create a transient MapRead staging buffer — only at readback time.
+	stagingBuf, err := b.device.CreateBuffer(&wgpu.BufferDescriptor{
+		Usage: gputypes.BufferUsageMapRead | gputypes.BufferUsageCopyDst,
+		Size:  size,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: create staging: %w", err)
+	}
+	defer stagingBuf.Release()
+
+	// Copy result buffer → staging in a dedicated one-shot encoder.
+	enc, err := b.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: create encoder: %w", err)
+	}
+	enc.CopyBufferToBuffer(resultBuf, 0, stagingBuf, 0, size)
+	cmdBuf, err := enc.Finish()
+	if err != nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: finish encoder: %w", err)
+	}
+	if _, err := b.queue.Submit(cmdBuf); err != nil {
+		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: submit copy: %w", err)
+	}
+	b.device.Poll(wgpu.PollWait)
+
+	// Map staging buffer and copy bytes to CPU.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if debugReadGPU {
 		fmt.Fprintln(os.Stderr, "[ReadGPUBuffer] Map start")
 	}
-	if err := buffer.Map(ctx, wgpu.MapModeRead, 0, size); err != nil {
+	if err := stagingBuf.Map(ctx, wgpu.MapModeRead, 0, size); err != nil {
 		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: map failed (size=%d): %w", size, err)
 	}
 	if debugReadGPU {
 		fmt.Fprintln(os.Stderr, "[ReadGPUBuffer] Map done")
 	}
-	defer func() { _ = buffer.Unmap() }()
+	defer func() { _ = stagingBuf.Unmap() }()
 
-	mappedRange, err := buffer.MappedRange(0, size)
+	mappedRange, err := stagingBuf.MappedRange(0, size)
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: ReadGPUBuffer: mapped range (size=%d): %w", size, err)
 	}
@@ -570,12 +760,131 @@ func (b *Backend) ReadGPUBuffer(bufferPtr unsafe.Pointer, size uint64) ([]byte, 
 var debugReadGPU = os.Getenv("BORN_DEBUG_GPU") == "1"
 
 // ReleaseGPUBuffer implements tensor.LazyBackend interface.
-// Releases a GPU buffer when no longer needed.
-// bufferPtr must be *wgpu.Buffer.
+// Returns the buffer to the GPU pool for reuse (ADR-016 ExclusivePool).
 func (b *Backend) ReleaseGPUBuffer(bufferPtr unsafe.Pointer) {
 	buffer := (*wgpu.Buffer)(bufferPtr)
 	if buffer != nil {
-		buffer.Release()
+		b.gpuPool.Release(buffer)
+	}
+}
+
+// DeferReleaseGPUBuffer implements tensor.LazyBackend interface.
+// Returns the buffer to pool for reuse. If no encoder is active (no pending
+// command buffers reference the buffer), returns immediately. Otherwise queues
+// for return after the next flushCommands/Submit.
+func (b *Backend) DeferReleaseGPUBuffer(bufferPtr unsafe.Pointer) {
+	buffer := (*wgpu.Buffer)(bufferPtr)
+	if buffer == nil {
+		return
+	}
+	b.pendingMu.Lock()
+	if b.activeBatch.encoder == nil && len(b.pending) == 0 {
+		// No active encoder, no pending submissions — buffer is not referenced
+		// by any command buffer. Safe to return to pool immediately.
+		b.pendingMu.Unlock()
+		b.gpuPool.Release(buffer)
+		return
+	}
+	b.activeBatch.resultBufs = append(b.activeBatch.resultBufs, buffer)
+	b.pendingMu.Unlock()
+}
+
+// TrainingScope tracks intermediate GPU tensors produced during a training step
+// for bulk release after the step completes. This is the primary mechanism for
+// explicit GPU memory lifecycle management under ADR-015.
+//
+// Usage:
+//
+//	scope := webgpu.NewTrainingScope()
+//	defer scope.Release()
+//	// ... forward + backward pass, call scope.Track(t) on intermediates ...
+type TrainingScope struct {
+	tracked []*tensor.RawTensor
+}
+
+// NewTrainingScope creates a TrainingScope for tracking intermediate tensors.
+func NewTrainingScope() *TrainingScope {
+	return &TrainingScope{
+		tracked: make([]*tensor.RawTensor, 0, 256),
+	}
+}
+
+// Track registers a tensor for release when Release is called.
+// Safe to call with nil (no-op). Does not take ownership — the caller is
+// responsible for not using the tensor after calling scope.Release.
+func (s *TrainingScope) Track(t *tensor.RawTensor) {
+	if t == nil {
+		return
+	}
+	s.tracked = append(s.tracked, t)
+}
+
+// Release calls ReleaseGPU on all tracked tensors and resets the scope for reuse.
+// Idempotent — safe to call multiple times. The GPU buffers are enqueued for
+// deferred destruction via wgpu's DestroyQueue and released after the next
+// queue.Submit completes.
+func (s *TrainingScope) Release() {
+	for _, t := range s.tracked {
+		t.ReleaseGPU()
+	}
+	s.tracked = s.tracked[:0]
+}
+
+// RegisterLiveGPU registers a LazyGPUData in the backend's live tensor set.
+func (b *Backend) RegisterLiveGPU(l *tensor.LazyGPUData) {
+	b.liveGPU.mu.Lock()
+	b.liveGPU.tensors[l] = struct{}{}
+	b.liveGPU.mu.Unlock()
+}
+
+// UnregisterLiveGPU removes a LazyGPUData from the live tensor set.
+func (b *Backend) UnregisterLiveGPU(l *tensor.LazyGPUData) {
+	b.liveGPU.mu.Lock()
+	delete(b.liveGPU.tensors, l)
+	b.liveGPU.mu.Unlock()
+}
+
+// FlushGPU submits all pending GPU commands and returns deferred release
+// buffers to pool. Unlike ReclaimMemory, does NOT release live tensors —
+// safe to call between training steps when carry state is alive.
+func (b *Backend) FlushGPU() {
+	b.flushCommands()
+	if b.device != nil {
+		b.device.Poll(wgpu.PollWait)
+	}
+}
+
+// ReclaimMemory implements tensor.MemoryReclaimer.
+// Releases all non-persistent live GPU tensors tracked by the backend,
+// then flushes pending commands and blocks until the GPU completes them.
+// Persistent tensors (optimizer moments, model weights) survive — only
+// transient intermediates (forward pass, NoGrad blocks, masks) are released.
+func (b *Backend) ReclaimMemory() {
+	b.liveGPU.mu.Lock()
+	toRelease := make([]*tensor.LazyGPUData, 0, len(b.liveGPU.tensors))
+	surviving := make(map[*tensor.LazyGPUData]struct{})
+	for l := range b.liveGPU.tensors {
+		if l.IsPersistent() || l.RefCount() > 1 {
+			surviving[l] = struct{}{}
+		} else {
+			toRelease = append(toRelease, l)
+		}
+	}
+	b.liveGPU.tensors = surviving
+	b.liveGPU.mu.Unlock()
+
+	for _, l := range toRelease {
+		l.Release()
+	}
+
+	b.flushCommands()
+	if b.device != nil {
+		b.device.Poll(wgpu.PollWait)
+	}
+
+	// Cleanup pool: deallocate pages unused for 5+ consecutive cycles.
+	if b.gpuPool != nil {
+		b.gpuPool.Cleanup(false)
 	}
 }
 

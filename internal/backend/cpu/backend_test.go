@@ -1,6 +1,7 @@
 package cpu
 
 import (
+	"math"
 	"testing"
 
 	"github.com/born-ml/born/internal/tensor"
@@ -1557,6 +1558,97 @@ func TestCPUBackend_Float32VectorizedOps(t *testing.T) {
 			t.Errorf("Float32 vectorized div failed: got %v, expected %v", result.AsFloat32(), expected)
 		}
 	})
+}
+
+// TestCPUBackend_Sigmoid verifies forward correctness of Sigmoid: σ(x) = 1/(1+exp(-x)).
+func TestCPUBackend_Sigmoid(t *testing.T) {
+	backend := newTestBackend()
+
+	a, _ := tensor.NewRaw(tensor.Shape{5}, tensor.Float32, tensor.CPU)
+	aData := a.AsFloat32()
+	aData[0], aData[1], aData[2], aData[3], aData[4] = -2, -1, 0, 1, 2
+
+	result := backend.Sigmoid(a)
+	actual := result.AsFloat32()
+
+	inputs := []float64{-2, -1, 0, 1, 2}
+	const eps = 1e-5
+	for i, x := range inputs {
+		expected := float32(1.0 / (1.0 + math.Exp(-x)))
+		diff := actual[i] - expected
+		if diff < 0 {
+			diff = -diff
+		}
+		if float64(diff) > eps {
+			t.Errorf("Sigmoid[%d](%g) = %f, want %f", i, x, actual[i], expected)
+		}
+	}
+
+	// Shape must be preserved.
+	if !result.Shape().Equal(tensor.Shape{5}) {
+		t.Errorf("Sigmoid shape = %v, want [5]", result.Shape())
+	}
+}
+
+// TestCPUBackend_Tanh verifies forward correctness of Tanh.
+func TestCPUBackend_Tanh(t *testing.T) {
+	backend := newTestBackend()
+
+	a, _ := tensor.NewRaw(tensor.Shape{5}, tensor.Float32, tensor.CPU)
+	aData := a.AsFloat32()
+	aData[0], aData[1], aData[2], aData[3], aData[4] = -2, -1, 0, 1, 2
+
+	result := backend.Tanh(a)
+	actual := result.AsFloat32()
+
+	inputs := []float64{-2, -1, 0, 1, 2}
+	const eps = 1e-5
+	for i, x := range inputs {
+		expected := float32(math.Tanh(x))
+		diff := actual[i] - expected
+		if diff < 0 {
+			diff = -diff
+		}
+		if float64(diff) > eps {
+			t.Errorf("Tanh[%d](%g) = %f, want %f", i, x, actual[i], expected)
+		}
+	}
+
+	// Tanh(0) must be exactly 0.
+	if actual[2] != 0 {
+		t.Errorf("Tanh(0) = %f, want 0", actual[2])
+	}
+}
+
+// TestCPUBackend_SiLU verifies forward correctness of SiLU: x·σ(x).
+func TestCPUBackend_SiLU(t *testing.T) {
+	backend := newTestBackend()
+
+	a, _ := tensor.NewRaw(tensor.Shape{5}, tensor.Float32, tensor.CPU)
+	aData := a.AsFloat32()
+	aData[0], aData[1], aData[2], aData[3], aData[4] = -2, -1, 0, 1, 2
+
+	result := backend.SiLU(a)
+	actual := result.AsFloat32()
+
+	inputs := []float64{-2, -1, 0, 1, 2}
+	const eps = 1e-5
+	for i, x := range inputs {
+		sig := 1.0 / (1.0 + math.Exp(-x))
+		expected := float32(x * sig)
+		diff := actual[i] - expected
+		if diff < 0 {
+			diff = -diff
+		}
+		if float64(diff) > eps {
+			t.Errorf("SiLU[%d](%g) = %f, want %f", i, x, actual[i], expected)
+		}
+	}
+
+	// SiLU(0) must be exactly 0 (0 * 0.5 = 0).
+	if actual[2] != 0 {
+		t.Errorf("SiLU(0) = %f, want 0", actual[2])
+	}
 }
 
 // TestSelfOperandAliasing verifies that binary ops with the same tensor as both

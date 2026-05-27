@@ -77,13 +77,14 @@ func (tb *tensorBuffer) isUnique() bool {
 // It uses reference-counted shared buffers for Copy-on-Write semantics.
 // Supports lazy GPU evaluation: data is transferred from GPU only when Data() is called.
 type RawTensor struct {
-	buffer  *tensorBuffer // Shared reference-counted buffer
-	shape   Shape         // Tensor dimensions
-	stride  []int         // Memory strides (row-major)
-	dtype   DataType      // Runtime type information
-	device  Device        // Compute device
-	offset  int           // Offset for slicing/views
-	gpuData *LazyGPUData  // Lazy GPU data (nil for CPU tensors)
+	buffer          *tensorBuffer // Shared reference-counted buffer
+	shape           Shape         // Tensor dimensions
+	stride          []int         // Memory strides (row-major)
+	dtype           DataType      // Runtime type information
+	device          Device        // Compute device
+	offset          int           // Offset for slicing/views
+	gpuData         *LazyGPUData  // Lazy GPU data (nil for CPU tensors)
+	gpuPersistDefer bool          // Deferred persistence: applied when gpuData is first set
 }
 
 // NewRaw creates a new RawTensor with the given shape and type.
@@ -141,14 +142,22 @@ func (r *RawTensor) ByteSize() int {
 // WARNING: Direct access to underlying memory. Use with caution.
 func (r *RawTensor) Data() []byte {
 	// Lazy GPU realization: transfer data from GPU if not already done
-	if r.gpuData != nil && !r.gpuData.IsRealized() {
+	if r.gpuData != nil && !r.gpuData.IsRealized() { //nolint:nestif // GPU realization requires nested error handling
 		data, err := r.gpuData.Realize()
 		if err != nil {
 			panic("tensor: failed to realize GPU data: " + err.Error())
 		}
 		if data != nil {
+			// Lazy CPU buffer allocation — only when GPU data is actually read back.
+			if r.buffer == nil {
+				r.buffer = newTensorBuffer(r.NumElements() * r.dtype.Size())
+			}
 			copy(r.buffer.data[r.offset:], data)
 		}
+	}
+	// Lazy CPU buffer allocation for non-GPU tensors that somehow have nil buffer.
+	if r.buffer == nil {
+		r.buffer = newTensorBuffer(r.NumElements() * r.dtype.Size())
 	}
 	return r.buffer.data[r.offset:]
 }
@@ -167,8 +176,46 @@ func (r *RawTensor) GPUData() *LazyGPUData {
 
 // SetGPUData sets the lazy GPU data reference.
 // This is used by GPU backends to create lazy tensors.
+// If SetGPUPersistent(true) was called before gpuData existed, the deferred
+// flag is applied now.
 func (r *RawTensor) SetGPUData(gpuData *LazyGPUData) {
 	r.gpuData = gpuData
+	if r.gpuPersistDefer && gpuData != nil {
+		gpuData.SetPersistent(true)
+	}
+}
+
+// ReleaseGPU schedules the GPU buffer for release after the next GPU flush.
+// The buffer is NOT released immediately because it may still be referenced
+// by pending command buffers in the shared encoder batch. Instead, it is
+// queued via the LazyBackend's deferred release mechanism.
+//
+// After this call, GPU data is detached from this tensor — subsequent ops
+// will not use the old buffer. The actual driver-level release happens
+// after queue.Submit completes in flushCommands.
+//
+// Safe to call multiple times (idempotent). Safe on CPU-only tensors (no-op).
+//
+// Follows GoMLX FinalizeAll pattern: explicit lifecycle management at known
+// points (optimizer step, tensor replacement) instead of relying on Go GC.
+func (r *RawTensor) ReleaseGPU() {
+	if r.gpuData != nil {
+		r.gpuData.ScheduleRelease()
+		r.gpuData = nil
+	}
+}
+
+// SetGPUPersistent marks the tensor's GPU data as persistent, surviving
+// ReclaimMemory calls. Use for optimizer moments and any tensor that
+// must persist across training steps.
+//
+// If gpuData is nil (tensor is CPU-only or not yet uploaded), the flag is
+// deferred and applied automatically when SetGPUData is called later.
+func (r *RawTensor) SetGPUPersistent(persistent bool) {
+	r.gpuPersistDefer = persistent
+	if r.gpuData != nil {
+		r.gpuData.SetPersistent(persistent)
+	}
 }
 
 // AsFloat32 interprets the data as []float32.
@@ -258,43 +305,46 @@ func (r *RawTensor) AsBool() []bool {
 //	b := a.Clone()  // Shares buffer with a (just increments refCount)
 //	c := a.Add(b)   // May use inplace if refCount allows
 func (r *RawTensor) Clone() *RawTensor {
-	r.buffer.addRef() // Increment reference count
+	if r.buffer != nil {
+		r.buffer.addRef()
+	}
+	if r.gpuData != nil {
+		r.gpuData.AddRef()
+	}
 	return &RawTensor{
-		buffer:  r.buffer, // Share the same buffer
+		buffer:  r.buffer,
 		shape:   r.shape.Clone(),
-		stride:  append([]int(nil), r.stride...), // Copy strides
+		stride:  append([]int(nil), r.stride...),
 		dtype:   r.dtype,
 		device:  r.device,
 		offset:  r.offset,
-		gpuData: r.gpuData, // Share GPU data reference
+		gpuData: r.gpuData,
 	}
 }
 
 // Release decrements the reference count and deallocates if it reaches 0.
-// This is called automatically when a tensor is no longer needed (e.g., by GC finalizer).
 func (r *RawTensor) Release() {
-	r.buffer.release()
+	if r.buffer != nil {
+		r.buffer.release()
+	}
 }
 
 // IsUnique returns true if this tensor is the only reference to the buffer.
-// When true, backends can perform inplace operations for better performance.
+// GPU-only tensors with nil CPU buffer are always "unique" (no shared CPU data).
 func (r *RawTensor) IsUnique() bool {
+	if r.buffer == nil {
+		return true
+	}
 	return r.buffer.isUnique()
 }
 
 // ForceNonUnique temporarily increases refCount to prevent inplace modifications.
-// Returns a cleanup function that MUST be called to restore refCount (use defer).
-//
-// This is used by autodiff backend to preserve original input values:
-// inplace optimizations would corrupt the computational graph.
-//
-// Example:
-//
-//	defer tensor.ForceNonUnique()()
-//	result := backend.Mul(tensor, other)  // No inplace modification!
 func (r *RawTensor) ForceNonUnique() func() {
-	r.buffer.addRef() // Increment refcount
+	if r.buffer == nil {
+		return func() {}
+	}
+	r.buffer.addRef()
 	return func() {
-		r.buffer.release() // Decrement refcount
+		r.buffer.release()
 	}
 }

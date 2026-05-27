@@ -29,9 +29,12 @@ func (b *Backend) getOrCreateEncoderLocked() *wgpu.CommandEncoder {
 	return b.activeBatch.encoder
 }
 
-// finishActiveBatchLocked finalizes the active encoder — appending all pending
-// CopyBufferToBuffer entries, finishing the encoder into a CommandBuffer, and
-// appending it to b.pending. Resets activeBatch to zero value.
+// finishActiveBatchLocked finalizes the active encoder — finishing it into a
+// CommandBuffer and appending it to b.pending. Resets activeBatch to zero value.
+//
+// No CopyBufferToBuffer entries are emitted here: with deferred staging, result
+// buffers are owned by LazyGPUData and the copy to a staging buffer happens
+// on-demand inside ReadGPUBuffer when Data() is accessed.
 //
 // MUST be called with pendingMu held. Safe to call when activeBatch.encoder is
 // nil (no-op).
@@ -40,15 +43,7 @@ func (b *Backend) finishActiveBatchLocked() {
 		return
 	}
 
-	enc := b.activeBatch.encoder
-
-	// Append all buffered copies AFTER all compute passes and before Finish().
-	// wgpu requires CopyBufferToBuffer to be outside a compute pass scope.
-	for _, cp := range b.activeBatch.copies {
-		enc.CopyBufferToBuffer(cp.src, 0, cp.dst, 0, cp.size)
-	}
-
-	cmdBuffer, err := enc.Finish()
+	cmdBuffer, err := b.activeBatch.encoder.Finish()
 	if err != nil {
 		// On Finish error, release everything to avoid leaks and panic loudly.
 		for _, buf := range b.activeBatch.resultBufs {
@@ -65,143 +60,152 @@ func (b *Backend) finishActiveBatchLocked() {
 		cmdBuffer:  cmdBuffer,
 		resultBufs: b.activeBatch.resultBufs,
 		bindGroups: b.activeBatch.bindGroups,
+		lazyDatas:  b.activeBatch.lazyDatas,
 	})
 
 	b.activeBatch = encoderBatch{}
 }
 
 // addComputePassToEncoder encodes a single compute dispatch into the shared
-// encoder accumulator. It replaces the per-op pattern of:
+// encoder accumulator.
 //
-//	encoder := CreateCommandEncoder()
-//	computePass := encoder.BeginComputePass()
-//	... SetPipeline / SetBindGroup / Dispatch / End ...
-//	finishAndQueueLazy(encoder, resultBuf, stagingBuf, ...)
+// Deferred staging: resultBuf (Storage|CopySrc) is passed directly to
+// createLazyResult and owned by the returned LazyGPUData. No staging buffer
+// is created here — the MapRead staging buffer is allocated on demand inside
+// ReadGPUBuffer when Data() is called on the lazy tensor.
 //
-// The staging buffer copy is deferred to finishActiveBatchLocked so that all
-// copies in the batch are emitted after all compute passes (wgpu requirement).
+// To prevent the GC from releasing resultBuf (via LazyGPUData finalizer) while
+// the command buffer referencing it is still in the pending queue, the
+// LazyGPUData pointer is added to activeBatch.lazyDatas. After Submit the
+// reference is dropped, allowing GC to reclaim it normally.
 //
-// Returns a lazy RawTensor backed by stagingBuf, exactly as finishAndQueueLazy
-// did. The caller must NOT defer-release stagingBuf — ownership transfers to
-// the lazy tensor.
-//
-// res.buffers and res.bindGroups follow the same ownership rules as
-// finishAndQueueLazy: they must NOT be defer-released by the caller.
-//
+// res.buffers (params + transient input copies) are tracked for post-Submit
+// release. res.bindGroups must NOT be defer-released in caller.
 func (b *Backend) addComputePassToEncoder(
 	pipeline *wgpu.ComputePipeline,
 	bg *wgpu.BindGroup,
 	workgroupsX, workgroupsY, workgroupsZ uint32,
 	resultBuf *wgpu.Buffer,
-	stagingBuf *wgpu.Buffer,
 	resultSize uint64,
 	shape tensor.Shape,
 	dtype tensor.DataType,
 	res lazyResources,
 ) (*tensor.RawTensor, error) {
+	// Create lazy tensor first (outside the lock) so we have the LazyGPUData
+	// pointer to add to the batch for GC-safety.
+	lazyTensor, err := b.createLazyResult(resultBuf, resultSize, shape, dtype)
+	if err != nil {
+		// createLazyResult already released resultBuf on failure.
+		for _, buf := range res.buffers {
+			buf.Release()
+		}
+		bg.Release()
+		return nil, err
+	}
+	gpuData := lazyTensor.GPUData() // non-nil: just created
+
 	b.pendingMu.Lock()
 
 	enc := b.getOrCreateEncoderLocked()
 
-	computePass, err := enc.BeginComputePass(nil)
-	if err != nil {
+	computePass, cpErr := enc.BeginComputePass(nil)
+	if cpErr != nil {
 		b.pendingMu.Unlock()
 		// Release caller-owned resources on failure.
-		resultBuf.Release()
-		stagingBuf.Release()
+		// resultBuf is now owned by lazyTensor (via LazyGPUData) — do not release here.
 		for _, buf := range res.buffers {
 			buf.Release()
 		}
 		bg.Release()
-		return nil, fmt.Errorf("addComputePassToEncoder: BeginComputePass: %w", err)
+		// lazyTensor will be GC'd and its finalizer will release resultBuf.
+		return nil, fmt.Errorf("addComputePassToEncoder: BeginComputePass: %w", cpErr)
 	}
 	computePass.SetPipeline(pipeline)
 	computePass.SetBindGroup(0, bg, nil)
 	computePass.Dispatch(workgroupsX, workgroupsY, workgroupsZ)
-	if err := computePass.End(); err != nil {
+	if endErr := computePass.End(); endErr != nil {
 		b.pendingMu.Unlock()
-		resultBuf.Release()
-		stagingBuf.Release()
 		for _, buf := range res.buffers {
 			buf.Release()
 		}
 		bg.Release()
-		panic(fmt.Sprintf("webgpu: addComputePassToEncoder: compute pass End: %v", err))
+		panic(fmt.Sprintf("webgpu: addComputePassToEncoder: compute pass End: %v", endErr))
 	}
 
-	// Record the copy from resultBuf → stagingBuf to be emitted before Finish.
-	b.activeBatch.copies = append(b.activeBatch.copies, bufferCopyEntry{
-		src:  resultBuf,
-		dst:  stagingBuf,
-		size: resultSize,
-	})
-
-	// Track all resources for post-Submit release.
-	// resultBuf is the intermediate storage buffer; it must stay alive until Submit.
-	b.activeBatch.resultBufs = append(b.activeBatch.resultBufs, resultBuf)
+	// Track params + transient input copies for post-Submit release.
+	// Track gpuData (result) + res.lazyDatas (inputs) to prevent GC from
+	// running their finalizers and releasing the referenced buffers before Submit.
 	b.activeBatch.resultBufs = append(b.activeBatch.resultBufs, res.buffers...)
 	b.activeBatch.bindGroups = append(b.activeBatch.bindGroups, bg)
 	b.activeBatch.bindGroups = append(b.activeBatch.bindGroups, res.bindGroups...)
+	b.activeBatch.lazyDatas = append(b.activeBatch.lazyDatas, gpuData)
+	b.activeBatch.lazyDatas = append(b.activeBatch.lazyDatas, res.lazyDatas...)
 	b.activeBatch.count++
-	count := b.activeBatch.count
+	// Track memory: resultBuf only (staging created on demand in ReadGPUBuffer).
+	b.activeBatch.allocBytes += resultSize
+	for range res.buffers {
+		b.activeBatch.allocBytes += 64 // params are typically 16-64 bytes
+	}
 
-	// Auto-flush at threshold to prevent Windows TDR timeout.
-	// finishActiveBatchLocked moves the completed encoder to b.pending; then
-	// flushCommands submits all pending in one queue.Submit.
-	if count >= maxPendingBeforeFlush {
+	// Auto-flush on EITHER count threshold (TDR safety) OR memory threshold (OOM safety).
+	shouldFlush := b.activeBatch.count >= maxPendingBeforeFlush || b.activeBatch.allocBytes >= maxBatchAllocBytes
+
+	if shouldFlush {
 		b.finishActiveBatchLocked()
 	}
 
 	b.pendingMu.Unlock()
 
-	// Auto-flush: if we just sealed the batch, submit it now.
-	// (count >= threshold was handled inside the lock; flushCommands re-checks
-	// and is a fast no-op if there is nothing to flush.)
-	if count >= maxPendingBeforeFlush {
+	if shouldFlush {
 		b.flushCommands()
 	}
 
-	return b.createLazyResult(stagingBuf, resultSize, shape, dtype)
+	return lazyTensor, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Input buffer cache (Part 1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// getOrCreateInputBuffer returns a GPU storage buffer for the given CPU tensor,
-// creating and caching it on first access. Subsequent calls with the same
-// *RawTensor pointer return the cached buffer without re-uploading.
+// getOrCreateInputBuffer returns a GPU storage buffer for the given tensor.
 //
-// ONLY CPU tensors (t.GPUData() == nil) are eligible for caching. Lazy GPU
-// tensors are transient intermediates — they always go through copyGPUBuffer
-// with no caching, identical to the old createBufferFromTensor path.
+// For CPU tensors (t.GPUData() == nil): creates and caches a Storage|CopySrc
+// buffer on first access. Subsequent calls return the cached buffer without
+// re-uploading. Cached buffers are never released by finishActiveBatchLocked
+// — they are released in clearInputBufferCache() from Backend.Release().
 //
-// Cached buffers are NEVER added to lazyResources.buffers and are therefore
-// never released by finishActiveBatchLocked. They are released in
-// clearInputBufferCache(), which is called from Backend.Release().
+// For lazy GPU tensors (t.GPUData() != nil && !IsRealized()): returns the
+// existing result buffer directly (cached:true), without any GPU→GPU copy.
+// The result buffer is Storage|CopySrc and can be bound directly as a
+// compute shader input. Ownership remains with LazyGPUData.
 //
 // Thread-safe: uses a separate RWMutex (inputBufferCache.mu) so cache reads
 // do not contend with pendingMu.
-func (b *Backend) getOrCreateInputBuffer(t *tensor.RawTensor) *wgpu.Buffer {
-	// Lazy (GPU-backed) tensors: cannot cache — they are transient results whose
-	// staging buffer will be released after the lazy tensor is read. Always
-	// perform the GPU→GPU copy path, same as before.
+// inputBufferResult holds the result of getOrCreateInputBuffer.
+type inputBufferResult struct {
+	buffer  *wgpu.Buffer
+	cached  bool                // true = owned by cache or LazyGPUData; false = caller must release
+	gpuData *tensor.LazyGPUData // non-nil for lazy GPU tensors; must be tracked for GC-safety
+}
+
+func (b *Backend) getOrCreateInputBuffer(t *tensor.RawTensor) inputBufferResult {
 	if gpuData := t.GPUData(); gpuData != nil && !gpuData.IsRealized() {
-		existingBuffer := (*wgpu.Buffer)(gpuData.BufferPtr())
-		result := b.copyGPUBuffer(existingBuffer, gpuData.Size())
-		runtime.KeepAlive(gpuData)
-		return result
+		if bp := gpuData.BufferPtr(); bp != nil {
+			existingBuffer := (*wgpu.Buffer)(bp)
+			runtime.KeepAlive(gpuData)
+			return inputBufferResult{buffer: existingBuffer, cached: true, gpuData: gpuData}
+		}
 	}
 
-	// CPU tensor fast path: check cache first.
+	// CPU tensor: check cache.
 	b.inputBufferCache.mu.RLock()
 	if cb, ok := b.inputBufferCache.cache[t]; ok {
 		b.inputBufferCache.mu.RUnlock()
-		return cb.buffer // Cache hit — reuse existing GPU buffer.
+		return inputBufferResult{buffer: cb.buffer, cached: true}
 	}
 	b.inputBufferCache.mu.RUnlock()
 
-	// Cache miss — upload CPU data to a new GPU storage buffer.
+	// Cache miss — upload.
 	buf := b.createBuffer(t.Data(), gputypes.BufferUsageStorage|gputypes.BufferUsageCopySrc)
 	size := uint64(t.ByteSize()) //nolint:gosec // G115: ByteSize is non-negative
 
@@ -209,17 +213,15 @@ func (b *Backend) getOrCreateInputBuffer(t *tensor.RawTensor) *wgpu.Buffer {
 	if b.inputBufferCache.cache == nil {
 		b.inputBufferCache.cache = make(map[*tensor.RawTensor]*cachedBuffer)
 	}
-	// Double-check: another goroutine may have inserted while we were uploading.
-	// If so, release our newly created buffer and return the existing one.
 	if existing, ok := b.inputBufferCache.cache[t]; ok {
 		b.inputBufferCache.mu.Unlock()
 		buf.Release()
-		return existing.buffer
+		return inputBufferResult{buffer: existing.buffer, cached: true}
 	}
 	b.inputBufferCache.cache[t] = &cachedBuffer{buffer: buf, size: size}
 	b.inputBufferCache.mu.Unlock()
 
-	return buf
+	return inputBufferResult{buffer: buf, cached: true}
 }
 
 // clearInputBufferCache releases all cached GPU buffers and clears the cache.
@@ -260,4 +262,3 @@ func (b *Backend) activeBatchCount() int {
 	defer b.pendingMu.Unlock()
 	return b.activeBatch.count
 }
-

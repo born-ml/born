@@ -280,9 +280,9 @@ func TestInputBufferCache_LazyTensorChain(t *testing.T) {
 	copy(cpu.AsFloat32(), []float32{1, 1, 1, 1})
 
 	// Perform first op to populate cache with cpu tensor.
-	lazy1 := backend.Add(cpu, cpu)       // lazy1 = 2
-	lazy2 := backend.Add(lazy1, cpu)     // lazy2 = 3
-	lazy3 := backend.Add(lazy2, cpu)     // lazy3 = 4
+	lazy1 := backend.Add(cpu, cpu)   // lazy1 = 2
+	lazy2 := backend.Add(lazy1, cpu) // lazy2 = 3
+	lazy3 := backend.Add(lazy2, cpu) // lazy3 = 4
 
 	cacheAfterChain := backend.inputBufferCacheSize()
 
@@ -400,10 +400,10 @@ func TestSharedEncoder_MixedOps(t *testing.T) {
 	copy(softmaxInput.AsFloat32(), []float32{1, 2, 3, 4, 5, 6, 7, 8})
 
 	// Enqueue multiple op types WITHOUT any readback.
-	addResult := backend.Add(vec, vec)             // Binary
-	mulResult := backend.Mul(vec, vec)             // Binary
-	expResult := backend.Exp(vec)                  // Unary
-	matmulResult := backend.MatMul(mat4, mat4)     // MatMul
+	addResult := backend.Add(vec, vec)                 // Binary
+	mulResult := backend.Mul(vec, vec)                 // Binary
+	expResult := backend.Exp(vec)                      // Unary
+	matmulResult := backend.MatMul(mat4, mat4)         // MatMul
 	softmaxResult := backend.Softmax(softmaxInput, -1) // Softmax on last dim
 
 	// Now read back all results — triggers a single flush.

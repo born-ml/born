@@ -1,7 +1,7 @@
 # Born ML Framework - Architecture
 
 **Status**: Living Document
-**Last Updated**: 2026-05-17
+**Last Updated**: 2026-05-27
 
 ---
 
@@ -129,13 +129,58 @@ Optional SIMD micro-kernel via `goexperiment.simd` + `simd/archsimd`. 4-row × 1
 
 ## WebGPU Backend
 
-Pure Go GPU backend via [gogpu/wgpu](https://github.com/gogpu/wgpu) — zero CGO, zero runtime dependencies.
+GPU backend via [gogpu/wgpu](https://github.com/gogpu/wgpu) v0.29.0 — triple-backend architecture:
+
+- **Pure Go** (default): `go build ./...` — zero CGO, zero external dependencies
+- **Rust wgpu-native** (WIP): `go build -tags=rust ./...` — Rust wgpu v29 FFI for max performance (runtime FFI incomplete)
+- **Browser WASM**: `GOOS=js GOARCH=wasm go build ./...` — native WebGPU in browsers
+
+Born works with all three backends without code changes.
 
 - **Compute shaders**: Hand-written WGSL (not compiler DSL like Burn's CubeCL)
-- **Batched dispatch**: Lazy ops queue command buffers; single `queue.Submit` on first `Data()` access. Reduces 50+ submits per forward pass to 1.
-- **Buffer pool**: Reuses GPU memory allocations
-- **Pipeline cache**: Caches compiled compute pipelines
-- **Vulkan primary**: `BackendsVulkan` for compute workloads
+- **Shared encoder** (ADR-012): One `CommandEncoder` for N compute passes. GPU utilization 55→80%.
+- **Input buffer cache**: `getOrCreateInputBuffer` — weight matrices uploaded once, reused across forward+backward.
+- **Batched dispatch**: Auto-flush every 128 dispatches. Prevents TDR on iGPUs.
+- **Vulkan primary**: `BackendsVulkan` for compute workloads.
+
+### GPU Memory Architecture (ADR-015/016/017)
+
+```
+┌──────────────────────────────────────────────────────┐
+│  TieredPool — 12 log-spaced buckets from Limits()    │
+│  ┌──────────┬──────────┬──────────┬───────────────┐  │
+│  │ 32KB     │ 74KB     │ 168KB    │ ... │ 256MB   │  │
+│  │ Exclusive│ Exclusive│ Exclusive│     │Exclusive │  │
+│  │ Pool     │ Pool     │ Pool     │     │Pool      │  │
+│  └──────────┴──────────┴──────────┴───────────────┘  │
+│  Acquire(size) → first-fit pool → reuse or allocate  │
+│  Release(buf) → mark free (pool) or destroy (other)  │
+│  Cleanup() → free pages unused for 2+ cycles         │
+└──────────────────────────────────────────────────────┘
+```
+
+**Buffer lifecycle** (4 release points):
+1. **Autodiff tape** — `ClearTape()` releases intermediate outputs
+2. **Backward ops** — gradient buffers released after optimizer step
+3. **Forward intermediates** — `ReclaimMemory()` releases non-persistent tensors
+4. **Optimizer** — moment updates release old buffers
+
+**Tensor.Persist() / Unpersist()** — marks GPU tensors to survive `ReclaimMemory`. Required for any tensor that lives across training steps: carry state, rotary embeddings, model buffers. Without `Persist()`, `ReclaimMemory` destroys all non-parameter tensors with refcount ≤ 1.
+
+### GPU Training Loop
+
+```go
+backend := autodiff.New(webgpu.New())
+
+for step := range steps {
+    output := model.Forward(input)          // GPU lazy ops (no readback)
+    grads := autodiff.Backward(output)      // GPU backward composition
+    optimizer.Step(grads)                   // GPU-native Adam
+    autodiff.ReleaseGradients(grads)        // Free gradient buffers
+    backend.ClearTape()                     // Free tape intermediates
+    reclaimer.ReclaimMemory()               // Free non-persistent GPU tensors
+}
+```
 
 ---
 
@@ -163,6 +208,10 @@ GGUF file → gguf.ParseFile → TensorConverter → models/llama.LoadGGUF
 | Core API over HAL-direct for wgpu | Stability, portability | ADR-005 |
 | Backward via forward composition | GPU-native gradients, Burn alignment | ADR-009 |
 | CPU parallel + GPU batching + SIMD | Performance parity with references | ADR-010 |
+| Shared encoder + buffer cache | Reduce Submit overhead, GPU utilization | ADR-012 |
+| Explicit buffer Release, zero GC | Deterministic GPU memory lifecycle | ADR-015 |
+| ExclusivePool (Burn/CubeCL pattern) | Buffer reuse, zero alloc after warmup | ADR-016 |
+| TieredPool from device.Limits() | Size-class routing, budget enforcement | ADR-017 |
 
 Full ADR list: `docs/dev/ADR-*.md`
 

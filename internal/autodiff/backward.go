@@ -70,3 +70,12 @@ func Backward[T tensor.DType, B BackwardCapable](t *tensor.Tensor[T, B], backend
 	// Compute gradients using tape
 	return tape.Backward(outputGrad, backend)
 }
+
+// ReleaseGradients releases GPU buffers for all gradient tensors in the map.
+// Call after optimizer.Step(grads) — gradient tensors are no longer needed and
+// their GPU buffers should be freed immediately rather than waiting for GC.
+func ReleaseGradients(grads map[*tensor.RawTensor]*tensor.RawTensor) {
+	for _, grad := range grads {
+		grad.ReleaseGPU()
+	}
+}

@@ -38,28 +38,8 @@ func (op *SigmoidOp) Output() *tensor.RawTensor {
 func (op *SigmoidOp) Backward(outputGrad *tensor.RawTensor, backend tensor.Backend) []*tensor.RawTensor {
 	output := op.output
 
-	// Create tensor filled with ones
-	ones, err := tensor.NewRaw(output.Shape(), output.DType(), backend.Device())
-	if err != nil {
-		panic(err)
-	}
-
-	// Fill with ones
-	switch output.DType() {
-	case tensor.Float32:
-		data := ones.AsFloat32()
-		for i := range data {
-			data[i] = 1.0
-		}
-	case tensor.Float64:
-		data := ones.AsFloat64()
-		for i := range data {
-			data[i] = 1.0
-		}
-	}
-
-	// 1 - σ(x)
-	oneMinusSigmoid := backend.Sub(ones, output)
+	// 1 - σ(x) via backend scalar ops (zero CPU allocation, ADR-009).
+	oneMinusSigmoid := backend.MulScalar(backend.AddScalar(output, typedScalar(output.DType(), -1.0)), typedScalar(output.DType(), -1.0))
 
 	// σ(x) * (1 - σ(x))
 	sigmoidDerivative := backend.Mul(output, oneMinusSigmoid)

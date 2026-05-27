@@ -26,7 +26,6 @@ package autodiff
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/born-ml/born/internal/autodiff/ops"
 	"github.com/born-ml/born/internal/tensor"
@@ -56,6 +55,22 @@ func New[B tensor.Backend](backend B) *AutodiffBackend[B] {
 //   - Inspecting recorded operations
 func (b *AutodiffBackend[B]) Tape() *GradientTape {
 	return b.tape
+}
+
+// ClearTape clears the gradient tape and reclaims GPU memory from intermediate
+// tensors. This is the recommended way to clear the tape between training steps
+// instead of calling Tape().Clear() directly. It releases all intermediate GPU
+// buffers recorded during the forward pass, then flushes the GPU command queue
+// and triggers device-side destruction of deferred buffers (ADR-015).
+func (b *AutodiffBackend[B]) ClearTape() {
+	b.tape.Clear()
+	// Flush deferred GPU buffer releases to pool. tape.Clear() calls
+	// DeferReleaseGPUBuffer which queues buffers in activeBatch — without
+	// flushing, they stay there and are never returned to pool for reuse.
+	// Use FlushGPU (not ReclaimMemory) to avoid killing carry state tensors.
+	if flusher, ok := any(b.inner).(interface{ FlushGPU() }); ok {
+		flusher.FlushGPU()
+	}
 }
 
 // Inner returns the wrapped backend for direct access.
@@ -280,39 +295,12 @@ func (b *AutodiffBackend[B]) MaxPool2D(input *tensor.RawTensor, kernelSize, stri
 }
 
 // ReLU applies ReLU activation and records the operation.
+// Delegates to inner backend (GPU shader in LazyMode) instead of CPU loop.
 func (b *AutodiffBackend[B]) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
-	// Forward pass: max(0, x)
-	result, err := tensor.NewRaw(x.Shape(), x.DType(), b.Device())
-	if err != nil {
-		panic(err)
-	}
+	defer x.ForceNonUnique()()
 
-	// Apply ReLU based on dtype
-	switch x.DType() {
-	case tensor.Float32:
-		xData := x.AsFloat32()
-		resData := result.AsFloat32()
-		for i, val := range xData {
-			if val > 0 {
-				resData[i] = val
-			} else {
-				resData[i] = 0
-			}
-		}
+	result := b.inner.ReLU(x)
 
-	case tensor.Float64:
-		xData := x.AsFloat64()
-		resData := result.AsFloat64()
-		for i, val := range xData {
-			if val > 0 {
-				resData[i] = val
-			} else {
-				resData[i] = 0
-			}
-		}
-	}
-
-	// Record operation if tape is recording
 	if b.tape.IsRecording() {
 		op := ops.NewReLUOp(x, result)
 		b.tape.Record(op)
@@ -322,33 +310,12 @@ func (b *AutodiffBackend[B]) ReLU(x *tensor.RawTensor) *tensor.RawTensor {
 }
 
 // Sigmoid applies sigmoid activation: σ(x) = 1 / (1 + exp(-x)).
+// Delegates to inner backend (GPU shader in LazyMode) instead of CPU loop.
 func (b *AutodiffBackend[B]) Sigmoid(x *tensor.RawTensor) *tensor.RawTensor {
-	// Forward pass: σ(x) = 1 / (1 + exp(-x))
-	result, err := tensor.NewRaw(x.Shape(), x.DType(), b.Device())
-	if err != nil {
-		panic(err)
-	}
+	defer x.ForceNonUnique()()
 
-	// Apply Sigmoid based on dtype
-	switch x.DType() {
-	case tensor.Float32:
-		xData := x.AsFloat32()
-		resData := result.AsFloat32()
-		for i, val := range xData {
-			// σ(x) = 1 / (1 + exp(-x))
-			resData[i] = float32(1.0 / (1.0 + math.Exp(float64(-val))))
-		}
+	result := b.inner.Sigmoid(x)
 
-	case tensor.Float64:
-		xData := x.AsFloat64()
-		resData := result.AsFloat64()
-		for i, val := range xData {
-			// σ(x) = 1 / (1 + exp(-x))
-			resData[i] = 1.0 / (1.0 + math.Exp(-val))
-		}
-	}
-
-	// Record operation if tape is recording
 	if b.tape.IsRecording() {
 		op := ops.NewSigmoidOp(x, result)
 		b.tape.Record(op)
@@ -358,31 +325,12 @@ func (b *AutodiffBackend[B]) Sigmoid(x *tensor.RawTensor) *tensor.RawTensor {
 }
 
 // Tanh applies hyperbolic tangent activation.
+// Delegates to inner backend (GPU shader in LazyMode) instead of CPU loop.
 func (b *AutodiffBackend[B]) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
-	// Forward pass: tanh(x)
-	result, err := tensor.NewRaw(x.Shape(), x.DType(), b.Device())
-	if err != nil {
-		panic(err)
-	}
+	defer x.ForceNonUnique()()
 
-	// Apply Tanh based on dtype
-	switch x.DType() {
-	case tensor.Float32:
-		xData := x.AsFloat32()
-		resData := result.AsFloat32()
-		for i, val := range xData {
-			resData[i] = float32(math.Tanh(float64(val)))
-		}
+	result := b.inner.Tanh(x)
 
-	case tensor.Float64:
-		xData := x.AsFloat64()
-		resData := result.AsFloat64()
-		for i, val := range xData {
-			resData[i] = math.Tanh(val)
-		}
-	}
-
-	// Record operation if tape is recording
 	if b.tape.IsRecording() {
 		op := ops.NewTanhOp(x, result)
 		b.tape.Record(op)
@@ -392,53 +340,12 @@ func (b *AutodiffBackend[B]) Tanh(x *tensor.RawTensor) *tensor.RawTensor {
 }
 
 // SiLU applies SiLU (Swish) activation: f(x) = x * sigmoid(x).
-//
-// SiLU (Sigmoid Linear Unit), also known as Swish, is widely used in
-// modern transformer architectures (LLaMA, Mistral, GPT-Neo).
-//
-// Forward:
-//
-//	output = x * sigmoid(x)
-//
-// Backward:
-//
-//	dy/dx = sigmoid(x) * (1 + x * (1 - sigmoid(x)))
+// Delegates to inner backend (GPU shader in LazyMode) instead of CPU loop.
 func (b *AutodiffBackend[B]) SiLU(x *tensor.RawTensor) *tensor.RawTensor {
 	defer x.ForceNonUnique()()
 
-	// Forward pass: y = x * sigmoid(x)
-	result, err := tensor.NewRaw(x.Shape(), x.DType(), b.Device())
-	if err != nil {
-		panic(err)
-	}
+	result := b.inner.SiLU(x)
 
-	// Apply SiLU based on dtype
-	switch x.DType() {
-	case tensor.Float32:
-		xData := x.AsFloat32()
-		resData := result.AsFloat32()
-		for i, val := range xData {
-			// sigmoid(x) = 1 / (1 + exp(-x))
-			sigmoid := float32(1.0 / (1.0 + math.Exp(float64(-val))))
-			// y = x * sigmoid(x)
-			resData[i] = val * sigmoid
-		}
-
-	case tensor.Float64:
-		xData := x.AsFloat64()
-		resData := result.AsFloat64()
-		for i, val := range xData {
-			// sigmoid(x) = 1 / (1 + exp(-x))
-			sigmoid := 1.0 / (1.0 + math.Exp(-val))
-			// y = x * sigmoid(x)
-			resData[i] = val * sigmoid
-		}
-
-	default:
-		panic("SiLU: only supports float32 and float64")
-	}
-
-	// Record operation if tape is recording
 	if b.tape.IsRecording() {
 		op := ops.NewSiLUOp(x, result)
 		b.tape.Record(op)
@@ -448,47 +355,12 @@ func (b *AutodiffBackend[B]) SiLU(x *tensor.RawTensor) *tensor.RawTensor {
 }
 
 // Log computes element-wise natural logarithm.
-//
-// Forward:
-//
-//	output = log(input)
-//
-// Backward:
-//
-//	∂L/∂input = ∂L/∂output * (1 / input)
-//
-// Note: Input values must be positive. For numerical stability with values
-// close to zero, consider using LogWithEpsilon operation instead.
+// Delegates to inner backend (GPU shader in LazyMode) instead of CPU loop.
 func (b *AutodiffBackend[B]) Log(x *tensor.RawTensor) *tensor.RawTensor {
 	defer x.ForceNonUnique()()
 
-	// Forward pass: log(x)
-	result, err := tensor.NewRaw(x.Shape(), x.DType(), b.Device())
-	if err != nil {
-		panic(err)
-	}
+	result := b.inner.Log(x)
 
-	// Apply Log based on dtype
-	switch x.DType() {
-	case tensor.Float32:
-		xData := x.AsFloat32()
-		resData := result.AsFloat32()
-		for i, val := range xData {
-			resData[i] = float32(math.Log(float64(val)))
-		}
-
-	case tensor.Float64:
-		xData := x.AsFloat64()
-		resData := result.AsFloat64()
-		for i, val := range xData {
-			resData[i] = math.Log(val)
-		}
-
-	default:
-		panic("Log: only supports float32 and float64")
-	}
-
-	// Record operation if tape is recording
 	if b.tape.IsRecording() {
 		op := ops.NewLogOp(x, result)
 		b.tape.Record(op)
@@ -548,18 +420,37 @@ func (b *AutodiffBackend[B]) Softmax(x *tensor.RawTensor, dim int) *tensor.RawTe
 //   - Scalar loss value (mean over batch)
 func (b *AutodiffBackend[B]) CrossEntropy(logits, targets *tensor.RawTensor) *tensor.RawTensor {
 	defer logits.ForceNonUnique()()
-	// Note: targets doesn't need ForceNonUnique() as it's not differentiated
 
-	// Forward pass using helper function
-	result := ops.CrossEntropyForward(logits, targets, b.Device())
+	// Forward: -mean(log_softmax(logits)[targets]) via backend ops composition.
+	// All ops stay on GPU — no CPU readback of logits/targets.
+	//
+	// Step 1: log_softmax = log(softmax(logits))
+	softmax := b.inner.Softmax(logits, -1) // [batch, classes] — GPU
+	logSoftmax := b.inner.Log(softmax)     // [batch, classes] — GPU
 
-	// Record operation if tape is recording
+	// Step 2: gather log-probs at target indices → [batch, 1]
+	targetsUnsqueezed := b.inner.Unsqueeze(targets, -1)          // [batch, 1]
+	targetsCast := b.inner.Cast(targetsUnsqueezed, tensor.Int32) // ensure int32
+	logProbs := b.inner.Gather(logSoftmax, 1, targetsCast)       // [batch, 1]
+
+	// Step 3: mean(-log_probs) → [1] loss tensor
+	negLogProbs := b.inner.MulScalar(logProbs, typedNeg1(logits.DType())) // [batch, 1]
+	result := b.inner.MeanDim(negLogProbs, 0, true)                       // [1, 1]
+	result = b.inner.Reshape(result, tensor.Shape{1})                     // [1]
+
 	if b.tape.IsRecording() {
 		op := ops.NewCrossEntropyOp(logits, targets, result)
 		b.tape.Record(op)
 	}
 
 	return result
+}
+
+func typedNeg1(dtype tensor.DataType) any {
+	if dtype == tensor.Float64 {
+		return float64(-1)
+	}
+	return float32(-1)
 }
 
 // Exp computes element-wise exponential and records the operation.
@@ -1081,4 +972,11 @@ func (b *AutodiffBackend[B]) Conv2DKernelBackward(input, kernel, grad *tensor.Ra
 // Delegates to inner backend (no recording needed - used during backward pass only).
 func (b *AutodiffBackend[B]) MaxPool2DBackward(input, grad *tensor.RawTensor, maxIndices []int, kernelSize, stride int) *tensor.RawTensor {
 	return b.inner.MaxPool2DBackward(input, grad, maxIndices, kernelSize, stride)
+}
+
+// ReclaimMemory proxies to inner backend's MemoryReclaimer if available.
+func (b *AutodiffBackend[B]) ReclaimMemory() {
+	if reclaimer, ok := any(b.inner).(tensor.MemoryReclaimer); ok {
+		reclaimer.ReclaimMemory()
+	}
 }

@@ -63,6 +63,12 @@ func Backward[T tensor.DType, B BackwardCapable](t *tensor.Tensor[T, B], backend
 	return autodiff.Backward(t, backend)
 }
 
+// ReleaseGradients releases GPU buffers for all gradient tensors in the map.
+// Call after optimizer.Step(grads) to free GPU memory immediately.
+func ReleaseGradients(grads map[*tensor.RawTensor]*tensor.RawTensor) {
+	autodiff.ReleaseGradients(grads)
+}
+
 // NoGrad disables gradient recording for operations within the function.
 // Use this for inference or operations that shouldn't be differentiated.
 //

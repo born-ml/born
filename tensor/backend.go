@@ -71,6 +71,10 @@ type Backend interface {
 	Clamp(x *RawTensor, minBound, maxBound any) *RawTensor // Clamp values to [min, max].
 
 	// Activation functions.
+	ReLU(x *RawTensor) *RawTensor             // ReLU: max(0, x).
+	Sigmoid(x *RawTensor) *RawTensor          // Sigmoid: 1 / (1 + exp(-x)).
+	Tanh(x *RawTensor) *RawTensor             // Hyperbolic tangent.
+	SiLU(x *RawTensor) *RawTensor             // SiLU (Swish): x * sigmoid(x).
 	Softmax(x *RawTensor, dim int) *RawTensor // Softmax along dimension.
 
 	// Comparison operations (element-wise, return bool tensor).
