@@ -13,6 +13,7 @@
 [![Test Status](https://github.com/born-ml/born/actions/workflows/test.yml/badge.svg)](https://github.com/born-ml/born/actions/workflows/test.yml)
 [![Codecov](https://codecov.io/gh/born-ml/born/branch/main/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/born-ml/born)
 [![Discussions](https://img.shields.io/github/discussions/born-ml/born?logo=github&label=Discussions)](https://github.com/born-ml/born/discussions)
+<a href="https://opencollective.com/born-ml"><img src="https://opencollective.com/born-ml/all/badge.svg?label=financial+contributors" alt="Financial Contributors on Open Collective"></a>
 
 > **"Models are born production-ready"**
 
@@ -537,6 +538,20 @@ No DLL downloads, no `LD_LIBRARY_PATH`, no system-level installs. True single bi
   - [Q&A](https://github.com/born-ml/born/discussions/3)
   - [Feature Requests](https://github.com/born-ml/born/discussions/4)
 - **Issues**: [Report bugs or request features](https://github.com/born-ml/born/issues)
+
+---
+
+## Sponsors
+
+Born ML is an independent open-source project. Development is sustained by contributors and sponsors.
+
+<a href="https://opencollective.com/born-ml"><img src="https://opencollective.com/born-ml/sponsors.svg?width=890&button=false" alt="Sponsors"></a>
+
+### Backers
+
+<a href="https://opencollective.com/born-ml"><img src="https://opencollective.com/born-ml/backers.svg?width=890&button=false" alt="Backers"></a>
+
+<a href="https://opencollective.com/born-ml"><img src="https://img.shields.io/badge/Sponsor-Open%20Collective-7FADF2?logo=opencollective" alt="Sponsor on Open Collective"></a>
 
 ---
 

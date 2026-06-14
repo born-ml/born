@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/born-ml/born/internal/generate"
 	"github.com/born-ml/born/internal/nn"
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -326,6 +327,23 @@ func NewModel[B tensor.Backend](cfg Config, backend B, opts ...Option[B]) *Model
 	}
 }
 
+// Release frees all GPU buffers held by the model's parameters.
+// Call when the model is no longer needed to reclaim GPU memory immediately
+// instead of waiting for GC. Safe to call multiple times.
+func (m *Model[B]) Release() {
+	release := func(params []*nn.Parameter[B]) {
+		for _, p := range params {
+			p.Tensor().Raw().ReleaseGPU()
+		}
+	}
+	release(m.Embed.Parameters())
+	for _, layer := range m.Layers {
+		release(layer.Parameters())
+	}
+	release(m.Norm.Parameters())
+	release(m.Head.Parameters())
+}
+
 // Forward performs a forward pass and returns logits.
 //
 // This method satisfies the generate.LLMModel interface.
@@ -341,7 +359,7 @@ func NewModel[B tensor.Backend](cfg Config, backend B, opts ...Option[B]) *Model
 // Returns logits [batch, seq_len, vocab_size] as a *tensor.RawTensor.
 func (m *Model[B]) Forward(
 	input *tensor.RawTensor,
-	cache interface{ Clear() },
+	cache generate.KVCache,
 	startPos int,
 ) *tensor.RawTensor {
 	// Convert raw int32 input to typed tensor for embedding lookup.

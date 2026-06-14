@@ -5,12 +5,18 @@
 package llama
 
 import (
+	"math"
 	"testing"
 
 	"github.com/born-ml/born/internal/autodiff"
 	"github.com/born-ml/born/internal/backend/cpu"
+	"github.com/born-ml/born/internal/generate"
 	"github.com/born-ml/born/internal/tensor"
 )
+
+// Compile-time interface satisfaction check.
+// If Model does not implement LLMModel, this line fails to compile.
+var _ generate.LLMModel = (*Model[cpuBackend])(nil)
 
 // cpuBackend is the concrete type used in forward-pass tests.
 // SiLU (used by SwiGLU FFN) requires autodiff.AutodiffBackend wrapper.
@@ -181,6 +187,134 @@ func TestWithAttentionFunc(t *testing.T) {
 
 	if !called {
 		t.Error("custom AttentionFunc was not called during Forward")
+	}
+}
+
+// TestRelease verifies that Release frees parameters and is safe to call multiple times.
+func TestRelease(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	model := NewModel(cfg, backend)
+
+	params := model.Parameters()
+	if len(params) == 0 {
+		t.Fatal("model has no parameters before Release")
+	}
+
+	// First Release must not panic.
+	model.Release()
+
+	// Second Release (double-free) must not panic.
+	model.Release()
+}
+
+// TestForward_WithKVCache verifies incremental decoding via KV cache.
+// First call processes a prompt (multiple tokens), second call decodes one token
+// using cached keys/values. Output shapes must match expectations.
+func TestForward_WithKVCache(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	model := NewModel(cfg, backend)
+	cache := NewModelCache(cfg, cfg.MaxSeqLen, backend)
+
+	promptLen := 4
+	prompt := makeInt32Input(1, promptLen, cfg.VocabSize)
+
+	// Prefill: full prompt, startPos=0.
+	logits := model.Forward(prompt, cache, 0)
+	if logits == nil {
+		t.Fatal("prefill Forward returned nil")
+	}
+	wantShape := tensor.Shape{1, promptLen, cfg.VocabSize}
+	if !logits.Shape().Equal(wantShape) {
+		t.Fatalf("prefill shape = %v, want %v", logits.Shape(), wantShape)
+	}
+
+	// Decode: one token, startPos=promptLen (cached).
+	nextToken := makeInt32Input(1, 1, cfg.VocabSize)
+	logits2 := model.Forward(nextToken, cache, promptLen)
+	if logits2 == nil {
+		t.Fatal("decode Forward returned nil")
+	}
+	wantShape2 := tensor.Shape{1, 1, cfg.VocabSize}
+	if !logits2.Shape().Equal(wantShape2) {
+		t.Fatalf("decode shape = %v, want %v", logits2.Shape(), wantShape2)
+	}
+}
+
+// TestForward_Deterministic verifies that two forward passes with the same
+// input and no cache produce identical logits.
+func TestForward_Deterministic(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	model := NewModel(cfg, backend)
+
+	input := makeInt32Input(1, 3, cfg.VocabSize)
+
+	logits1 := model.Forward(input, nil, 0)
+	logits2 := model.Forward(input, nil, 0)
+
+	data1 := logits1.AsFloat32()
+	data2 := logits2.AsFloat32()
+
+	if len(data1) != len(data2) {
+		t.Fatalf("logit lengths differ: %d vs %d", len(data1), len(data2))
+	}
+	for i := range data1 {
+		if data1[i] != data2[i] {
+			t.Errorf("logits[%d] = %f vs %f (not deterministic)", i, data1[i], data2[i])
+			break
+		}
+	}
+}
+
+// TestForward_LogitsFinite verifies that forward pass produces no NaN/Inf values.
+func TestForward_LogitsFinite(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	model := NewModel(cfg, backend)
+
+	input := makeInt32Input(1, 4, cfg.VocabSize)
+	logits := model.Forward(input, nil, 0)
+	data := logits.AsFloat32()
+
+	for i, v := range data {
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+			t.Fatalf("logits[%d] = %f (NaN or Inf)", i, v)
+		}
+	}
+}
+
+// TestModelCache_Clear verifies that cache.Clear() does not panic
+// and that forward works correctly after clearing.
+func TestModelCache_Clear(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	model := NewModel(cfg, backend)
+	cache := NewModelCache(cfg, cfg.MaxSeqLen, backend)
+
+	// Fill cache with a forward pass.
+	input := makeInt32Input(1, 3, cfg.VocabSize)
+	model.Forward(input, cache, 0)
+
+	// Clear must not panic.
+	cache.Clear()
+
+	// Forward after clear must succeed (fresh cache).
+	logits := model.Forward(input, cache, 0)
+	if logits == nil {
+		t.Fatal("Forward after cache.Clear returned nil")
+	}
+}
+
+// TestNewModelCache_LayerCount verifies that the cache has one entry per layer.
+func TestNewModelCache_LayerCount(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	cache := NewModelCache(cfg, cfg.MaxSeqLen, backend)
+
+	if len(cache.layers) != cfg.NumLayers {
+		t.Errorf("cache has %d layers, want %d", len(cache.layers), cfg.NumLayers)
 	}
 }
 

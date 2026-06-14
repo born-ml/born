@@ -5,6 +5,19 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-06-15
+
+### Fixed
+
+- **LLaMA Forward signature** — `interface{ Clear() }` → `generate.KVCache`. Model now correctly satisfies `generate.LLMModel` interface ([#68](https://github.com/born-ml/born/issues/68))
+- **LLaMA Release()** — properly releases all GPU buffers for model parameters (Embed, Layers, Norm, Head). Previously missing — README example `defer model.Release()` was broken ([#68](https://github.com/born-ml/born/issues/68))
+
+### Added
+
+- **Compile-time LLMModel check** — `var _ generate.LLMModel = (*Model[...])(nil)` prevents future interface drift
+- **6 enterprise tests** — Release safety (double-free), KV cache incremental decoding, deterministic forward, NaN/Inf check, cache Clear + layer count
+- **Open Collective sponsorship** — badges in README, Sponsors/Backers section, FUNDING.yml (org-level)
+
 ## [0.9.1] - 2026-05-27
 
 ### Added
