@@ -129,7 +129,7 @@ Optional SIMD micro-kernel via `goexperiment.simd` + `simd/archsimd`. 4-row × 1
 
 ## WebGPU Backend
 
-GPU backend via [gogpu/wgpu](https://github.com/gogpu/wgpu) v0.29.0 — triple-backend architecture:
+GPU backend via [gogpu/wgpu](https://github.com/gogpu/wgpu) v0.30.0 — triple-backend architecture:
 
 - **Pure Go** (default): `go build ./...` — zero CGO, zero external dependencies
 - **Rust wgpu-native** (WIP): `go build -tags=rust ./...` — Rust wgpu v29 FFI for max performance (runtime FFI incomplete)

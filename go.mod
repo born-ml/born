@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/gogpu/gputypes v0.5.0
-	github.com/gogpu/wgpu v0.29.16
+	github.com/gogpu/wgpu v0.30.0
 	github.com/pkoukk/tiktoken-go v0.1.8
 	github.com/stretchr/testify v1.11.1
 )
