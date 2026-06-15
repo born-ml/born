@@ -42,6 +42,8 @@ func init() {
 	}
 }
 
+// avxAddInplaceFloat64 computes a[i] += b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxAddInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -56,6 +58,8 @@ func avxAddInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avx512AddInplaceFloat64 computes a[i] += b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512AddInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -70,6 +74,8 @@ func avx512AddInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avxSubInplaceFloat64 computes a[i] -= b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxSubInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -84,6 +90,8 @@ func avxSubInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avx512SubInplaceFloat64 computes a[i] -= b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512SubInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -98,6 +106,8 @@ func avx512SubInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avxMulInplaceFloat64 computes a[i] *= b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxMulInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -112,6 +122,8 @@ func avxMulInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avx512MulInplaceFloat64 computes a[i] *= b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512MulInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -126,6 +138,8 @@ func avx512MulInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avxDivInplaceFloat64 computes a[i] /= b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxDivInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -140,6 +154,8 @@ func avxDivInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avx512DivInplaceFloat64 computes a[i] /= b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512DivInplaceFloat64(a, b []float64) {
 	n := len(a)
 	i := 0
@@ -154,6 +170,8 @@ func avx512DivInplaceFloat64(a, b []float64) {
 	}
 }
 
+// avxAddVectorizedFloat64 computes dst[i] = a[i] + b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxAddVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -168,6 +186,8 @@ func avxAddVectorizedFloat64(dst, a, b []float64) {
 	}
 }
 
+// avx512AddVectorizedFloat64 computes dst[i] = a[i] + b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512AddVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -182,6 +202,8 @@ func avx512AddVectorizedFloat64(dst, a, b []float64) {
 	}
 }
 
+// avxSubVectorizedFloat64 computes dst[i] = a[i] - b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxSubVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -196,6 +218,8 @@ func avxSubVectorizedFloat64(dst, a, b []float64) {
 	}
 }
 
+// avx512SubVectorizedFloat64 computes dst[i] = a[i] - b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512SubVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -210,6 +234,8 @@ func avx512SubVectorizedFloat64(dst, a, b []float64) {
 	}
 }
 
+// avxMulVectorizedFloat64 computes dst[i] = a[i] * b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxMulVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -224,6 +250,8 @@ func avxMulVectorizedFloat64(dst, a, b []float64) {
 	}
 }
 
+// avx512MulVectorizedFloat64 computes dst[i] = a[i] * b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512MulVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -237,6 +265,8 @@ func avx512MulVectorizedFloat64(dst, a, b []float64) {
 		dst[i] = a[i] * b[i]
 	}
 }
+// avxDivVectorizedFloat64 computes dst[i] = a[i] / b[i] using AVX (256-bit, 4 float64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxDivVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -250,6 +280,8 @@ func avxDivVectorizedFloat64(dst, a, b []float64) {
 		dst[i] = a[i] / b[i]
 	}
 }
+// avx512DivVectorizedFloat64 computes dst[i] = a[i] / b[i] using AVX-512 (512-bit, 8 float64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512DivVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0

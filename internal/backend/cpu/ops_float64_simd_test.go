@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// createRandomFloat64Slices returns two 1024-element slices filled with
+// random float64 values in [-1, 1), suitable for benchmarking element-wise ops.
 func createRandomFloat64Slices() ([]float64, []float64) {
 	aSlice := make([]float64, 1024)
 	bSlice := make([]float64, 1024)
@@ -18,6 +20,7 @@ func createRandomFloat64Slices() ([]float64, []float64) {
 	return aSlice, bSlice
 }
 
+// BenchmarkAddInplaceF64_Scalar benchmarks a[i] += b[i] using the scalar fallback.
 func BenchmarkAddInplaceF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 
@@ -30,9 +33,10 @@ func BenchmarkAddInplaceF64_Scalar(b *testing.B) {
 	simdAddInplaceFloat64 = saved
 }
 
+// BenchmarkAddInplaceF64_SIMD benchmarks a[i] += b[i] using the SIMD implementation.
 func BenchmarkAddInplaceF64_SIMD(b *testing.B) {
 	if simdAddInplaceFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -43,6 +47,7 @@ func BenchmarkAddInplaceF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkSubInplaceF64_Scalar benchmarks a[i] -= b[i] using the scalar fallback.
 func BenchmarkSubInplaceF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 
@@ -55,9 +60,10 @@ func BenchmarkSubInplaceF64_Scalar(b *testing.B) {
 	simdSubInplaceFloat64 = saved
 }
 
+// BenchmarkSubInplaceF64_SIMD benchmarks a[i] -= b[i] using the SIMD implementation.
 func BenchmarkSubInplaceF64_SIMD(b *testing.B) {
 	if simdSubInplaceFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -68,6 +74,7 @@ func BenchmarkSubInplaceF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkMulInplaceF64_Scalar benchmarks a[i] *= b[i] using the scalar fallback.
 func BenchmarkMulInplaceF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 
@@ -80,9 +87,10 @@ func BenchmarkMulInplaceF64_Scalar(b *testing.B) {
 	simdMulInplaceFloat64 = saved
 }
 
+// BenchmarkMulInplaceF64_SIMD benchmarks a[i] *= b[i] using the SIMD implementation.
 func BenchmarkMulInplaceF64_SIMD(b *testing.B) {
 	if simdMulInplaceFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -93,6 +101,7 @@ func BenchmarkMulInplaceF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkDivInplaceF64_Scalar benchmarks a[i] /= b[i] using the scalar fallback.
 func BenchmarkDivInplaceF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 
@@ -105,9 +114,10 @@ func BenchmarkDivInplaceF64_Scalar(b *testing.B) {
 	simdDivInplaceFloat64 = saved
 }
 
+// BenchmarkDivInplaceF64_SIMD benchmarks a[i] /= b[i] using the SIMD implementation.
 func BenchmarkDivInplaceF64_SIMD(b *testing.B) {
 	if simdDivInplaceFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -118,6 +128,7 @@ func BenchmarkDivInplaceF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkAddVectorizedF64_Scalar benchmarks dst[i] = a[i] + b[i] using the scalar fallback.
 func BenchmarkAddVectorizedF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 	dst := make([]float64, len(aSlice))
@@ -131,9 +142,10 @@ func BenchmarkAddVectorizedF64_Scalar(b *testing.B) {
 	simdAddVectorizedFloat64 = saved
 }
 
+// BenchmarkAddVectorizedF64_SIMD benchmarks dst[i] = a[i] + b[i] using the SIMD implementation.
 func BenchmarkAddVectorizedF64_SIMD(b *testing.B) {
 	if simdAddVectorizedFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -145,6 +157,7 @@ func BenchmarkAddVectorizedF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkSubVectorizedF64_Scalar benchmarks dst[i] = a[i] - b[i] using the scalar fallback.
 func BenchmarkSubVectorizedF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 	dst := make([]float64, len(aSlice))
@@ -158,9 +171,10 @@ func BenchmarkSubVectorizedF64_Scalar(b *testing.B) {
 	simdSubVectorizedFloat64 = saved
 }
 
+// BenchmarkSubVectorizedF64_SIMD benchmarks dst[i] = a[i] - b[i] using the SIMD implementation.
 func BenchmarkSubVectorizedF64_SIMD(b *testing.B) {
 	if simdSubVectorizedFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -172,6 +186,7 @@ func BenchmarkSubVectorizedF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkMulVectorizedF64_Scalar benchmarks dst[i] = a[i] * b[i] using the scalar fallback.
 func BenchmarkMulVectorizedF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 	dst := make([]float64, len(aSlice))
@@ -185,9 +200,10 @@ func BenchmarkMulVectorizedF64_Scalar(b *testing.B) {
 	simdMulVectorizedFloat64 = saved
 }
 
+// BenchmarkMulVectorizedF64_SIMD benchmarks dst[i] = a[i] * b[i] using the SIMD implementation.
 func BenchmarkMulVectorizedF64_SIMD(b *testing.B) {
 	if simdMulVectorizedFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()
@@ -199,6 +215,7 @@ func BenchmarkMulVectorizedF64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkDivVectorizedF64_Scalar benchmarks dst[i] = a[i] / b[i] using the scalar fallback.
 func BenchmarkDivVectorizedF64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomFloat64Slices()
 	dst := make([]float64, len(aSlice))
@@ -212,9 +229,10 @@ func BenchmarkDivVectorizedF64_Scalar(b *testing.B) {
 	simdDivVectorizedFloat64 = saved
 }
 
+// BenchmarkDivVectorizedF64_SIMD benchmarks dst[i] = a[i] / b[i] using the SIMD implementation.
 func BenchmarkDivVectorizedF64_SIMD(b *testing.B) {
 	if simdDivVectorizedFloat64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomFloat64Slices()

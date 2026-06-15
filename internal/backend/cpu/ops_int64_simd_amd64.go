@@ -33,6 +33,8 @@ func init() {
 	}
 }
 
+// avx2AddInplaceInt64 computes a[i] += b[i] using AVX2 (256-bit, 4 int64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avx2AddInplaceInt64(a, b []int64) {
 	n := len(a)
 	i := 0
@@ -47,6 +49,8 @@ func avx2AddInplaceInt64(a, b []int64) {
 	}
 }
 
+// avx512AddInplaceInt64 computes a[i] += b[i] using AVX-512 (512-bit, 8 int64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512AddInplaceInt64(a, b []int64) {
 	n := len(a)
 	i := 0
@@ -61,6 +65,8 @@ func avx512AddInplaceInt64(a, b []int64) {
 	}
 }
 
+// avx2SubInplaceInt64 computes a[i] -= b[i] using AVX2 (256-bit, 4 int64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avx2SubInplaceInt64(a, b []int64) {
 	n := len(a)
 	i := 0
@@ -75,6 +81,8 @@ func avx2SubInplaceInt64(a, b []int64) {
 	}
 }
 
+// avx512SubInplaceInt64 computes a[i] -= b[i] using AVX-512 (512-bit, 8 int64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512SubInplaceInt64(a, b []int64) {
 	n := len(a)
 	i := 0
@@ -89,6 +97,8 @@ func avx512SubInplaceInt64(a, b []int64) {
 	}
 }
 
+// avx512MulInplaceInt64 computes a[i] *= b[i] using AVX-512 (512-bit, 8 int64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512MulInplaceInt64(a, b []int64) {
 	n := len(a)
 	i := 0
@@ -103,6 +113,8 @@ func avx512MulInplaceInt64(a, b []int64) {
 	}
 }
 
+// avx2AddVectorizedInt64 computes dst[i] = a[i] + b[i] using AVX2 (256-bit, 4 int64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avx2AddVectorizedInt64(dst, a, b []int64) {
 	n := len(dst)
 	i := 0
@@ -117,6 +129,8 @@ func avx2AddVectorizedInt64(dst, a, b []int64) {
 	}
 }
 
+// avx512AddVectorizedInt64 computes dst[i] = a[i] + b[i] using AVX-512 (512-bit, 8 int64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512AddVectorizedInt64(dst, a, b []int64) {
 	n := len(dst)
 	i := 0
@@ -131,6 +145,8 @@ func avx512AddVectorizedInt64(dst, a, b []int64) {
 	}
 }
 
+// avx2SubVectorizedInt64 computes dst[i] = a[i] - b[i] using AVX2 (256-bit, 4 int64/vector).
+// Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avx2SubVectorizedInt64(dst, a, b []int64) {
 	n := len(dst)
 	i := 0
@@ -145,6 +161,8 @@ func avx2SubVectorizedInt64(dst, a, b []int64) {
 	}
 }
 
+// avx512SubVectorizedInt64 computes dst[i] = a[i] - b[i] using AVX-512 (512-bit, 8 int64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512SubVectorizedInt64(dst, a, b []int64) {
 	n := len(dst)
 	i := 0
@@ -159,6 +177,8 @@ func avx512SubVectorizedInt64(dst, a, b []int64) {
 	}
 }
 
+// avx512MulVectorizedInt64 computes dst[i] = a[i] * b[i] using AVX-512 (512-bit, 8 int64/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512MulVectorizedInt64(dst, a, b []int64) {
 	n := len(dst)
 	i := 0

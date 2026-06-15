@@ -19,6 +19,7 @@ func createRandomInt64Slices() ([]int64, []int64) {
 	return aSlice, bSlice
 }
 
+// BenchmarkAddInplaceI64_Scalar benchmarks a[i] += b[i] using the scalar fallback.
 func BenchmarkAddInplaceI64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomInt64Slices()
 
@@ -31,9 +32,10 @@ func BenchmarkAddInplaceI64_Scalar(b *testing.B) {
 	simdAddInplaceInt64 = saved
 }
 
+// BenchmarkAddInplaceI64_SIMD benchmarks a[i] += b[i] using the SIMD implementation.
 func BenchmarkAddInplaceI64_SIMD(b *testing.B) {
 	if simdAddInplaceInt64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomInt64Slices()
@@ -44,6 +46,7 @@ func BenchmarkAddInplaceI64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkSubInplaceI64_Scalar benchmarks a[i] -= b[i] using the scalar fallback.
 func BenchmarkSubInplaceI64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomInt64Slices()
 
@@ -56,9 +59,10 @@ func BenchmarkSubInplaceI64_Scalar(b *testing.B) {
 	simdSubInplaceInt64 = saved
 }
 
+// BenchmarkSubInplaceI64_SIMD benchmarks a[i] -= b[i] using the SIMD implementation.
 func BenchmarkSubInplaceI64_SIMD(b *testing.B) {
 	if simdSubInplaceInt64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomInt64Slices()
@@ -69,6 +73,7 @@ func BenchmarkSubInplaceI64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkMulInplaceI64_Scalar benchmarks a[i] *= b[i] using the scalar fallback.
 func BenchmarkMulInplaceI64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomInt64Slices()
 
@@ -81,9 +86,10 @@ func BenchmarkMulInplaceI64_Scalar(b *testing.B) {
 	simdMulInplaceInt64 = saved
 }
 
+// BenchmarkMulInplaceI64_SIMD benchmarks a[i] *= b[i] using the SIMD implementation.
 func BenchmarkMulInplaceI64_SIMD(b *testing.B) {
 	if simdMulInplaceInt64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomInt64Slices()
@@ -94,6 +100,7 @@ func BenchmarkMulInplaceI64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkAddVectorizedI64_Scalar benchmarks dst[i] = a[i] + b[i] using the scalar fallback.
 func BenchmarkAddVectorizedI64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomInt64Slices()
 	dst := make([]int64, len(aSlice))
@@ -107,9 +114,10 @@ func BenchmarkAddVectorizedI64_Scalar(b *testing.B) {
 	simdAddVectorizedInt64 = saved
 }
 
+// BenchmarkAddVectorizedI64_SIMD benchmarks dst[i] = a[i] + b[i] using the SIMD implementation.
 func BenchmarkAddVectorizedI64_SIMD(b *testing.B) {
 	if simdAddVectorizedInt64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomInt64Slices()
@@ -121,6 +129,7 @@ func BenchmarkAddVectorizedI64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkSubVectorizedI64_Scalar benchmarks dst[i] = a[i] - b[i] using the scalar fallback.
 func BenchmarkSubVectorizedI64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomInt64Slices()
 	dst := make([]int64, len(aSlice))
@@ -134,9 +143,10 @@ func BenchmarkSubVectorizedI64_Scalar(b *testing.B) {
 	simdSubVectorizedInt64 = saved
 }
 
+// BenchmarkSubVectorizedI64_SIMD benchmarks dst[i] = a[i] - b[i] using the SIMD implementation.
 func BenchmarkSubVectorizedI64_SIMD(b *testing.B) {
 	if simdSubVectorizedInt64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomInt64Slices()
@@ -148,6 +158,7 @@ func BenchmarkSubVectorizedI64_SIMD(b *testing.B) {
 	}
 }
 
+// BenchmarkMulVectorizedI64_Scalar benchmarks dst[i] = a[i] * b[i] using the scalar fallback.
 func BenchmarkMulVectorizedI64_Scalar(b *testing.B) {
 	aSlice, bSlice := createRandomInt64Slices()
 	dst := make([]int64, len(aSlice))
@@ -161,9 +172,10 @@ func BenchmarkMulVectorizedI64_Scalar(b *testing.B) {
 	simdMulVectorizedInt64 = saved
 }
 
+// BenchmarkMulVectorizedI64_SIMD benchmarks dst[i] = a[i] * b[i] using the SIMD implementation.
 func BenchmarkMulVectorizedI64_SIMD(b *testing.B) {
 	if simdMulVectorizedInt64 == nil {
-		b.Skip("SIMD kernel not available")
+		b.Skip("SIMD implementation not available")
 	}
 
 	aSlice, bSlice := createRandomInt64Slices()

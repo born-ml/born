@@ -35,6 +35,8 @@ func init() {
 	}
 }
 
+// avx2AddInplaceInt32 computes a[i] += b[i] using AVX2 (256-bit, 8 int32/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx2AddInplaceInt32(a, b []int32) {
 	n := len(a)
 	i := 0
@@ -49,6 +51,8 @@ func avx2AddInplaceInt32(a, b []int32) {
 	}
 }
 
+// avx512AddInplaceInt32 computes a[i] += b[i] using AVX-512 (512-bit, 16 int32/vector).
+// Processes 16 elements per vector iteration with a scalar tail for the final 0-15 elements.
 func avx512AddInplaceInt32(a, b []int32) {
 	n := len(a)
 	i := 0
@@ -63,6 +67,8 @@ func avx512AddInplaceInt32(a, b []int32) {
 	}
 }
 
+// avx2SubInplaceInt32 computes a[i] -= b[i] using AVX2 (256-bit, 8 int32/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx2SubInplaceInt32(a, b []int32) {
 	n := len(a)
 	i := 0
@@ -77,6 +83,8 @@ func avx2SubInplaceInt32(a, b []int32) {
 	}
 }
 
+// avx512SubInplaceInt32 computes a[i] -= b[i] using AVX-512 (512-bit, 16 int32/vector).
+// Processes 16 elements per vector iteration with a scalar tail for the final 0-15 elements.
 func avx512SubInplaceInt32(a, b []int32) {
 	n := len(a)
 	i := 0
@@ -91,6 +99,8 @@ func avx512SubInplaceInt32(a, b []int32) {
 	}
 }
 
+// avx2MulInplaceInt32 computes a[i] *= b[i] using AVX2 (256-bit, 8 int32/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx2MulInplaceInt32(a, b []int32) {
 	n := len(a)
 	i := 0
@@ -105,6 +115,8 @@ func avx2MulInplaceInt32(a, b []int32) {
 	}
 }
 
+// avx512MulInplaceInt32 computes a[i] *= b[i] using AVX-512 (512-bit, 16 int32/vector).
+// Processes 16 elements per vector iteration with a scalar tail for the final 0-15 elements.
 func avx512MulInplaceInt32(a, b []int32) {
 	n := len(a)
 	i := 0
@@ -119,6 +131,8 @@ func avx512MulInplaceInt32(a, b []int32) {
 	}
 }
 
+// avx2AddVectorizedInt32 computes dst[i] = a[i] + b[i] using AVX2 (256-bit, 8 int32/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx2AddVectorizedInt32(dst, a, b []int32) {
 	n := len(dst)
 	i := 0
@@ -133,6 +147,8 @@ func avx2AddVectorizedInt32(dst, a, b []int32) {
 	}
 }
 
+// avx512AddVectorizedInt32 computes dst[i] = a[i] + b[i] using AVX-512 (512-bit, 16 int32/vector).
+// Processes 16 elements per vector iteration with a scalar tail for the final 0-15 elements.
 func avx512AddVectorizedInt32(dst, a, b []int32) {
 	n := len(dst)
 	i := 0
@@ -147,6 +163,8 @@ func avx512AddVectorizedInt32(dst, a, b []int32) {
 	}
 }
 
+// avx2SubVectorizedInt32 computes dst[i] = a[i] - b[i] using AVX2 (256-bit, 8 int32/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx2SubVectorizedInt32(dst, a, b []int32) {
 	n := len(dst)
 	i := 0
@@ -161,6 +179,8 @@ func avx2SubVectorizedInt32(dst, a, b []int32) {
 	}
 }
 
+// avx512SubVectorizedInt32 computes dst[i] = a[i] - b[i] using AVX-512 (512-bit, 16 int32/vector).
+// Processes 16 elements per vector iteration with a scalar tail for the final 0-15 elements.
 func avx512SubVectorizedInt32(dst, a, b []int32) {
 	n := len(dst)
 	i := 0
@@ -175,6 +195,8 @@ func avx512SubVectorizedInt32(dst, a, b []int32) {
 	}
 }
 
+// avx2MulVectorizedInt32 computes dst[i] = a[i] * b[i] using AVX2 (256-bit, 8 int32/vector).
+// Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx2MulVectorizedInt32(dst, a, b []int32) {
 	n := len(dst)
 	i := 0
@@ -189,6 +211,8 @@ func avx2MulVectorizedInt32(dst, a, b []int32) {
 	}
 }
 
+// avx512MulVectorizedInt32 computes dst[i] = a[i] * b[i] using AVX-512 (512-bit, 16 int32/vector).
+// Processes 16 elements per vector iteration with a scalar tail for the final 0-15 elements.
 func avx512MulVectorizedInt32(dst, a, b []int32) {
 	n := len(dst)
 	i := 0

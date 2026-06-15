@@ -10,7 +10,7 @@ import (
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestAddInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdAddInplaceFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -50,7 +50,7 @@ func TestAddInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestSubInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdSubInplaceFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -90,7 +90,7 @@ func TestSubInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestMulInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdMulInplaceFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -130,7 +130,7 @@ func TestMulInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestDivInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdDivInplaceFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -170,7 +170,7 @@ func TestDivInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestAddVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdAddVectorizedFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -210,7 +210,7 @@ func TestAddVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestSubVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdSubVectorizedFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -250,7 +250,7 @@ func TestSubVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestMulVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdMulVectorizedFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -290,7 +290,7 @@ func TestMulVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float32 ULP noise.
 func TestDivVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 	if simdDivVectorizedFloat32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-5
@@ -330,7 +330,7 @@ func TestDivVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestAddInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdAddInplaceFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -370,7 +370,7 @@ func TestAddInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestSubInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdSubInplaceFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -410,7 +410,7 @@ func TestSubInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestMulInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdMulInplaceFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -450,7 +450,7 @@ func TestMulInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestDivInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdDivInplaceFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -490,7 +490,7 @@ func TestDivInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestAddVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdAddVectorizedFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -530,7 +530,7 @@ func TestAddVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestSubVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdSubVectorizedFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -570,7 +570,7 @@ func TestSubVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestMulVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdMulVectorizedFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -610,7 +610,7 @@ func TestMulVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces results matching the scalar fallback within float64 ULP noise.
 func TestDivVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 	if simdDivVectorizedFloat64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	const maxDiff = 1e-10
@@ -650,7 +650,7 @@ func TestDivVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestAddInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 	if simdAddInplaceInt32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -687,7 +687,7 @@ func TestAddInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestSubInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 	if simdSubInplaceInt32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -725,7 +725,7 @@ func TestSubInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 // Uses small values to avoid integer overflow.
 func TestMulInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 	if simdMulInplaceInt32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -762,7 +762,7 @@ func TestMulInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestAddVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 	if simdAddVectorizedInt32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -799,7 +799,7 @@ func TestAddVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestSubVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 	if simdSubVectorizedInt32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -837,7 +837,7 @@ func TestSubVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 // Uses small values to avoid integer overflow.
 func TestMulVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 	if simdMulVectorizedInt32 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -874,7 +874,7 @@ func TestMulVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestAddInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 	if simdAddInplaceInt64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 4, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -911,7 +911,7 @@ func TestAddInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestSubInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 	if simdSubInplaceInt64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 4, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -949,7 +949,7 @@ func TestSubInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 // Uses small values to avoid integer overflow.
 func TestMulInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 	if simdMulInplaceInt64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 4, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -986,7 +986,7 @@ func TestMulInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestAddVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 	if simdAddVectorizedInt64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 4, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -1023,7 +1023,7 @@ func TestAddVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 // kernel produces bit-exact results matching the scalar fallback.
 func TestSubVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 	if simdSubVectorizedInt64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 4, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
@@ -1061,7 +1061,7 @@ func TestSubVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 // Uses small values to avoid integer overflow.
 func TestMulVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 	if simdMulVectorizedInt64 == nil {
-		t.Skip("SIMD kernel not available")
+		t.Skip("SIMD implementation not available")
 	}
 
 	sizes := []int{1, 3, 4, 7, 8, 13, 16, 31, 32, 64, 100, 128, 256, 1024}
