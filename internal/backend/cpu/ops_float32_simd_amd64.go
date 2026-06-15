@@ -241,8 +241,8 @@ func avxMulVectorizedFloat32(dst, a, b []float32) {
 	for ; i+8 <= n; i += 8 {
 		aLoaded := archsimd.LoadFloat32x8Slice(a[i : i+8])
 		bLoaded := archsimd.LoadFloat32x8Slice(b[i : i+8])
-		subLoaded := aLoaded.Mul(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+8])
+		mulLoaded := aLoaded.Mul(bLoaded)
+		mulLoaded.StoreSlice(dst[i : i+8])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] * b[i]
@@ -257,8 +257,8 @@ func avx512MulVectorizedFloat32(dst, a, b []float32) {
 	for ; i+16 <= n; i += 16 {
 		aLoaded := archsimd.LoadFloat32x16Slice(a[i : i+16])
 		bLoaded := archsimd.LoadFloat32x16Slice(b[i : i+16])
-		subLoaded := aLoaded.Mul(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+16])
+		mulLoaded := aLoaded.Mul(bLoaded)
+		mulLoaded.StoreSlice(dst[i : i+16])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] * b[i]
@@ -273,8 +273,8 @@ func avxDivVectorizedFloat32(dst, a, b []float32) {
 	for ; i+8 <= n; i += 8 {
 		aLoaded := archsimd.LoadFloat32x8Slice(a[i : i+8])
 		bLoaded := archsimd.LoadFloat32x8Slice(b[i : i+8])
-		subLoaded := aLoaded.Div(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+8])
+		divLoaded := aLoaded.Div(bLoaded)
+		divLoaded.StoreSlice(dst[i : i+8])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] / b[i]
@@ -289,8 +289,8 @@ func avx512DivVectorizedFloat32(dst, a, b []float32) {
 	for ; i+16 <= n; i += 16 {
 		aLoaded := archsimd.LoadFloat32x16Slice(a[i : i+16])
 		bLoaded := archsimd.LoadFloat32x16Slice(b[i : i+16])
-		subLoaded := aLoaded.Div(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+16])
+		divLoaded := aLoaded.Div(bLoaded)
+		divLoaded.StoreSlice(dst[i : i+16])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] / b[i]

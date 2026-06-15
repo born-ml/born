@@ -242,8 +242,8 @@ func avxMulVectorizedFloat64(dst, a, b []float64) {
 	for ; i+4 <= n; i += 4 {
 		aLoaded := archsimd.LoadFloat64x4Slice(a[i : i+4])
 		bLoaded := archsimd.LoadFloat64x4Slice(b[i : i+4])
-		subLoaded := aLoaded.Mul(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+4])
+		mulLoaded := aLoaded.Mul(bLoaded)
+		mulLoaded.StoreSlice(dst[i : i+4])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] * b[i]
@@ -258,13 +258,14 @@ func avx512MulVectorizedFloat64(dst, a, b []float64) {
 	for ; i+8 <= n; i += 8 {
 		aLoaded := archsimd.LoadFloat64x8Slice(a[i : i+8])
 		bLoaded := archsimd.LoadFloat64x8Slice(b[i : i+8])
-		subLoaded := aLoaded.Mul(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+8])
+		mulLoaded := aLoaded.Mul(bLoaded)
+		mulLoaded.StoreSlice(dst[i : i+8])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] * b[i]
 	}
 }
+
 // avxDivVectorizedFloat64 computes dst[i] = a[i] / b[i] using AVX (256-bit, 4 float64/vector).
 // Processes 4 elements per vector iteration with a scalar tail for the final 0-3 elements.
 func avxDivVectorizedFloat64(dst, a, b []float64) {
@@ -273,13 +274,14 @@ func avxDivVectorizedFloat64(dst, a, b []float64) {
 	for ; i+4 <= n; i += 4 {
 		aLoaded := archsimd.LoadFloat64x4Slice(a[i : i+4])
 		bLoaded := archsimd.LoadFloat64x4Slice(b[i : i+4])
-		subLoaded := aLoaded.Div(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+4])
+		divLoaded := aLoaded.Div(bLoaded)
+		divLoaded.StoreSlice(dst[i : i+4])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] / b[i]
 	}
 }
+
 // avx512DivVectorizedFloat64 computes dst[i] = a[i] / b[i] using AVX-512 (512-bit, 8 float64/vector).
 // Processes 8 elements per vector iteration with a scalar tail for the final 0-7 elements.
 func avx512DivVectorizedFloat64(dst, a, b []float64) {
@@ -288,8 +290,8 @@ func avx512DivVectorizedFloat64(dst, a, b []float64) {
 	for ; i+8 <= n; i += 8 {
 		aLoaded := archsimd.LoadFloat64x8Slice(a[i : i+8])
 		bLoaded := archsimd.LoadFloat64x8Slice(b[i : i+8])
-		subLoaded := aLoaded.Div(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+8])
+		divLoaded := aLoaded.Div(bLoaded)
+		divLoaded.StoreSlice(dst[i : i+8])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] / b[i]

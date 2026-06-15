@@ -185,8 +185,8 @@ func avx512MulVectorizedInt64(dst, a, b []int64) {
 	for ; i+8 <= n; i += 8 {
 		aLoaded := archsimd.LoadInt64x8Slice(a[i : i+8])
 		bLoaded := archsimd.LoadInt64x8Slice(b[i : i+8])
-		subLoaded := aLoaded.Mul(bLoaded)
-		subLoaded.StoreSlice(dst[i : i+8])
+		mulLoaded := aLoaded.Mul(bLoaded)
+		mulLoaded.StoreSlice(dst[i : i+8])
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] * b[i]
