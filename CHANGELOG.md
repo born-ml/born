@@ -5,6 +5,14 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-06-15
+
+### Changed
+
+- **wgpu upgraded** v0.29.0 → v0.29.16 — HAL wrapper stubs for all build targets (fixes `-tags=rust` compilation)
+- **naga upgraded** v0.17.13 → v0.17.15
+- **Dependencies**: regexp2 v1.12.0, golang.org/x/sys v0.46.0, go-webgpu/goffi v0.5.3
+
 ## [0.9.2] - 2026-06-15
 
 ### Fixed
