@@ -10,10 +10,10 @@ func createRandomFloat64Slices() ([]float64, []float64) {
 	bSlice := make([]float64, 1024)
 	rng := rand.New(rand.NewSource(0))
 	for i := range aSlice {
-		aSlice[i] = rng.Float64()
+		aSlice[i] = rng.Float64()*2 - 1
 	}
 	for i := range bSlice {
-		bSlice[i] = rng.Float64()
+		bSlice[i] = rng.Float64()*2 - 1
 	}
 	return aSlice, bSlice
 }

@@ -10,10 +10,10 @@ func createRandomFloat32Slices() ([]float32, []float32) {
 	bSlice := make([]float32, 1024)
 	rng := rand.New(rand.NewSource(0))
 	for i := range aSlice {
-		aSlice[i] = rng.Float32()
+		aSlice[i] = rng.Float32()*2 - 1
 	}
 	for i := range bSlice {
-		bSlice[i] = rng.Float32()
+		bSlice[i] = rng.Float32()*2 - 1
 	}
 	return aSlice, bSlice
 }

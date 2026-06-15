@@ -22,6 +22,11 @@ func init() {
 		simdSubInplaceFloat64 = avxSubInplaceFloat64
 		simdMulInplaceFloat64 = avxMulInplaceFloat64
 		simdDivInplaceFloat64 = avxDivInplaceFloat64
+
+		simdAddVectorizedFloat64 = avxAddVectorizedFloat64
+		simdSubVectorizedFloat64 = avxSubVectorizedFloat64
+		simdMulVectorizedFloat64 = avxMulVectorizedFloat64
+		simdDivVectorizedFloat64 = avxDivVectorizedFloat64
 	}
 
 	if archsimd.X86.AVX512() {
@@ -149,6 +154,20 @@ func avx512DivInplaceFloat64(a, b []float64) {
 	}
 }
 
+func avxAddVectorizedFloat64(dst, a, b []float64) {
+	n := len(dst)
+	i := 0
+	for ; i+4 <= n; i += 4 {
+		aLoaded := archsimd.LoadFloat64x4Slice(a[i : i+4])
+		bLoaded := archsimd.LoadFloat64x4Slice(b[i : i+4])
+		sumLoaded := aLoaded.Add(bLoaded)
+		sumLoaded.StoreSlice(dst[i : i+4])
+	}
+	for ; i < n; i++ {
+		dst[i] = a[i] + b[i]
+	}
+}
+
 func avx512AddVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -160,6 +179,20 @@ func avx512AddVectorizedFloat64(dst, a, b []float64) {
 	}
 	for ; i < n; i++ {
 		dst[i] = a[i] + b[i]
+	}
+}
+
+func avxSubVectorizedFloat64(dst, a, b []float64) {
+	n := len(dst)
+	i := 0
+	for ; i+4 <= n; i += 4 {
+		aLoaded := archsimd.LoadFloat64x4Slice(a[i : i+4])
+		bLoaded := archsimd.LoadFloat64x4Slice(b[i : i+4])
+		subLoaded := aLoaded.Sub(bLoaded)
+		subLoaded.StoreSlice(dst[i : i+4])
+	}
+	for ; i < n; i++ {
+		dst[i] = a[i] - b[i]
 	}
 }
 
@@ -177,6 +210,20 @@ func avx512SubVectorizedFloat64(dst, a, b []float64) {
 	}
 }
 
+func avxMulVectorizedFloat64(dst, a, b []float64) {
+	n := len(dst)
+	i := 0
+	for ; i+4 <= n; i += 4 {
+		aLoaded := archsimd.LoadFloat64x4Slice(a[i : i+4])
+		bLoaded := archsimd.LoadFloat64x4Slice(b[i : i+4])
+		subLoaded := aLoaded.Mul(bLoaded)
+		subLoaded.StoreSlice(dst[i : i+4])
+	}
+	for ; i < n; i++ {
+		dst[i] = a[i] * b[i]
+	}
+}
+
 func avx512MulVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
@@ -190,7 +237,19 @@ func avx512MulVectorizedFloat64(dst, a, b []float64) {
 		dst[i] = a[i] * b[i]
 	}
 }
-
+func avxDivVectorizedFloat64(dst, a, b []float64) {
+	n := len(dst)
+	i := 0
+	for ; i+4 <= n; i += 4 {
+		aLoaded := archsimd.LoadFloat64x4Slice(a[i : i+4])
+		bLoaded := archsimd.LoadFloat64x4Slice(b[i : i+4])
+		subLoaded := aLoaded.Div(bLoaded)
+		subLoaded.StoreSlice(dst[i : i+4])
+	}
+	for ; i < n; i++ {
+		dst[i] = a[i] / b[i]
+	}
+}
 func avx512DivVectorizedFloat64(dst, a, b []float64) {
 	n := len(dst)
 	i := 0
