@@ -37,7 +37,7 @@ func BenchmarkAddInplaceI32_Scalar(b *testing.B) {
 // BenchmarkAddInplaceI32_SIMD benchmarks a[i] += b[i] using the SIMD implementation.
 func BenchmarkAddInplaceI32_SIMD(b *testing.B) {
 	if simdAddInplaceInt32 == nil {
-		b.Skip("SIMD implementation not available")
+		b.Skip("SIMD implementation not available (build without GOEXPERIMENT=simd or non-amd64)")
 	}
 
 	aSlice, bSlice := createRandomInt32Slices()
@@ -64,7 +64,7 @@ func BenchmarkSubInplaceI32_Scalar(b *testing.B) {
 // BenchmarkSubInplaceI32_SIMD benchmarks a[i] -= b[i] using the SIMD implementation.
 func BenchmarkSubInplaceI32_SIMD(b *testing.B) {
 	if simdSubInplaceInt32 == nil {
-		b.Skip("SIMD implementation not available")
+		b.Skip("SIMD implementation not available (build without GOEXPERIMENT=simd or non-amd64)")
 	}
 
 	aSlice, bSlice := createRandomInt32Slices()
@@ -91,7 +91,7 @@ func BenchmarkMulInplaceI32_Scalar(b *testing.B) {
 // BenchmarkMulInplaceI32_SIMD benchmarks a[i] *= b[i] using the SIMD implementation.
 func BenchmarkMulInplaceI32_SIMD(b *testing.B) {
 	if simdMulInplaceInt32 == nil {
-		b.Skip("SIMD implementation not available")
+		b.Skip("SIMD implementation not available (build without GOEXPERIMENT=simd or non-amd64)")
 	}
 
 	aSlice, bSlice := createRandomInt32Slices()
@@ -119,7 +119,7 @@ func BenchmarkAddVectorizedI32_Scalar(b *testing.B) {
 // BenchmarkAddVectorizedI32_SIMD benchmarks dst[i] = a[i] + b[i] using the SIMD implementation.
 func BenchmarkAddVectorizedI32_SIMD(b *testing.B) {
 	if simdAddVectorizedInt32 == nil {
-		b.Skip("SIMD implementation not available")
+		b.Skip("SIMD implementation not available (build without GOEXPERIMENT=simd or non-amd64)")
 	}
 
 	aSlice, bSlice := createRandomInt32Slices()
@@ -148,7 +148,7 @@ func BenchmarkSubVectorizedI32_Scalar(b *testing.B) {
 // BenchmarkSubVectorizedI32_SIMD benchmarks dst[i] = a[i] - b[i] using the SIMD implementation.
 func BenchmarkSubVectorizedI32_SIMD(b *testing.B) {
 	if simdSubVectorizedInt32 == nil {
-		b.Skip("SIMD implementation not available")
+		b.Skip("SIMD implementation not available (build without GOEXPERIMENT=simd or non-amd64)")
 	}
 
 	aSlice, bSlice := createRandomInt32Slices()
@@ -177,7 +177,7 @@ func BenchmarkMulVectorizedI32_Scalar(b *testing.B) {
 // BenchmarkMulVectorizedI32_SIMD benchmarks dst[i] = a[i] * b[i] using the SIMD implementation.
 func BenchmarkMulVectorizedI32_SIMD(b *testing.B) {
 	if simdMulVectorizedInt32 == nil {
-		b.Skip("SIMD implementation not available")
+		b.Skip("SIMD implementation not available (build without GOEXPERIMENT=simd or non-amd64)")
 	}
 
 	aSlice, bSlice := createRandomInt32Slices()
