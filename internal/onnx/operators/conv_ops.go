@@ -93,6 +93,12 @@ func parseConvParams(node *Node) (convParams, error) {
 	if p.padT, p.padL, p.padB, p.padR, err = parseConvPads(node); err != nil {
 		return p, err
 	}
+	// auto_pad=VALID means "no padding" and, per the ONNX spec, takes
+	// precedence over any explicit pads attribute. Force the pads to zero so a
+	// model that sets both does not silently get the explicit pads applied.
+	if GetAttrString(node, "auto_pad", "NOTSET") == "VALID" {
+		p.padT, p.padL, p.padB, p.padR = 0, 0, 0, 0
+	}
 	p.group = int(GetAttrInt(node, "group", 1))
 	if p.group < 1 {
 		return p, fmt.Errorf("conv: invalid group %d", p.group)
@@ -175,7 +181,10 @@ func padNCHW(x *tensor.RawTensor, padT, padL, padB, padR int) (*tensor.RawTensor
 	s := x.Shape()
 	n, c, h, w := s[0], s[1], s[2], s[3]
 	hp, wp := h+padT+padB, w+padL+padR
-	out, err := tensor.NewRaw(tensor.Shape{n, c, hp, wp}, tensor.Float32, tensor.CPU)
+	// Propagate the input's device and dtype rather than hardcoding CPU/Float32
+	// so this stays correct once Conv runs on non-CPU devices. The caller has
+	// already validated x is float32; the float32 copy below relies on that.
+	out, err := tensor.NewRaw(tensor.Shape{n, c, hp, wp}, x.DType(), x.Device())
 	if err != nil {
 		return nil, fmt.Errorf("conv: %w", err)
 	}
@@ -220,7 +229,7 @@ func addConvBias(out, bias *tensor.RawTensor) error {
 	if len(b) != co {
 		return fmt.Errorf("conv: bias length %d != output channels %d", len(b), co)
 	}
-	d := out.AsFloat32()
+	d := out.AsFloat32() // direct view into out; the in-place mutation is intentional
 	plane := h * w
 	for ni := range n {
 		for ci := range co {

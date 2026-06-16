@@ -151,6 +151,32 @@ func TestConv_GroupedTwoChannelsPerGroup(t *testing.T) {
 	convAssertClose(t, out.AsFloat32(), []float32{1, 4})
 }
 
+func TestConv_GroupedBatchN2(t *testing.T) {
+	// Same grouped 1x1 setup as above but batch N=2: each sample is split
+	// into its own groups, so the per-sample results stay independent.
+	x := convF32(t, tensor.Shape{2, 4, 1, 1}, []float32{1, 2, 3, 4, 5, 6, 7, 8})
+	w := convF32(t, tensor.Shape{2, 2, 1, 1}, []float32{1, 0, 0, 1})
+	out := runConv(t, []Attribute{cAttrInts("kernel_shape", 1, 1), cAttrI("group", 2)}, x, w)
+	convAssertShape(t, out, tensor.Shape{2, 2, 1, 1})
+	// sample0 -> {ch0, ch3} = {1, 4}; sample1 -> {ch0, ch3} = {5, 8}.
+	convAssertClose(t, out.AsFloat32(), []float32{1, 4, 5, 8})
+}
+
+func TestConv_AutoPadValidForcesZeroPads(t *testing.T) {
+	// auto_pad=VALID means no padding and overrides the explicit pads
+	// attribute, so the result matches an unpadded convolution rather than
+	// silently applying pads=[1,1,1,1].
+	x := convF32(t, tensor.Shape{1, 1, 3, 3}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	w := convF32(t, tensor.Shape{1, 1, 2, 2}, []float32{1, 2, 3, 4})
+	out := runConv(t, []Attribute{
+		cAttrInts("kernel_shape", 2, 2),
+		cAttrInts("pads", 1, 1, 1, 1),
+		cAttrS("auto_pad", "VALID"),
+	}, x, w)
+	convAssertShape(t, out, tensor.Shape{1, 1, 2, 2})
+	convAssertClose(t, out.AsFloat32(), []float32{37, 47, 67, 77})
+}
+
 // --- errors ---
 
 func TestConv_DilationsRejected(t *testing.T) {

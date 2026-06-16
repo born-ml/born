@@ -143,3 +143,11 @@ func TestRegisterLayerNormalizationOp(t *testing.T) {
 		t.Error("Expected LayerNormalization operator to be registered")
 	}
 }
+
+func TestRegisterConvOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Conv"); !ok {
+		t.Error("Expected Conv operator to be registered")
+	}
+}
