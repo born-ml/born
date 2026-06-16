@@ -134,7 +134,7 @@ func BenchmarkChunkFloat32(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		chunkFloat32(x, results, 1, 1)
+		chunkFloat32(x, results, 1)
 	}
 }
 
@@ -172,6 +172,8 @@ func TestChunkCatFloat32Contiguous(t *testing.T) {
 		{[]int{2, 6, 3}, 3, 1},
 		{[]int{1, 12, 2, 2}, 12, 1}, // 4D channel chunk (depthwise pattern)
 		{[]int{2, 3, 5}, 5, 2},
+		{[]int{4, 8}, 1, 0},    // n=1: single-chunk identity split
+		{[]int{2, 3, 5}, 1, 1}, // n=1 on an inner dim
 	}
 	for _, c := range cases {
 		x, data := newSeqTensorF32(t, c.shape...)

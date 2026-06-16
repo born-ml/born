@@ -140,17 +140,17 @@ func (cpu *CPUBackend) Chunk(x *tensor.RawTensor, n, dim int) []*tensor.RawTenso
 	// Split data
 	switch x.DType() {
 	case tensor.Float32:
-		chunkFloat32(x, results, dim, chunkSize)
+		chunkFloat32(x, results, dim)
 	case tensor.Float64:
-		chunkFloat64(x, results, dim, chunkSize)
+		chunkFloat64(x, results, dim)
 	case tensor.Int32:
-		chunkInt32(x, results, dim, chunkSize)
+		chunkInt32(x, results, dim)
 	case tensor.Int64:
-		chunkInt64(x, results, dim, chunkSize)
+		chunkInt64(x, results, dim)
 	case tensor.Uint8:
-		chunkUint8(x, results, dim, chunkSize)
+		chunkUint8(x, results, dim)
 	case tensor.Bool:
-		chunkBool(x, results, dim, chunkSize)
+		chunkBool(x, results, dim)
 	default:
 		panic(fmt.Sprintf("chunk: unsupported dtype %s", x.DType()))
 	}
@@ -369,15 +369,14 @@ func catBool(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 // chunkFloat32 splits a float32 tensor into chunks along dim using contiguous
 // slab copies (one copy per chunk per outer block) instead of per-element
 // scatter with per-element coordinate allocation.
-func chunkFloat32(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+func chunkFloat32(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsFloat32()
 	shape := x.Shape()
 	inner, outer := innerOuter(shape, dim)
 	srcDimStride := shape[dim] * inner
-	block := chunkSize * inner
-
 	for ci := range results {
 		out := results[ci].AsFloat32()
+		block := results[ci].Shape()[dim] * inner
 		srcBase := ci * block
 		for o := 0; o < outer; o++ {
 			s := o*srcDimStride + srcBase
@@ -387,15 +386,14 @@ func chunkFloat32(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSi
 }
 
 // chunkFloat64 splits float64 tensor into chunks using contiguous slab copies.
-func chunkFloat64(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+func chunkFloat64(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsFloat64()
 	shape := x.Shape()
 	inner, outer := innerOuter(shape, dim)
 	srcDimStride := shape[dim] * inner
-	block := chunkSize * inner
-
 	for ci := range results {
 		out := results[ci].AsFloat64()
+		block := results[ci].Shape()[dim] * inner
 		srcBase := ci * block
 		for o := 0; o < outer; o++ {
 			s := o*srcDimStride + srcBase
@@ -405,15 +403,14 @@ func chunkFloat64(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSi
 }
 
 // chunkInt32 splits int32 tensor into chunks using contiguous slab copies.
-func chunkInt32(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+func chunkInt32(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsInt32()
 	shape := x.Shape()
 	inner, outer := innerOuter(shape, dim)
 	srcDimStride := shape[dim] * inner
-	block := chunkSize * inner
-
 	for ci := range results {
 		out := results[ci].AsInt32()
+		block := results[ci].Shape()[dim] * inner
 		srcBase := ci * block
 		for o := 0; o < outer; o++ {
 			s := o*srcDimStride + srcBase
@@ -423,15 +420,14 @@ func chunkInt32(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize
 }
 
 // chunkInt64 splits int64 tensor into chunks using contiguous slab copies.
-func chunkInt64(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+func chunkInt64(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsInt64()
 	shape := x.Shape()
 	inner, outer := innerOuter(shape, dim)
 	srcDimStride := shape[dim] * inner
-	block := chunkSize * inner
-
 	for ci := range results {
 		out := results[ci].AsInt64()
+		block := results[ci].Shape()[dim] * inner
 		srcBase := ci * block
 		for o := 0; o < outer; o++ {
 			s := o*srcDimStride + srcBase
@@ -441,15 +437,14 @@ func chunkInt64(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize
 }
 
 // chunkUint8 splits uint8 tensor into chunks using contiguous slab copies.
-func chunkUint8(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+func chunkUint8(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsUint8()
 	shape := x.Shape()
 	inner, outer := innerOuter(shape, dim)
 	srcDimStride := shape[dim] * inner
-	block := chunkSize * inner
-
 	for ci := range results {
 		out := results[ci].AsUint8()
+		block := results[ci].Shape()[dim] * inner
 		srcBase := ci * block
 		for o := 0; o < outer; o++ {
 			s := o*srcDimStride + srcBase
@@ -459,15 +454,14 @@ func chunkUint8(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize
 }
 
 // chunkBool splits bool tensor into chunks using contiguous slab copies.
-func chunkBool(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+func chunkBool(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsBool()
 	shape := x.Shape()
 	inner, outer := innerOuter(shape, dim)
 	srcDimStride := shape[dim] * inner
-	block := chunkSize * inner
-
 	for ci := range results {
 		out := results[ci].AsBool()
+		block := results[ci].Shape()[dim] * inner
 		srcBase := ci * block
 		for o := 0; o < outer; o++ {
 			s := o*srcDimStride + srcBase
