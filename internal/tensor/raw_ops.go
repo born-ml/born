@@ -1436,6 +1436,16 @@ func Gather(x, indices *RawTensor, axis int) (*RawTensor, error) {
 		return nil, fmt.Errorf("Gather: indices must be int32 or int64, got %v", indices.dtype)
 	}
 
+	// ONNX semantics: a negative index i refers to axis_size + i (counting from the
+	// end). Normalize here so the block-copy path only ever sees non-negative
+	// offsets; out-of-range values still fault as before.
+	axisSize := x.shape[axis]
+	for i, v := range indexData {
+		if v < 0 {
+			indexData[i] = axisSize + v
+		}
+	}
+
 	switch x.dtype {
 	case Float32:
 		gatherFloat32(x.AsFloat32(), result.AsFloat32(), x.shape, indexData, axis)

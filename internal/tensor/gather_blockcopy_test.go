@@ -228,6 +228,27 @@ func TestGather_BlockCopyMatchesOracle(t *testing.T) {
 	}
 }
 
+// TestGather_NegativeIndexAndAxis verifies ONNX negative-index normalization
+// (i -> axis_size + i) and negative-axis handling: gathering with negative
+// indices/axis must equal gathering with the equivalent non-negative ones.
+func TestGather_NegativeIndexAndAxis(t *testing.T) {
+	xShape := []int{4, 3}
+
+	// axis 0 (size 4): negative indices normalize to the tail rows.
+	rawIdx := []int{-1, -4, 0, 3}
+	normIdx := []int{3, 0, 0, 3}
+	idxT := makeInt32Index(t, []int{4}, rawIdx)
+	srcMap := gatherSrcMap(xShape, []int{4}, normIdx, 0)
+	t.Run("neg_index_axis0", func(t *testing.T) { checkGatherF32(t, xShape, 0, idxT, srcMap) })
+
+	// Negative axis (-1 == axis 1, size 3) combined with negative indices.
+	rawIdx2 := []int{-1, 0, -3}
+	normIdx2 := []int{2, 0, 0}
+	idxT2 := makeInt32Index(t, []int{3}, rawIdx2)
+	srcMap2 := gatherSrcMap(xShape, []int{3}, normIdx2, 1)
+	t.Run("neg_index_neg_axis", func(t *testing.T) { checkGatherF32(t, xShape, -1, idxT2, srcMap2) })
+}
+
 func benchGather(b *testing.B, xShape, idxShape []int, axis int) {
 	axisDim := xShape[axis]
 	x, err := NewRaw(Shape(xShape), Float32, CPU)
