@@ -299,6 +299,54 @@ func TestConv2D_MatchesMockBackend(t *testing.T) {
 	}
 }
 
+// TestConv2D_Pointwise1x1 checks the 1x1 (pointwise) fast path against the naive
+// mock backend across channel counts, spatial sizes, and batch sizes. A 1x1 conv
+// with stride=1, padding=0 reduces to a per-batch GEMM (kernel[COut,CIn] @
+// input[CIn,H*W]), so the fast path must match the im2col result exactly.
+func TestConv2D_Pointwise1x1(t *testing.T) {
+	cpuBackend := New()
+	mockBackend := tensor.NewMockBackend()
+
+	shapes := []struct {
+		n, cIn, h, w, cOut int
+	}{
+		{1, 3, 4, 4, 5},     // small
+		{1, 64, 8, 8, 32},   // channel reduction
+		{1, 16, 5, 7, 48},   // non-square spatial, expansion
+		{2, 8, 3, 3, 4},     // batched
+		{1, 1, 1, 1, 1},     // degenerate
+		{3, 32, 6, 6, 16},   // larger batch
+		{1, 96, 12, 12, 96}, // model-ish pointwise
+	}
+
+	for _, s := range shapes {
+		input, _ := tensor.NewRaw(tensor.Shape{s.n, s.cIn, s.h, s.w}, tensor.Float32, tensor.CPU)
+		inData := input.AsFloat32()
+		for i := range inData {
+			inData[i] = float32((i%13)-6) * 0.25
+		}
+		kernel, _ := tensor.NewRaw(tensor.Shape{s.cOut, s.cIn, 1, 1}, tensor.Float32, tensor.CPU)
+		kData := kernel.AsFloat32()
+		for i := range kData {
+			kData[i] = float32((i%7)-3) * 0.5
+		}
+
+		got := cpuBackend.Conv2D(input, kernel, 1, 0)
+		want := mockBackend.Conv2D(input, kernel, 1, 0)
+
+		if !got.Shape().Equal(want.Shape()) {
+			t.Fatalf("shape %+v: CPU=%v Mock=%v", s, got.Shape(), want.Shape())
+		}
+		gd, wd := got.AsFloat32(), want.AsFloat32()
+		for i := range gd {
+			if d := gd[i] - wd[i]; d < -1e-3 || d > 1e-3 {
+				t.Errorf("shape %+v idx %d: CPU=%.5f Mock=%.5f", s, i, gd[i], wd[i])
+				break
+			}
+		}
+	}
+}
+
 func BenchmarkConv2D(b *testing.B) {
 	backend := New()
 
