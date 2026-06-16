@@ -149,8 +149,12 @@ func Sigmoid(x *RawTensor) (*RawTensor, error) {
 	case Float32:
 		in := x.AsFloat32()
 		out := result.AsFloat32()
-		for i := range in {
-			out[i] = float32(1.0 / (1.0 + math.Exp(float64(-in[i]))))
+		if sigmoidF32 != nil {
+			sigmoidF32(out, in)
+		} else {
+			for i := range in {
+				out[i] = float32(1.0 / (1.0 + math.Exp(float64(-in[i]))))
+			}
 		}
 	case Float64:
 		in := x.AsFloat64()
@@ -368,9 +372,16 @@ func SiLU(x *RawTensor) (*RawTensor, error) {
 	case Float32:
 		in := x.AsFloat32()
 		out := result.AsFloat32()
-		for i := range in {
-			sigmoid := float32(1.0 / (1.0 + math.Exp(float64(-in[i]))))
-			out[i] = in[i] * sigmoid
+		if sigmoidF32 != nil {
+			sigmoidF32(out, in) // out = sigmoid(in)
+			for i := range in {
+				out[i] *= in[i] // out = in * sigmoid(in)
+			}
+		} else {
+			for i := range in {
+				sigmoid := float32(1.0 / (1.0 + math.Exp(float64(-in[i]))))
+				out[i] = in[i] * sigmoid
+			}
 		}
 	case Float64:
 		in := x.AsFloat64()
