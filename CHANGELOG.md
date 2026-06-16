@@ -5,6 +5,18 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **SIMD element-wise arithmetic** — AVX/AVX2/AVX-512 implementations for Add, Sub, Mul, Div across float32, float64, int32, int64 ([#72](https://github.com/born-ml/born/pull/72) by [@bennibbelink](https://github.com/bennibbelink))
+  - float32: AVX (8 lanes) + AVX-512 (16 lanes), 3.5–5.4x speedup
+  - float64: AVX (4 lanes) + AVX-512 (8 lanes), 1.8–2.3x speedup
+  - int32: AVX2 (8 lanes) + AVX-512 (16 lanes), 2.9–4.9x speedup
+  - int64: AVX2 (4 lanes, add/sub) + AVX-512 (8 lanes, add/sub/mul), 1.6–2.5x speedup
+  - Runtime CPU detection via `archsimd`, scalar fallback on non-SIMD builds
+  - 28 correctness tests (SIMD vs scalar parity) + 56 benchmarks
+
 ## [0.9.5] - 2026-06-16
 
 ### Changed

@@ -121,9 +121,22 @@ Batches are independent — parallelized via `sync.WaitGroup` + goroutines. Thre
 
 i-block→k-block→j-block loop order keeps both A and B blocks in L1 cache. Block size: 64 (float32, 16KB), 32 (float64, 8KB). 3-5x speedup for matrices > 64×64.
 
-### AVX2 SIMD (Go 1.26+, experimental)
+### SIMD (Go 1.26+, `goexperiment.simd`)
 
-Optional SIMD micro-kernel via `goexperiment.simd` + `simd/archsimd`. 4-row × 16-wide register block with FMA. Build with `GOEXPERIMENT=simd go build`. Scalar fallback compiles without the flag. 3.5x speedup on AVX2 hardware.
+Two levels of SIMD acceleration, enabled with `GOEXPERIMENT=simd go build`:
+
+**MatMul micro-kernel** — 4-row × 16-wide AVX2 register block with FMA. 3.5x speedup on 128×128 matrices.
+
+**Element-wise arithmetic** — Add, Sub, Mul, Div with runtime ISA dispatch:
+
+| Type | AVX (256-bit) | AVX2 (256-bit) | AVX-512 (512-bit) | Speedup |
+|------|:---:|:---:|:---:|---------|
+| float32 | add/sub/mul/div | — | add/sub/mul/div | 3.5–5.4x |
+| float64 | add/sub/mul/div | — | add/sub/mul/div | 1.8–2.3x |
+| int32 | — | add/sub/mul | add/sub/mul | 2.9–4.9x |
+| int64 | — | add/sub | add/sub/mul | 1.6–2.5x |
+
+Detection via `archsimd.X86.AVX()`/`AVX2()`/`AVX512()`. Function pointer dispatch — zero overhead when SIMD unavailable. Scalar fallback compiles without the flag.
 
 ---
 
