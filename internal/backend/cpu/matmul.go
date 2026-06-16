@@ -68,10 +68,21 @@ func (cpu *CPUBackend) MatMul(a, b *tensor.RawTensor) *tensor.RawTensor {
 // For matrices large enough to benefit from cache locality (m*k*n >= blockThreshold)
 // a three-level cache-tiled algorithm is used: outer loops stride in blocks that fit
 // the L1 cache, while the micro-kernel accumulates a block with sequential B access.
-// Smaller matrices fall back to the naive triple-loop.
+// Smaller matrices fall back to the naive triple-loop. When the experimental
+// vendored-SIMD GEMM kernel is enabled (gemmF32 != nil, see matmul_gemm.go),
+// large multiplications are routed there instead, overwriting C directly.
 //
 // The caller must pass c pre-capped to exactly m*n elements.
 func matmulFloat32(c, a, b []float32, m, k, n int) {
+	// Experimental vendored-SIMD GEMM fast path (opt-in via BORN_EXPERIMENTAL_SIMD).
+	// It overwrites C directly, so it must run before the scalar zero-init below.
+	// Narrow shapes (n < one full column tile) are left on the scalar path,
+	// where cache-tiled blocking beats the kernel's naive column-remainder loop.
+	if gemmF32 != nil && n >= gemmMinCols && m*k*n >= blockThreshold {
+		gemmF32(c, a, b, m, k, n)
+		return
+	}
+
 	for i := range c {
 		c[i] = 0
 	}
