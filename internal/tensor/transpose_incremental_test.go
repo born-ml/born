@@ -57,9 +57,10 @@ var transposeCases = []struct {
 	{"4d_reverse", []int{2, 3, 4, 5}, []int{3, 2, 1, 0}},
 	{"4d_0213", []int{2, 3, 4, 5}, []int{0, 2, 1, 3}},
 	{"4d_1302", []int{2, 3, 4, 5}, []int{1, 3, 0, 2}},
-	{"3d_size1", []int{1, 3, 4}, []int{2, 0, 1}},     // size-1 dim drives a carry every step
+	{"3d_size1", []int{1, 3, 4}, []int{2, 0, 1}}, // size-1 dim drives a carry every step
 	{"4d_size1_mid", []int{2, 1, 4, 3}, []int{0, 2, 1, 3}},
-	{"scalar", []int{}, []int{}},                     // ndim==0, inner carry loop never runs
+	{"5d_40312", []int{2, 3, 4, 5, 6}, []int{4, 0, 3, 1, 2}}, // deep carry propagation
+	{"scalar", []int{}, []int{}},                             // ndim==0, inner carry loop never runs
 }
 
 func checkTransposeF32(t *testing.T, oldShape, axes, srcMap []int) {
