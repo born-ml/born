@@ -143,3 +143,35 @@ func TestRegisterLayerNormalizationOp(t *testing.T) {
 		t.Error("Expected LayerNormalization operator to be registered")
 	}
 }
+
+func TestRegisterPowOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("Pow"); !ok {
+		t.Error("Expected Pow operator to be registered")
+	}
+}
+
+func TestRegisterReduceMeanOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("ReduceMean"); !ok {
+		t.Error("Expected ReduceMean operator to be registered")
+	}
+}
+
+func TestRegisterReduceMaxOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("ReduceMax"); !ok {
+		t.Error("Expected ReduceMax operator to be registered")
+	}
+}
+
+func TestRegisterReduceMinOp(t *testing.T) {
+	r := NewRegistry()
+
+	if _, ok := r.Get("ReduceMin"); !ok {
+		t.Error("Expected ReduceMin operator to be registered")
+	}
+}

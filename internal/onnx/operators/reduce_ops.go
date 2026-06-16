@@ -42,6 +42,8 @@ func handleReduceMin(_ *Context, node *Node, inputs []*tensor.RawTensor) ([]*ten
 // "axes" attribute (older opset). keepdims and noop_with_empty_axes are
 // attributes. With empty axes: noop_with_empty_axes=1 returns the input
 // unchanged, otherwise all axes are reduced.
+//
+// TODO: extend beyond float32 (float64, int32, int64) when callers need it.
 func handleReduce(node *Node, inputs []*tensor.RawTensor, kind reduceKind) ([]*tensor.RawTensor, error) {
 	if len(inputs) < 1 || inputs[0] == nil {
 		return nil, fmt.Errorf("reduce: missing data input")
@@ -109,6 +111,15 @@ func reduceFloat32(in *tensor.RawTensor, axes []int, keepdims bool, kind reduceK
 		return nil, err
 	}
 
+	// outStrides is computed from the ones-replaced shape (outFull), but the
+	// same strides correctly index the squeezed (no-keepdims) buffer too.
+	// Invariant: a reduced axis is size 1 in outFull, so it contributes a
+	// factor of 1 to every stride. For each non-reduced axis the resulting
+	// stride therefore equals the product of the non-reduced trailing dims,
+	// which is exactly that axis's stride in the squeezed shape. Removing the
+	// size-1 axes only drops the always-zero coordinate terms, so oi lands on
+	// the same element either way. Do not "simplify" by squeezing outFull
+	// before ComputeStrides; the two layouts must share these strides.
 	outFull := reducedToOne(inShape, reduced)
 	outStrides := tensor.Shape(outFull).ComputeStrides()
 

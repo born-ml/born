@@ -26,8 +26,11 @@ func (r *Registry) registerMathOps() {
 }
 
 // handlePow implements ONNX Pow: elementwise base ** exponent.
-// The exponent (second input) is commonly a scalar constant; a same-length
+// The exponent (second input) is commonly a scalar constant; a same-shape
 // exponent tensor is also supported.
+//
+// TODO: GPU path via Backend.Pow once a pow shader exists.
+// TODO: extend beyond float32 (float64, int32, int64) when callers need it.
 func handlePow(_ *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
 	if len(inputs) != 2 {
 		return nil, fmt.Errorf("pow requires 2 inputs, got %d", len(inputs))

@@ -151,6 +151,15 @@ func TestPow_ElementwiseExponent(t *testing.T) {
 	assertClose(t, out.AsFloat32(), []float32{2, 9, 64})
 }
 
+func TestPow_NegativeBase(t *testing.T) {
+	// Integer exponents on a negative base stay real: (-2)^3 = -8, (-3)^2 = 9.
+	base := f32Tensor(t, tensor.Shape{2}, []float32{-2, -3})
+	exp := f32Tensor(t, tensor.Shape{2}, []float32{3, 2})
+	out := execOp(t, "Pow", nil, base, exp)
+	assertShape(t, out, tensor.Shape{2})
+	assertClose(t, out.AsFloat32(), []float32{-8, 9})
+}
+
 // --- 4D NCHW reduction: the SE-pooling shape the real model uses ---
 
 func TestReduceMean_NCHWSqueezeExcite(t *testing.T) {
@@ -197,6 +206,20 @@ func TestReduceMean_AllAxesWhenEmpty(t *testing.T) {
 	out := execOp(t, "ReduceMean", []Attribute{{Name: "keepdims", I: 0}}, data)
 	assertShape(t, out, tensor.Shape{})
 	assertClose(t, out.AsFloat32(), []float32{3.5})
+}
+
+func TestReduceMax_AllAxesWhenEmpty(t *testing.T) {
+	data := f32Tensor(t, tensor.Shape{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	out := execOp(t, "ReduceMax", []Attribute{{Name: "keepdims", I: 0}}, data)
+	assertShape(t, out, tensor.Shape{})
+	assertClose(t, out.AsFloat32(), []float32{6})
+}
+
+func TestReduceMin_AllAxesWhenEmpty(t *testing.T) {
+	data := f32Tensor(t, tensor.Shape{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	out := execOp(t, "ReduceMin", []Attribute{{Name: "keepdims", I: 0}}, data)
+	assertShape(t, out, tensor.Shape{})
+	assertClose(t, out.AsFloat32(), []float32{1})
 }
 
 // --- error paths ---
