@@ -2,23 +2,15 @@
 
 #include "textflag.h"
 
-// func gemmMicroKernel4x16AVX2(c []float32, a []float32, b []float32, k int, n int)
+// func gemmMicroKernel6x16AVX2(c []float32, a []float32, b []float32, k int, cStride int)
 // Requires: AVX, FMA3
-TEXT ·gemmMicroKernel4x16AVX2(SB), NOSPLIT, $0-88
+TEXT ·gemmMicroKernel6x16AVX2(SB), NOSPLIT, $0-88
 	MOVQ   c_base+0(FP), AX
 	MOVQ   a_base+24(FP), CX
 	MOVQ   b_base+48(FP), DX
 	MOVQ   k+72(FP), BX
-	MOVQ   n+80(FP), SI
-	MOVQ   BX, DI
-	SHLQ   $0x02, DI
+	MOVQ   cStride+80(FP), SI
 	SHLQ   $0x02, SI
-	MOVQ   CX, R8
-	ADDQ   DI, R8
-	MOVQ   R8, R9
-	ADDQ   DI, R9
-	MOVQ   R9, R10
-	ADDQ   DI, R10
 	VXORPS Y0, Y0, Y0
 	VXORPS Y1, Y1, Y1
 	VXORPS Y2, Y2, Y2
@@ -27,62 +19,69 @@ TEXT ·gemmMicroKernel4x16AVX2(SB), NOSPLIT, $0-88
 	VXORPS Y5, Y5, Y5
 	VXORPS Y6, Y6, Y6
 	VXORPS Y7, Y7, Y7
+	VXORPS Y8, Y8, Y8
+	VXORPS Y9, Y9, Y9
+	VXORPS Y10, Y10, Y10
+	VXORPS Y11, Y11, Y11
 
-kloop:
+kloop6:
 	CMPQ         BX, $0x00
-	JE           kdone
-	VMOVUPS      (DX), Y8
-	VMOVUPS      32(DX), Y9
-	VBROADCASTSS (CX), Y10
-	VFMADD231PS  Y8, Y10, Y0
-	VFMADD231PS  Y9, Y10, Y1
-	VBROADCASTSS (R8), Y10
-	VFMADD231PS  Y8, Y10, Y2
-	VFMADD231PS  Y9, Y10, Y3
-	VBROADCASTSS (R9), Y10
-	VFMADD231PS  Y8, Y10, Y4
-	VFMADD231PS  Y9, Y10, Y5
-	VBROADCASTSS (R10), Y10
-	VFMADD231PS  Y8, Y10, Y6
-	VFMADD231PS  Y9, Y10, Y7
-	ADDQ         $0x04, CX
-	ADDQ         $0x04, R8
-	ADDQ         $0x04, R9
-	ADDQ         $0x04, R10
-	ADDQ         SI, DX
+	JE           kdone6
+	VMOVUPS      (DX), Y12
+	VMOVUPS      32(DX), Y13
+	VBROADCASTSS (CX), Y14
+	VFMADD231PS  Y12, Y14, Y0
+	VFMADD231PS  Y13, Y14, Y1
+	VBROADCASTSS 4(CX), Y14
+	VFMADD231PS  Y12, Y14, Y2
+	VFMADD231PS  Y13, Y14, Y3
+	VBROADCASTSS 8(CX), Y14
+	VFMADD231PS  Y12, Y14, Y4
+	VFMADD231PS  Y13, Y14, Y5
+	VBROADCASTSS 12(CX), Y14
+	VFMADD231PS  Y12, Y14, Y6
+	VFMADD231PS  Y13, Y14, Y7
+	VBROADCASTSS 16(CX), Y14
+	VFMADD231PS  Y12, Y14, Y8
+	VFMADD231PS  Y13, Y14, Y9
+	VBROADCASTSS 20(CX), Y14
+	VFMADD231PS  Y12, Y14, Y10
+	VFMADD231PS  Y13, Y14, Y11
+	ADDQ         $0x18, CX
+	ADDQ         $0x40, DX
 	DECQ         BX
-	JMP          kloop
+	JMP          kloop6
 
-kdone:
-	MOVQ    AX, CX
-	ADDQ    SI, CX
-	MOVQ    CX, DX
-	ADDQ    SI, DX
-	MOVQ    DX, BX
-	ADDQ    SI, BX
+kdone6:
 	VMOVUPS Y0, (AX)
 	VMOVUPS Y1, 32(AX)
-	VMOVUPS Y2, (CX)
-	VMOVUPS Y3, 32(CX)
-	VMOVUPS Y4, (DX)
-	VMOVUPS Y5, 32(DX)
-	VMOVUPS Y6, (BX)
-	VMOVUPS Y7, 32(BX)
+	ADDQ    SI, AX
+	VMOVUPS Y2, (AX)
+	VMOVUPS Y3, 32(AX)
+	ADDQ    SI, AX
+	VMOVUPS Y4, (AX)
+	VMOVUPS Y5, 32(AX)
+	ADDQ    SI, AX
+	VMOVUPS Y6, (AX)
+	VMOVUPS Y7, 32(AX)
+	ADDQ    SI, AX
+	VMOVUPS Y8, (AX)
+	VMOVUPS Y9, 32(AX)
+	ADDQ    SI, AX
+	VMOVUPS Y10, (AX)
+	VMOVUPS Y11, 32(AX)
 	VZEROUPPER
 	RET
 
-// func gemmMicroKernel1x16AVX2(c []float32, a []float32, b []float32, k int, n int)
+// func gemmMicroKernel1x16AVX2(c []float32, a []float32, b []float32, k int)
 // Requires: AVX, FMA3
-TEXT ·gemmMicroKernel1x16AVX2(SB), NOSPLIT, $0-88
+TEXT ·gemmMicroKernel1x16AVX2(SB), NOSPLIT, $0-80
 	MOVQ   c_base+0(FP), AX
 	MOVQ   a_base+24(FP), CX
 	MOVQ   b_base+48(FP), DX
 	MOVQ   k+72(FP), BX
-	MOVQ   n+80(FP), SI
-	SHLQ   $0x02, SI
 	VXORPS Y0, Y0, Y0
 	VXORPS Y1, Y1, Y1
-	MOVQ   DX, DX
 
 kloop1:
 	CMPQ         BX, $0x00
@@ -93,11 +92,42 @@ kloop1:
 	VFMADD231PS  Y3, Y2, Y0
 	VFMADD231PS  Y4, Y2, Y1
 	ADDQ         $0x04, CX
-	ADDQ         SI, DX
+	ADDQ         $0x40, DX
 	DECQ         BX
 	JMP          kloop1
 
 kdone1:
+	VMOVUPS Y0, (AX)
+	VMOVUPS Y1, 32(AX)
+	VZEROUPPER
+	RET
+
+// func gemmMicroKernel1x16StridedAVX2(c []float32, a []float32, b []float32, k int, n int)
+// Requires: AVX, FMA3
+TEXT ·gemmMicroKernel1x16StridedAVX2(SB), NOSPLIT, $0-88
+	MOVQ   c_base+0(FP), AX
+	MOVQ   a_base+24(FP), CX
+	MOVQ   b_base+48(FP), DX
+	MOVQ   k+72(FP), BX
+	MOVQ   n+80(FP), SI
+	SHLQ   $0x02, SI
+	VXORPS Y0, Y0, Y0
+	VXORPS Y1, Y1, Y1
+
+kloop1s:
+	CMPQ         BX, $0x00
+	JE           kdone1s
+	VBROADCASTSS (CX), Y2
+	VMOVUPS      (DX), Y3
+	VMOVUPS      32(DX), Y4
+	VFMADD231PS  Y3, Y2, Y0
+	VFMADD231PS  Y4, Y2, Y1
+	ADDQ         $0x04, CX
+	ADDQ         SI, DX
+	DECQ         BX
+	JMP          kloop1s
+
+kdone1s:
 	VMOVUPS Y0, (AX)
 	VMOVUPS Y1, 32(AX)
 	VZEROUPPER

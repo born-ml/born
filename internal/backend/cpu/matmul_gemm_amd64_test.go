@@ -16,9 +16,7 @@ import (
 func rawFromSlice(t *testing.T, data []float32, shape ...int) *tensor.RawTensor {
 	t.Helper()
 	sh := make(tensor.Shape, len(shape))
-	for i, d := range shape {
-		sh[i] = d
-	}
+	copy(sh, shape)
 	rt, err := tensor.NewRaw(sh, tensor.Float32, tensor.CPU)
 	if err != nil {
 		t.Fatal(err)
@@ -66,15 +64,26 @@ func TestGemmAVX2F32MatchesScalar(t *testing.T) {
 		{1, 64, 32},  // GEMV: 1 row, full column tiles (1x16 kernel)
 		{2, 100, 48}, // 2 remainder rows
 		{3, 77, 33},  // 3 remainder rows + column tail
-		{4, 8, 16},   // exact tile
+		{4, 8, 16},   // 4 remainder rows
 		{4, 8, 17},   // column tail
-		{5, 8, 16},   // row tail
+		{5, 8, 16},   // 5 remainder rows (max mr tail)
 		{5, 8, 17},   // row + column tail
 		{3, 7, 11},   // small odd
 		{8, 32, 32},  // multi-tile
 		{64, 96, 128},
-		{33, 65, 129},  // odd primes-ish, both tails
-		{7, 2048, 513}, // model-representative large K
+		{33, 65, 129}, // odd primes-ish, both tails
+		// 6x16 packing stress: every m%6 residue against full/partial n tiles.
+		{6, 8, 16},   // exact 6x16 tile
+		{6, 40, 48},  // multi-k, multi-n-tile, exact rows
+		{7, 16, 16},  // 1 remainder row over a full block
+		{12, 16, 32}, // two full row blocks
+		{13, 17, 33}, // two blocks + 1 row + k/n tails
+		{6, 5, 16},   // k < default block, exact rows
+		{6, 16, 17},  // exact rows + column tail
+		{17, 16, 16}, // 2 blocks + 5 remainder rows
+		{1, 1024, 96},  // classifier-like GEMV, full n tiles
+		{7, 2048, 513}, // model-representative large K + row/col tails
+		{6, 2048, 32},  // large K, exact rows
 	}
 
 	for _, s := range shapes {

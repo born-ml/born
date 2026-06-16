@@ -6,9 +6,37 @@ package cpu
 
 import (
 	"os"
+	"sync"
 
 	"golang.org/x/sys/cpu"
 )
+
+// mr, nr are the GEMM micro-kernel tile dimensions and MUST match the constants
+// in _gen/gemm/main.go (the packed-panel strides are baked into the asm). The
+// kernel holds a mr×nr tile of C in registers across the k-loop.
+const (
+	gemmMr = 6
+	gemmNr = 16
+)
+
+// gemmScratch holds the per-call packing buffers. They are pooled and grown in
+// place so the GEMM fast path stays allocation-free across calls (one inference
+// reuses the same backing arrays for every large multiply).
+type gemmScratch struct {
+	ap []float32 // packed A: [nBlocks][k][gemmMr]
+	bp []float32 // packed B: [nTiles][k][gemmNr]
+}
+
+var gemmScratchPool = sync.Pool{New: func() any { return new(gemmScratch) }}
+
+// ensureCap returns *buf resliced to length n, growing the backing array only
+// when the current capacity is insufficient.
+func ensureCap(buf *[]float32, n int) []float32 {
+	if cap(*buf) < n {
+		*buf = make([]float32, n)
+	}
+	return (*buf)[:n]
+}
 
 // simdGemmEnabled reports whether the experimental vendored GEMM kernel should
 // be wired into the dispatch: the opt-in env flag must be exactly "1" (matching
@@ -28,9 +56,15 @@ func init() {
 	}
 }
 
-// gemmAVX2F32 computes C[m,n] = A[m,k] @ B[k,n] (row-major, overwriting C). Full
-// 4x16 tiles use the vendored AVX2+FMA micro-kernel (C held in registers across
-// the k-loop); the row/column remainders fall back to a scalar dot product.
+// gemmAVX2F32 computes C[m,n] = A[m,k] @ B[k,n] (row-major, overwriting C).
+//
+// A and B are packed into contiguous tile-local panels so the micro-kernels
+// stream them sequentially: B is the dominant operand (the front-end GEMM has
+// k=2048, n=1025) and reading it with a column stride otherwise thrashes the
+// cache. The nr-wide column tiles are processed outermost so each packed B
+// panel stays resident across all the row blocks that reuse it. Full gemmMr×gemmNr
+// tiles run the 6x16 kernel (C held in registers across k); the 1-5 row tail and
+// GEMV (m < gemmMr) shapes use the 1x16 kernel; the n%gemmNr column tail is scalar.
 func gemmAVX2F32(c, a, b []float32, m, k, n int) {
 	if k == 0 {
 		// Empty inner dimension: the product is the zero matrix. The matmulFloat32
@@ -40,24 +74,65 @@ func gemmAVX2F32(c, a, b []float32, m, k, n int) {
 		return
 	}
 
-	const mr, nr = 4, 16
-	mFull := m - m%mr
-	nFull := n - n%nr
+	mFull := m - m%gemmMr
+	nFull := n - n%gemmNr
 
-	// Full 4x16 register tiles.
-	for i := 0; i < mFull; i += mr {
-		for j := 0; j < nFull; j += nr {
-			gemmMicroKernel4x16AVX2(c[i*n+j:], a[i*k:], b[j:], k, n)
+	switch {
+	case nFull == 0:
+		// Every column is below one full tile; handled by the scalar tail below.
+	case mFull == 0:
+		gemvStridedF32(c, a, b, m, k, n, nFull) // thin / GEMV: no packing pays off
+	default:
+		gemmPackedF32(c, a, b, m, k, n, mFull, nFull)
+	}
+
+	gemmColTailF32(c, a, b, m, k, n, nFull)
+}
+
+// gemvStridedF32 handles thin shapes (m < gemmMr) over the full nr-wide column
+// tiles. Each B element feeds only one output row, so packing B would double its
+// traffic for no reuse; the 1x16 kernel streams B with its native stride.
+func gemvStridedF32(c, a, b []float32, m, k, n, nFull int) {
+	for i := 0; i < m; i++ {
+		for j := 0; j < nFull; j += gemmNr {
+			gemmMicroKernel1x16StridedAVX2(c[i*n+j:], a[i*k:], b[j:], k, n)
 		}
 	}
-	// Remainder rows [mFull, m): one row at a time over full 16-col tiles
-	// (this is also the GEMV path when m < 4, so thin shapes stay vectorized).
-	for i := mFull; i < m; i++ {
-		for j := 0; j < nFull; j += nr {
-			gemmMicroKernel1x16AVX2(c[i*n+j:], a[i*k:], b[j:], k, n)
+}
+
+// gemmPackedF32 runs the packed 6x16 path for the full gemmMr×gemmNr tile region
+// (m >= gemmMr, n >= gemmNr). A and B are packed once into pooled scratch; column
+// tiles are processed outermost so each packed B panel stays L2-resident across
+// the row blocks that reuse it.
+func gemmPackedF32(c, a, b []float32, m, k, n, mFull, nFull int) {
+	nTiles := nFull / gemmNr
+	nBlocks := mFull / gemmMr
+
+	sc := gemmScratchPool.Get().(*gemmScratch)
+	defer gemmScratchPool.Put(sc)
+	bp := ensureCap(&sc.bp, nTiles*k*gemmNr)
+	ap := ensureCap(&sc.ap, nBlocks*k*gemmMr)
+
+	packB16(bp, b, k, n, nTiles)
+	packA6(ap, a, k, nBlocks)
+
+	for t := 0; t < nTiles; t++ {
+		jt := t * gemmNr
+		bpt := bp[t*k*gemmNr:]
+		for bi := 0; bi < nBlocks; bi++ {
+			gemmMicroKernel6x16AVX2(c[bi*gemmMr*n+jt:], ap[bi*k*gemmMr:], bpt, k, n)
+		}
+		// Remainder rows [mFull, m): one per call, reusing the already-packed panel
+		// (cost-free since B is packed for the full blocks anyway).
+		for i := mFull; i < m; i++ {
+			gemmMicroKernel1x16AVX2(c[i*n+jt:], a[i*k:], bpt, k)
 		}
 	}
-	// Column remainder [nFull, n) for all rows: scalar dot product.
+}
+
+// gemmColTailF32 computes the n%gemmNr column remainder [nFull, n) for all rows
+// with a scalar dot product (too narrow for a full vector tile).
+func gemmColTailF32(c, a, b []float32, m, k, n, nFull int) {
 	for i := 0; i < m; i++ {
 		for j := nFull; j < n; j++ {
 			var s float32
@@ -65,6 +140,44 @@ func gemmAVX2F32(c, a, b []float32, m, k, n int) {
 				s += a[i*k+kk] * b[kk*n+j]
 			}
 			c[i*n+j] = s
+		}
+	}
+}
+
+// packB16 copies the full gemmNr-wide column tiles of B[k,n] into bp laid out as
+// [nTiles][k][gemmNr] contiguous, so the micro-kernel reads each panel's k rows
+// sequentially (stride gemmNr) instead of with B's column stride n.
+func packB16(bp, b []float32, k, n, nTiles int) {
+	for t := 0; t < nTiles; t++ {
+		jt := t * gemmNr
+		dst := bp[t*k*gemmNr:]
+		for kk := 0; kk < k; kk++ {
+			copy(dst[kk*gemmNr:kk*gemmNr+gemmNr], b[kk*n+jt:kk*n+jt+gemmNr])
+		}
+	}
+}
+
+// packA6 copies the full gemmMr-tall row blocks of A[m,k] into ap laid out as
+// [nBlocks][k][gemmMr] contiguous (transposed within a block), so the 6x16
+// kernel reads the gemmMr A values for a given k as one contiguous group.
+//
+// Specialized to gemmMr == 6 (matching the 6x16 asm kernel): the six length-k
+// source rows are sliced up front and the destination window is 3-index sliced,
+// so the inner loop carries a single bounds check per k instead of twelve.
+func packA6(ap, a []float32, k, nBlocks int) {
+	for bi := 0; bi < nBlocks; bi++ {
+		base := bi * gemmMr * k
+		dst := ap[base : base+gemmMr*k]
+		r0 := a[base+0*k : base+1*k]
+		r1 := a[base+1*k : base+2*k]
+		r2 := a[base+2*k : base+3*k]
+		r3 := a[base+3*k : base+4*k]
+		r4 := a[base+4*k : base+5*k]
+		r5 := a[base+5*k : base+6*k]
+		for kk := 0; kk < k; kk++ {
+			d := dst[kk*gemmMr : kk*gemmMr+gemmMr : kk*gemmMr+gemmMr]
+			d[0], d[1], d[2] = r0[kk], r1[kk], r2[kk]
+			d[3], d[4], d[5] = r3[kk], r4[kk], r5[kk]
 		}
 	}
 }
