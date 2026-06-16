@@ -3,6 +3,7 @@ package cpu
 import (
 	"math"
 	"math/rand"
+	"strconv"
 	"testing"
 )
 
@@ -19,7 +20,7 @@ func TestAddInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(1))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -59,7 +60,7 @@ func TestSubInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(2))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -99,7 +100,7 @@ func TestMulInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(3))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -139,7 +140,7 @@ func TestDivInplaceFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(4))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -179,7 +180,7 @@ func TestAddVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(5))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -219,7 +220,7 @@ func TestSubVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(6))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -259,7 +260,7 @@ func TestMulVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(7))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -299,7 +300,7 @@ func TestDivVectorizedFloat32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(8))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float32, n)
 			b := make([]float32, n)
 			for i := range a {
@@ -339,7 +340,7 @@ func TestAddInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(10))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -379,7 +380,7 @@ func TestSubInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(11))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -419,7 +420,7 @@ func TestMulInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(12))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -459,7 +460,7 @@ func TestDivInplaceFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(13))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -499,7 +500,7 @@ func TestAddVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(14))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -539,7 +540,7 @@ func TestSubVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(15))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -579,7 +580,7 @@ func TestMulVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(16))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -619,7 +620,7 @@ func TestDivVectorizedFloat64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(17))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]float64, n)
 			b := make([]float64, n)
 			for i := range a {
@@ -657,7 +658,7 @@ func TestAddInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(20))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int32, n)
 			b := make([]int32, n)
 			for i := range a {
@@ -694,7 +695,7 @@ func TestSubInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(21))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int32, n)
 			b := make([]int32, n)
 			for i := range a {
@@ -732,7 +733,7 @@ func TestMulInplaceInt32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(22))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int32, n)
 			b := make([]int32, n)
 			for i := range a {
@@ -769,7 +770,7 @@ func TestAddVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(23))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int32, n)
 			b := make([]int32, n)
 			for i := range a {
@@ -806,7 +807,7 @@ func TestSubVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(24))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int32, n)
 			b := make([]int32, n)
 			for i := range a {
@@ -844,7 +845,7 @@ func TestMulVectorizedInt32_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(25))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int32, n)
 			b := make([]int32, n)
 			for i := range a {
@@ -881,7 +882,7 @@ func TestAddInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(30))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int64, n)
 			b := make([]int64, n)
 			for i := range a {
@@ -918,7 +919,7 @@ func TestSubInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(31))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int64, n)
 			b := make([]int64, n)
 			for i := range a {
@@ -956,7 +957,7 @@ func TestMulInplaceInt64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(32))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int64, n)
 			b := make([]int64, n)
 			for i := range a {
@@ -993,7 +994,7 @@ func TestAddVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(33))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int64, n)
 			b := make([]int64, n)
 			for i := range a {
@@ -1030,7 +1031,7 @@ func TestSubVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(34))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int64, n)
 			b := make([]int64, n)
 			for i := range a {
@@ -1068,7 +1069,7 @@ func TestMulVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(35))
 	for _, n := range sizes {
-		t.Run("n="+itoa(n), func(t *testing.T) {
+		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
 			a := make([]int64, n)
 			b := make([]int64, n)
 			for i := range a {
@@ -1092,27 +1093,4 @@ func TestMulVectorizedInt64_SIMDMatchesScalar(t *testing.T) {
 			}
 		})
 	}
-}
-
-// itoa is a minimal int-to-string helper for subtest names.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }
