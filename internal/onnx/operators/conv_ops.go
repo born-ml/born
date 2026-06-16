@@ -96,7 +96,7 @@ func parseConvParams(node *Node) (convParams, error) {
 	// auto_pad=VALID means "no padding" and, per the ONNX spec, takes
 	// precedence over any explicit pads attribute. Force the pads to zero so a
 	// model that sets both does not silently get the explicit pads applied.
-	if GetAttrString(node, "auto_pad", "NOTSET") == "VALID" {
+	if GetAttrString(node, "auto_pad", autoPadNotset) == autoPadValid {
 		p.padT, p.padL, p.padB, p.padR = 0, 0, 0, 0
 	}
 	p.group = int(GetAttrInt(node, "group", 1))
@@ -107,7 +107,7 @@ func parseConvParams(node *Node) (convParams, error) {
 }
 
 func rejectUnsupportedConvAttrs(node *Node) error {
-	if ap := GetAttrString(node, "auto_pad", "NOTSET"); ap != "NOTSET" && ap != "VALID" && ap != "" {
+	if ap := GetAttrString(node, "auto_pad", autoPadNotset); ap != autoPadNotset && ap != autoPadValid && ap != "" {
 		return fmt.Errorf("conv: auto_pad=%q not supported (use explicit pads)", ap)
 	}
 	for _, d := range GetAttrInts(node, "dilations") {
