@@ -39,13 +39,14 @@
 //
 // The following ONNX operators are supported:
 //
-//   - Arithmetic: Add, Sub, Mul, Div, Sqrt, Exp, Log, Sum, Erf
+//   - Arithmetic: Add, Sub, Mul, Div, Pow, Sqrt, Exp, Log, Sum, Erf
 //   - Logical: Not, And, Or, Xor
 //   - Comparison: Equal, Greater, GreaterOrEqual, Less, LessOrEqual
 //   - Activation: Relu, LeakyRelu, PRelu, Gelu, Silu, Sigmoid, Tanh, Softmax, LogSoftmax
 //   - Matrix: MatMul, Gemm, Transpose, Flatten
 //   - Shape: Reshape, Squeeze, Unsqueeze, Concat, Split, Slice, Gather, Expand
 //   - Normalization: LayerNormalization
+//   - Reduction: ReduceMean, ReduceMax, ReduceMin
 //   - Other: Identity, Dropout, Constant, Cast, ConstantOfShape, Shape, Size, Where, Clip
 //
 // Use [ListSupportedOps] to get the complete list of supported operators.

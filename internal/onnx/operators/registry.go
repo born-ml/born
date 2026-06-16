@@ -30,6 +30,7 @@ func NewRegistry() *Registry {
 
 	// Register all operators
 	r.registerMathOps()
+	r.registerReduceOps()
 	r.registerActivations()
 	r.registerShapeOps()
 	r.registerUtilityOps()
