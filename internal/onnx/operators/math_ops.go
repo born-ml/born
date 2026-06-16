@@ -4,6 +4,7 @@ package operators
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -21,6 +22,51 @@ func (r *Registry) registerMathOps() {
 	r.Register("Log", handleLog)
 	r.Register("Sum", handleSum)
 	r.Register("Erf", handleErf)
+	r.Register("Pow", handlePow)
+}
+
+// handlePow implements ONNX Pow: elementwise base ** exponent.
+// The exponent (second input) is commonly a scalar constant; a same-shape
+// exponent tensor is also supported.
+//
+// TODO: GPU path via Backend.Pow once a pow shader exists.
+// TODO: extend beyond float32 (float64, int32, int64) when callers need it.
+func handlePow(_ *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
+	if len(inputs) != 2 {
+		return nil, fmt.Errorf("pow requires 2 inputs, got %d", len(inputs))
+	}
+	if inputs[0] == nil || inputs[1] == nil {
+		return nil, fmt.Errorf("pow: nil input")
+	}
+	base := inputs[0]
+	if base.DType() != tensor.Float32 || inputs[1].DType() != tensor.Float32 {
+		return nil, fmt.Errorf("pow: only float32 supported, got base=%s exp=%s", base.DType(), inputs[1].DType())
+	}
+	if base.NumElements() == 0 {
+		return nil, fmt.Errorf("pow: empty base tensor")
+	}
+	b := base.AsFloat32()
+	e := inputs[1].AsFloat32()
+
+	out, err := tensor.NewRaw(base.Shape(), tensor.Float32, tensor.CPU)
+	if err != nil {
+		return nil, fmt.Errorf("pow: %w", err)
+	}
+	od := out.AsFloat32()
+	switch {
+	case len(e) == 1:
+		ex := float64(e[0])
+		for i := range b {
+			od[i] = float32(math.Pow(float64(b[i]), ex))
+		}
+	case base.Shape().Equal(inputs[1].Shape()):
+		for i := range b {
+			od[i] = float32(math.Pow(float64(b[i]), float64(e[i])))
+		}
+	default:
+		return nil, fmt.Errorf("pow: exponent shape %v incompatible with base shape %v", inputs[1].Shape(), base.Shape())
+	}
+	return []*tensor.RawTensor{out}, nil
 }
 
 func handleAdd(ctx *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {

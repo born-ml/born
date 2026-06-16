@@ -1100,6 +1100,17 @@ func copySliceInt32(src, dst *RawTensor, axis, offset, size int) {
 	}
 }
 
+// clampSliceIndex clamps v into the inclusive range [lo, hi].
+func clampSliceIndex(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 // Slice extracts a slice from a tensor.
 //
 //nolint:gocognit,gocyclo,cyclop,funlen // Slice has inherent complexity from multi-dim indexing and requires >60 statements
@@ -1126,6 +1137,16 @@ func Slice(x *RawTensor, starts, ends, axes, steps []int64) (*RawTensor, error) 
 		}
 	}
 
+	// starts, ends, steps and axes must describe the same set of axes: the
+	// per-axis loop below indexes starts/ends/steps by the axes position, so a
+	// length mismatch would read out of range. ONNX requires starts and ends to
+	// be equal length, with axes and steps defaulting to match; reject anything
+	// else with a clean error instead of panicking.
+	if len(starts) != len(axes) || len(ends) != len(axes) || len(steps) != len(axes) {
+		return nil, fmt.Errorf("Slice: starts(%d), ends(%d), steps(%d) must match axes(%d)",
+			len(starts), len(ends), len(steps), len(axes))
+	}
+
 	// Build slice parameters for each dimension
 	sliceStarts := make([]int, ndim)
 	sliceEnds := make([]int, ndim)
@@ -1146,8 +1167,11 @@ func Slice(x *RawTensor, starts, ends, axes, steps []int64) (*RawTensor, error) 
 			return nil, fmt.Errorf("Slice: axis %d out of range [0, %d)", ax, ndim)
 		}
 
-		start := int(starts[i])
-		end := int(ends[i])
+		// i ranges over axes, and the guard above proved
+		// len(starts)==len(ends)==len(steps)==len(axes), so these indexes are in
+		// bounds. gosec G602 cannot follow that cross-statement equality.
+		start := int(starts[i]) //nolint:gosec // G602: i < len(starts), length-checked equal to len(axes) above
+		end := int(ends[i])     //nolint:gosec // G602: i < len(ends), length-checked equal to len(axes) above
 		step := int(steps[i])
 
 		// Handle negative indices
@@ -1158,18 +1182,25 @@ func Slice(x *RawTensor, starts, ends, axes, steps []int64) (*RawTensor, error) 
 			end = x.shape[axis] + end
 		}
 
-		// Clamp to valid range
-		if start < 0 {
-			start = 0
+		// Clamp to the valid range, which depends on step direction (ONNX
+		// Slice). Forward steps clamp into [0, dim]; reverse steps clamp
+		// start into [0, dim-1] and end into [-1, dim-1], so an end of
+		// INT64_MIN reaches one-before-index-0 and element 0 is included
+		// when reversing a full axis.
+		if step == 0 {
+			return nil, fmt.Errorf("Slice: step must not be zero")
 		}
-		if start > x.shape[axis] {
-			start = x.shape[axis]
-		}
-		if end < 0 {
-			end = 0
-		}
-		if end > x.shape[axis] {
-			end = x.shape[axis]
+		dim := x.shape[axis]
+		if step > 0 {
+			start = clampSliceIndex(start, 0, dim)
+			end = clampSliceIndex(end, 0, dim)
+		} else {
+			// Reverse step. This assumes dim >= 1: with dim == 0 the bound
+			// dim-1 == -1 makes the [lo, hi] range inverted (0 > -1). A valid
+			// ONNX graph never slices a zero-length axis, so the assumption
+			// holds; revisit this clamp if zero-size axes ever reach here.
+			start = clampSliceIndex(start, 0, dim-1)
+			end = clampSliceIndex(end, -1, dim-1)
 		}
 
 		sliceStarts[axis] = start

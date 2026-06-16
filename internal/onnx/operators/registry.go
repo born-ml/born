@@ -30,12 +30,15 @@ func NewRegistry() *Registry {
 
 	// Register all operators
 	r.registerMathOps()
+	r.registerReduceOps()
 	r.registerActivations()
 	r.registerShapeOps()
 	r.registerUtilityOps()
 	r.registerComparisonOps()
 	r.registerNormalizationOps()
 	r.registerLogicalOps()
+	r.registerPoolOps()
+	r.registerConvOps()
 
 	return r
 }
