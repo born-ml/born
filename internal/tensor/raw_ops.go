@@ -1182,6 +1182,10 @@ func Slice(x *RawTensor, starts, ends, axes, steps []int64) (*RawTensor, error) 
 			start = clampSliceIndex(start, 0, dim)
 			end = clampSliceIndex(end, 0, dim)
 		} else {
+			// Reverse step. This assumes dim >= 1: with dim == 0 the bound
+			// dim-1 == -1 makes the [lo, hi] range inverted (0 > -1). A valid
+			// ONNX graph never slices a zero-length axis, so the assumption
+			// holds; revisit this clamp if zero-size axes ever reach here.
 			start = clampSliceIndex(start, 0, dim-1)
 			end = clampSliceIndex(end, -1, dim-1)
 		}

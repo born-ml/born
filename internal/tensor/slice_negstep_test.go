@@ -82,6 +82,32 @@ func TestSliceReversePartial(t *testing.T) {
 	}
 }
 
+// TestSliceReverseStepTwo covers a non-unit reverse stride: starts=[4],
+// ends=[0] (exclusive), steps=[-2] on dim=5 visits indices 4 and 2, so the
+// length formula and the -step divisor must produce [4, 2].
+func TestSliceReverseStepTwo(t *testing.T) {
+	x, err := NewRaw(Shape{5}, Float32, CPU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(x.AsFloat32(), []float32{0, 1, 2, 3, 4})
+
+	out, err := Slice(x, []int64{4}, []int64{0}, []int64{0}, []int64{-2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Shape(); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("shape: got %v, want [2]", got)
+	}
+	want := []float32{4, 2}
+	got := out.AsFloat32()
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
 // TestSliceZeroStepErrors locks in the guard: step 0 is invalid (ONNX) and
 // previously caused a divide-by-zero panic in the length formula.
 func TestSliceZeroStepErrors(t *testing.T) {
