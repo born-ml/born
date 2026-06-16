@@ -7,18 +7,30 @@ import (
 // Int32 operations
 
 func addInplaceInt32(a, b []int32) {
+	if simdAddInplaceInt32 != nil {
+		simdAddInplaceInt32(a, b)
+		return
+	}
 	for i := range a {
 		a[i] += b[i]
 	}
 }
 
 func subInplaceInt32(a, b []int32) {
+	if simdSubInplaceInt32 != nil {
+		simdSubInplaceInt32(a, b)
+		return
+	}
 	for i := range a {
 		a[i] -= b[i]
 	}
 }
 
 func mulInplaceInt32(a, b []int32) {
+	if simdMulInplaceInt32 != nil {
+		simdMulInplaceInt32(a, b)
+		return
+	}
 	for i := range a {
 		a[i] *= b[i]
 	}
@@ -31,18 +43,30 @@ func divInplaceInt32(a, b []int32) {
 }
 
 func addVectorizedInt32(dst, a, b []int32) {
+	if simdAddVectorizedInt32 != nil {
+		simdAddVectorizedInt32(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] + b[i]
 	}
 }
 
 func subVectorizedInt32(dst, a, b []int32) {
+	if simdSubVectorizedInt32 != nil {
+		simdSubVectorizedInt32(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] - b[i]
 	}
 }
 
 func mulVectorizedInt32(dst, a, b []int32) {
+	if simdMulVectorizedInt32 != nil {
+		simdMulVectorizedInt32(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] * b[i]
 	}
@@ -147,18 +171,30 @@ func transposeInt32(dst, src []int32, shape tensor.Shape, axes []int) {
 // Int64 operations
 
 func addInplaceInt64(a, b []int64) {
+	if simdAddInplaceInt64 != nil {
+		simdAddInplaceInt64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] += b[i]
 	}
 }
 
 func subInplaceInt64(a, b []int64) {
+	if simdSubInplaceInt64 != nil {
+		simdSubInplaceInt64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] -= b[i]
 	}
 }
 
 func mulInplaceInt64(a, b []int64) {
+	if simdMulInplaceInt64 != nil {
+		simdMulInplaceInt64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] *= b[i]
 	}
@@ -171,18 +207,30 @@ func divInplaceInt64(a, b []int64) {
 }
 
 func addVectorizedInt64(dst, a, b []int64) {
+	if simdAddVectorizedInt64 != nil {
+		simdAddVectorizedInt64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] + b[i]
 	}
 }
 
 func subVectorizedInt64(dst, a, b []int64) {
+	if simdSubVectorizedInt64 != nil {
+		simdSubVectorizedInt64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] - b[i]
 	}
 }
 
 func mulVectorizedInt64(dst, a, b []int64) {
+	if simdMulVectorizedInt64 != nil {
+		simdMulVectorizedInt64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] * b[i]
 	}
