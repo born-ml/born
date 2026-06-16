@@ -44,6 +44,7 @@ var broadcastCases = []broadcastCase{
 	{"3d_full_vs_111", tensor.Shape{2, 3, 4}, tensor.Shape{1, 1, 1}, tensor.Shape{2, 3, 4}},
 	{"3d_prefix", tensor.Shape{1, 3, 4}, tensor.Shape{2, 1, 1}, tensor.Shape{2, 3, 4}},
 	{"4d_mixed", tensor.Shape{2, 1, 3, 1}, tensor.Shape{1, 4, 1, 5}, tensor.Shape{2, 4, 3, 5}},
+	{"5d_mixed", tensor.Shape{2, 1, 3, 1, 5}, tensor.Shape{1, 4, 1, 6, 1}, tensor.Shape{2, 4, 3, 6, 5}},
 	// Degenerate shapes. These cannot reach the broadcast ops through the public
 	// backend (shape validation rejects 0 dims, and scalar+scalar takes the
 	// non-broadcast fast path), but they pin the odometer's edge paths: scalar
@@ -185,5 +186,29 @@ func BenchmarkAddBroadcastFloat32(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		addBroadcastFloat32(dst, a, bb, benchAShape, benchBShape, benchOutShape)
+	}
+}
+
+func BenchmarkSubBroadcastFloat32(b *testing.B) {
+	a := make([]float32, benchAShape.NumElements())
+	bb := make([]float32, benchBShape.NumElements())
+	dst := make([]float32, benchOutShape.NumElements())
+	fillSeqF32(a, 1, 1)
+	fillSeqF32(bb, 2, 2)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		subBroadcastFloat32(dst, a, bb, benchAShape, benchBShape, benchOutShape)
+	}
+}
+
+func BenchmarkDivBroadcastFloat32(b *testing.B) {
+	a := make([]float32, benchAShape.NumElements())
+	bb := make([]float32, benchBShape.NumElements())
+	dst := make([]float32, benchOutShape.NumElements())
+	fillSeqF32(a, 1, 1)
+	fillSeqF32(bb, 2, 2)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		divBroadcastFloat32(dst, a, bb, benchAShape, benchBShape, benchOutShape)
 	}
 }
