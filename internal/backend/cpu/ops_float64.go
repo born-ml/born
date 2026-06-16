@@ -7,48 +7,80 @@ import (
 // Float64 operations follow the same pattern as float32
 
 func addInplaceFloat64(a, b []float64) {
+	if simdAddInplaceFloat64 != nil {
+		simdAddInplaceFloat64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] += b[i]
 	}
 }
 
 func subInplaceFloat64(a, b []float64) {
+	if simdSubInplaceFloat64 != nil {
+		simdSubInplaceFloat64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] -= b[i]
 	}
 }
 
 func mulInplaceFloat64(a, b []float64) {
+	if simdMulInplaceFloat64 != nil {
+		simdMulInplaceFloat64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] *= b[i]
 	}
 }
 
 func divInplaceFloat64(a, b []float64) {
+	if simdDivInplaceFloat64 != nil {
+		simdDivInplaceFloat64(a, b)
+		return
+	}
 	for i := range a {
 		a[i] /= b[i]
 	}
 }
 
 func addVectorizedFloat64(dst, a, b []float64) {
+	if simdAddVectorizedFloat64 != nil {
+		simdAddVectorizedFloat64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] + b[i]
 	}
 }
 
 func subVectorizedFloat64(dst, a, b []float64) {
+	if simdSubVectorizedFloat64 != nil {
+		simdSubVectorizedFloat64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] - b[i]
 	}
 }
 
 func mulVectorizedFloat64(dst, a, b []float64) {
+	if simdMulVectorizedFloat64 != nil {
+		simdMulVectorizedFloat64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] * b[i]
 	}
 }
 
 func divVectorizedFloat64(dst, a, b []float64) {
+	if simdDivVectorizedFloat64 != nil {
+		simdDivVectorizedFloat64(dst, a, b)
+		return
+	}
 	for i := range a {
 		dst[i] = a[i] / b[i]
 	}

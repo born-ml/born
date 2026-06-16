@@ -451,7 +451,7 @@ Born trains    →  Born ready   →  Born serves
 | 256 | 182ms | 21ms | **8.5x** | 11,883/s |
 | 512 | 348ms | 32ms | **10.9x** | 15,973/s |
 
-*Note: CPU backend uses naive O(n³) MatMul. SIMD optimizations planned for future releases.*
+*CPU backend includes cache-tiled MatMul (3–5x), AVX2 SIMD micro-kernel (3.5x), and SIMD element-wise ops (up to 5.4x). Build with `GOEXPERIMENT=simd` to enable.*
 
 ### WebGPU WGSL Shaders
 
