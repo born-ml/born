@@ -1,5 +1,12 @@
 package cpu
 
+import "sync"
+
+// colBufTPool reuses the transposed im2col buffer (colBuf^T) fed to the SIMD GEMM
+// across convolutions. The buffer is fully overwritten by transposeF32 every call,
+// so a pooled (un-zeroed) buffer is safe and avoids a large alloc + zero per conv.
+var colBufTPool = sync.Pool{New: func() any { s := []float32(nil); return &s }}
+
 // conv_helpers.go — inner-loop helper functions for Conv2D and MaxPool2D.
 //
 // These helpers are extracted from the innermost loops to reduce cognitive
@@ -16,9 +23,17 @@ func matMulColBufFloat32(outputData, kernelData, colBuf []float32, cOut, colHeig
 	// vendored GEMM kernel. Guarded to profitable shapes (the kernel needs a full
 	// column tile); tiny depthwise-style calls (cOut=1, small colHeight) stay scalar.
 	if gemmF32 != nil && colHeight >= gemmMinCols && cOut*colWidth*colHeight >= blockThreshold {
-		colBufT := make([]float32, colWidth*colHeight)
-		transposeF32(colBufT, colBuf, colHeight, colWidth)
+		need := colWidth * colHeight
+		p := colBufTPool.Get().(*[]float32)
+		if cap(*p) < need {
+			*p = make([]float32, need)
+		} else {
+			*p = (*p)[:need]
+		}
+		colBufT := *p
+		transposeF32(colBufT, colBuf, colHeight, colWidth) // fully overwrites colBufT
 		gemmF32(outputData, kernelData, colBufT, cOut, colWidth, colHeight)
+		colBufTPool.Put(p)
 		return
 	}
 	for i := 0; i < cOut; i++ {
