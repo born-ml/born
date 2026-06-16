@@ -529,134 +529,103 @@ func TransposeAxes(x *RawTensor, axes ...int) (*RawTensor, error) {
 	return result, nil
 }
 
-func transposeData(in, out []float32, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
+// transposeSrcStrides maps each output dimension to its stride in the source
+// array: srcStride[j] is how far the source flat index advances when output
+// coordinate j increases by one (the source stride of the axis that output
+// dimension j came from).
+func transposeSrcStrides(oldShape Shape, axes []int) []int {
 	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
+	srcStride := make([]int, len(axes))
+	for j := range axes {
+		srcStride[j] = oldStrides[axes[j]]
 	}
+	return srcStride
+}
 
+// transposeData permutes in into out according to axes. out is contiguous and
+// written in row-major order, so the destination index is simply the loop
+// counter; the source flat index is maintained incrementally with an odometer
+// over the output coordinates (an add per element, a carry only at dimension
+// boundaries). This replaces the original per-element coordinate decomposition
+// (a modulo and division per dimension) and the redundant destination-index
+// recompute. Pure data movement, so the output is identical.
+func transposeData(in, out []float32, oldShape, newShape Shape, axes []int) {
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		// Compute new index
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		// Compute old flat index
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		// Compute new flat index
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
 func transposeDataFloat64(in, out []float64, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
-	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
-	}
-
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
 func transposeDataInt32(in, out []int32, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
-	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
-	}
-
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
 func transposeDataInt64(in, out []int64, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
-	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
-	}
-
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
