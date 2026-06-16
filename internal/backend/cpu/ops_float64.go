@@ -140,6 +140,10 @@ func subBroadcastFloat64(dst, a, b []float64, aShape, bShape, outShape tensor.Sh
 	}
 }
 
+// mulBroadcastFloat64 uses the general incremental odometer only: the structured
+// fast paths added for float32 (see mulBroadcastFullFloat32) target the model's
+// inference hot path, which is float32. float64 broadcast multiply is rare enough
+// that the extra paths are not worth the duplicated complexity here.
 func mulBroadcastFloat64(dst, a, b []float64, aShape, bShape, outShape tensor.Shape) {
 	aStrides := computeBroadcastStridesForShape(aShape, outShape)
 	bStrides := computeBroadcastStridesForShape(bShape, outShape)
