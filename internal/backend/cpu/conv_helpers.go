@@ -11,6 +11,16 @@ package cpu
 // Computes output[i*colHeight+j] = sum_k kernel[i*colWidth+k] * col[j*colWidth+k]
 // for all i in [0, cOut) and j in [0, colHeight).
 func matMulColBufFloat32(outputData, kernelData, colBuf []float32, cOut, colHeight, colWidth int) {
+	// SIMD fast path: this is out = kernel[cOut,colWidth] @ colBuf^T[colWidth,colHeight].
+	// Transpose colBuf so the reduction axis becomes the row axis, then reuse the
+	// vendored GEMM kernel. Guarded to profitable shapes (the kernel needs a full
+	// column tile); tiny depthwise-style calls (cOut=1, small colHeight) stay scalar.
+	if gemmF32 != nil && colHeight >= gemmMinCols && cOut*colWidth*colHeight >= blockThreshold {
+		colBufT := make([]float32, colWidth*colHeight)
+		transposeF32(colBufT, colBuf, colHeight, colWidth)
+		gemmF32(outputData, kernelData, colBufT, cOut, colWidth, colHeight)
+		return
+	}
 	for i := 0; i < cOut; i++ {
 		kernelRow := kernelData[i*colWidth : i*colWidth+colWidth]
 		for j := 0; j < colHeight; j++ {
