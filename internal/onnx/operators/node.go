@@ -23,6 +23,13 @@ const (
 	TensorProtoUint64    = 13 // uint64
 )
 
+// ONNX auto_pad attribute values. NOTSET is the spec default (use explicit pads);
+// VALID means no padding. SAME_UPPER/SAME_LOWER are not currently supported.
+const (
+	autoPadNotset = "NOTSET"
+	autoPadValid  = "VALID"
+)
+
 // Node represents an ONNX operation node.
 // This is a local copy of the relevant fields from onnx.NodeProto
 // to avoid import cycles between onnx and operators packages.

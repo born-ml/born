@@ -128,7 +128,7 @@ func parsePoolParams(node *Node, kind poolKind) (poolParams, error) {
 // not model, so a model relying on them fails loudly instead of silently
 // producing wrong results.
 func checkUnsupportedPoolAttrs(node *Node) error {
-	if ap := GetAttrString(node, "auto_pad", "NOTSET"); ap != "NOTSET" && ap != "VALID" && ap != "" {
+	if ap := GetAttrString(node, "auto_pad", autoPadNotset); ap != autoPadNotset && ap != autoPadValid && ap != "" {
 		return fmt.Errorf("pool: auto_pad=%q not supported (use explicit pads)", ap)
 	}
 	if GetAttrInt(node, "ceil_mode", 0) != 0 {
