@@ -144,3 +144,18 @@ func TestSliceForwardUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// TestSliceLengthMismatchErrors locks in the parameter-length guard: starts,
+// ends, steps and axes must align, otherwise Slice returns an error rather than
+// indexing a parallel slice out of range. Here ends is shorter than the
+// defaulted axes (len 2).
+func TestSliceLengthMismatchErrors(t *testing.T) {
+	x, err := NewRaw(Shape{5}, Float32, CPU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(x.AsFloat32(), []float32{0, 1, 2, 3, 4})
+	if _, err := Slice(x, []int64{0, 1}, []int64{3}, nil, nil); err == nil {
+		t.Fatal("expected error for mismatched starts/ends lengths, got nil")
+	}
+}

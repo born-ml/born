@@ -1137,6 +1137,16 @@ func Slice(x *RawTensor, starts, ends, axes, steps []int64) (*RawTensor, error) 
 		}
 	}
 
+	// starts, ends, steps and axes must describe the same set of axes: the
+	// per-axis loop below indexes starts/ends/steps by the axes position, so a
+	// length mismatch would read out of range. ONNX requires starts and ends to
+	// be equal length, with axes and steps defaulting to match; reject anything
+	// else with a clean error instead of panicking.
+	if len(starts) != len(axes) || len(ends) != len(axes) || len(steps) != len(axes) {
+		return nil, fmt.Errorf("Slice: starts(%d), ends(%d), steps(%d) must match axes(%d)",
+			len(starts), len(ends), len(steps), len(axes))
+	}
+
 	// Build slice parameters for each dimension
 	sliceStarts := make([]int, ndim)
 	sliceEnds := make([]int, ndim)
@@ -1157,8 +1167,11 @@ func Slice(x *RawTensor, starts, ends, axes, steps []int64) (*RawTensor, error) 
 			return nil, fmt.Errorf("Slice: axis %d out of range [0, %d)", ax, ndim)
 		}
 
-		start := int(starts[i])
-		end := int(ends[i])
+		// i ranges over axes, and the guard above proved
+		// len(starts)==len(ends)==len(steps)==len(axes), so these indexes are in
+		// bounds. gosec G602 cannot follow that cross-statement equality.
+		start := int(starts[i]) //nolint:gosec // G602: i < len(starts), length-checked equal to len(axes) above
+		end := int(ends[i])     //nolint:gosec // G602: i < len(ends), length-checked equal to len(axes) above
 		step := int(steps[i])
 
 		// Handle negative indices
