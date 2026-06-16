@@ -84,6 +84,13 @@ func TestGemmAVX2F32MatchesScalar(t *testing.T) {
 		{1, 1024, 96},  // classifier-like GEMV, full n tiles
 		{7, 2048, 513}, // model-representative large K + row/col tails
 		{6, 2048, 32},  // large K, exact rows
+		// Column-tail stress: n%gemmNr == 8 (the n=24 conv shapes) across row residues.
+		{7, 100, 24},    // 1 full tile + 8-col tail, row tail
+		{13, 64, 40},    // 2 full tiles + 8-col tail, row tail
+		{192, 192, 24},  // model-shaped: many blocks + 8-col tail
+		{1, 1024, 24},   // GEMV + 8-col tail
+		{5, 64, 8},      // pure tail (n < gemmNr), thin rows
+		{18, 128, 8},    // pure tail (n < gemmNr), full blocks
 	}
 
 	for _, s := range shapes {

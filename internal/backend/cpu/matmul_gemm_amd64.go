@@ -23,8 +23,9 @@ const (
 // place so the GEMM fast path stays allocation-free across calls (one inference
 // reuses the same backing arrays for every large multiply).
 type gemmScratch struct {
-	ap []float32 // packed A: [nBlocks][k][gemmMr]
-	bp []float32 // packed B: [nTiles][k][gemmNr]
+	ap []float32 // packed A:        [nBlocks][k][gemmMr]
+	bp []float32 // packed B:        [nTiles][k][gemmNr]
+	bt []float32 // packed tail B:   [k][gemmNr] (n%gemmNr cols, zero-padded)
 }
 
 var gemmScratchPool = sync.Pool{New: func() any { return new(gemmScratch) }}
@@ -64,7 +65,8 @@ func init() {
 // cache. The nr-wide column tiles are processed outermost so each packed B
 // panel stays resident across all the row blocks that reuse it. Full gemmMr×gemmNr
 // tiles run the 6x16 kernel (C held in registers across k); the 1-5 row tail and
-// GEMV (m < gemmMr) shapes use the 1x16 kernel; the n%gemmNr column tail is scalar.
+// GEMV (m < gemmMr) shapes use the 1x16 kernel; the n%gemmNr column tail is run
+// through the 1x16 kernel over a zero-padded packed panel.
 func gemmAVX2F32(c, a, b []float32, m, k, n int) {
 	if k == 0 {
 		// Empty inner dimension: the product is the zero matrix. The matmulFloat32
@@ -76,17 +78,23 @@ func gemmAVX2F32(c, a, b []float32, m, k, n int) {
 
 	mFull := m - m%gemmMr
 	nFull := n - n%gemmNr
+	nrem := n - nFull
+
+	sc := gemmScratchPool.Get().(*gemmScratch)
+	defer gemmScratchPool.Put(sc)
 
 	switch {
 	case nFull == 0:
-		// Every column is below one full tile; handled by the scalar tail below.
+		// Every column is below one full tile; the tail path below covers them all.
 	case mFull == 0:
 		gemvStridedF32(c, a, b, m, k, n, nFull) // thin / GEMV: no packing pays off
 	default:
-		gemmPackedF32(c, a, b, m, k, n, mFull, nFull)
+		gemmPackedF32(c, a, b, m, k, n, mFull, nFull, sc)
 	}
 
-	gemmColTailF32(c, a, b, m, k, n, nFull)
+	if nrem > 0 {
+		gemmTailF32(c, a, b, m, k, n, nFull, nrem, sc)
+	}
 }
 
 // gemvStridedF32 handles thin shapes (m < gemmMr) over the full nr-wide column
@@ -104,12 +112,10 @@ func gemvStridedF32(c, a, b []float32, m, k, n, nFull int) {
 // (m >= gemmMr, n >= gemmNr). A and B are packed once into pooled scratch; column
 // tiles are processed outermost so each packed B panel stays L2-resident across
 // the row blocks that reuse it.
-func gemmPackedF32(c, a, b []float32, m, k, n, mFull, nFull int) {
+func gemmPackedF32(c, a, b []float32, m, k, n, mFull, nFull int, sc *gemmScratch) {
 	nTiles := nFull / gemmNr
 	nBlocks := mFull / gemmMr
 
-	sc := gemmScratchPool.Get().(*gemmScratch)
-	defer gemmScratchPool.Put(sc)
 	bp := ensureCap(&sc.bp, nTiles*k*gemmNr)
 	ap := ensureCap(&sc.ap, nBlocks*k*gemmMr)
 
@@ -130,16 +136,32 @@ func gemmPackedF32(c, a, b []float32, m, k, n, mFull, nFull int) {
 	}
 }
 
-// gemmColTailF32 computes the n%gemmNr column remainder [nFull, n) for all rows
-// with a scalar dot product (too narrow for a full vector tile).
-func gemmColTailF32(c, a, b []float32, m, k, n, nFull int) {
+// gemmTailF32 computes the n%gemmNr column remainder [nFull, n) for all rows. The
+// nrem (< gemmNr) tail columns of B are packed into one zero-padded [k][gemmNr]
+// panel and run through the 1x16 kernel a row at a time: the kernel produces a
+// full 16-wide result in SIMD lanes (the padded columns cost nothing) and only the
+// nrem valid columns are stored. This replaces a scalar dot product that was a top
+// hotspot for shapes like n=24 (nrem=8) and n=1025/513 (nrem=1).
+func gemmTailF32(c, a, b []float32, m, k, n, nFull, nrem int, sc *gemmScratch) {
+	bt := ensureCap(&sc.bt, k*gemmNr)
+	packTailB(bt, b, k, n, nFull, nrem)
+
+	var scratch [gemmNr]float32
 	for i := 0; i < m; i++ {
-		for j := nFull; j < n; j++ {
-			var s float32
-			for kk := 0; kk < k; kk++ {
-				s += a[i*k+kk] * b[kk*n+j]
-			}
-			c[i*n+j] = s
+		gemmMicroKernel1x16AVX2(scratch[:], a[i*k:], bt, k)
+		copy(c[i*n+nFull:i*n+n], scratch[:nrem])
+	}
+}
+
+// packTailB packs the nrem (< gemmNr) tail columns [nFull, n) of B[k,n] into bt as
+// a contiguous [k][gemmNr] panel, zero-filling the unused columns so the 1x16
+// kernel reads a full 16-wide row.
+func packTailB(bt, b []float32, k, n, nFull, nrem int) {
+	for kk := 0; kk < k; kk++ {
+		d := bt[kk*gemmNr : kk*gemmNr+gemmNr : kk*gemmNr+gemmNr]
+		copy(d[:nrem], b[kk*n+nFull:kk*n+nFull+nrem])
+		for j := nrem; j < gemmNr; j++ {
+			d[j] = 0
 		}
 	}
 }
