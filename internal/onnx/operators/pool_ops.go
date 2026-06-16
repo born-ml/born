@@ -30,6 +30,13 @@ type poolParams struct {
 }
 
 func handleMaxPool(_ *Context, node *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTensor, error) {
+	// ONNX MaxPool has an optional second output (Indices, consumed by
+	// MaxUnpool). This implementation produces only the pooled values, so a
+	// model that wires up the Indices output must fail loudly here rather than
+	// silently losing it and breaking the downstream MaxUnpool.
+	if len(node.Outputs) > 1 && node.Outputs[1] != "" {
+		return nil, fmt.Errorf("pool: MaxPool Indices output not supported")
+	}
 	return handlePool(node, inputs, poolMax)
 }
 
@@ -44,6 +51,12 @@ func handleAveragePool(_ *Context, node *Node, inputs []*tensor.RawTensor) ([]*t
 //
 // Unsupported attributes are rejected with an error rather than silently
 // mispooled: ceil_mode=1, auto_pad=SAME_UPPER/SAME_LOWER, and dilations>1.
+//
+// This is a CPU reference implementation and intentionally does not delegate
+// to ctx.Backend.MaxPool2D: the backend pooling kernels assume a square
+// window and equal strides, whereas ONNX permits non-square kernels and
+// asymmetric strides/pads. The handler therefore takes no Context. Switch to
+// the backend path only once it supports the general (non-square) case.
 func handlePool(node *Node, inputs []*tensor.RawTensor, kind poolKind) ([]*tensor.RawTensor, error) {
 	if len(inputs) < 1 || inputs[0] == nil {
 		return nil, fmt.Errorf("pool: missing input")

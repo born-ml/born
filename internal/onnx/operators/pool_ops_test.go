@@ -222,3 +222,37 @@ func TestPool_BadKernelShape(t *testing.T) {
 		t.Fatal("expected error for 1D kernel_shape, got nil")
 	}
 }
+
+func TestMaxPool_NonSquareKernel(t *testing.T) {
+	// 3x1 vertical window over a [1,1,3,2] input: pool down each column.
+	// rows [1,2] [3,4] [5,6] -> outH=1, outW=2 -> column maxima [5,6].
+	in := poolTensor(t, tensor.Shape{1, 1, 3, 2}, []float32{1, 2, 3, 4, 5, 6})
+	out := runPool(t, "MaxPool", []Attribute{ints("kernel_shape", 3, 1), ints("strides", 1, 1)}, in)
+	poolAssertShape(t, out, tensor.Shape{1, 1, 1, 2})
+	poolAssertClose(t, out.AsFloat32(), []float32{5, 6})
+}
+
+func TestPool_NegativeOutputDim(t *testing.T) {
+	// Kernel larger than the input with no padding yields a non-positive
+	// output dim, which must be rejected rather than producing a 0-size or
+	// negative-shape tensor.
+	in := poolTensor(t, tensor.Shape{1, 1, 2, 2}, []float32{1, 2, 3, 4})
+	if err := runPoolErr("MaxPool", []Attribute{ints("kernel_shape", 3, 3)}, in); err == nil {
+		t.Fatal("expected error for kernel larger than input, got nil")
+	}
+}
+
+func TestMaxPool_IndicesOutputRejected(t *testing.T) {
+	// A second (Indices) output is optional in ONNX MaxPool but unsupported
+	// here; requesting it must error instead of silently dropping it.
+	in := poolTensor(t, tensor.Shape{1, 1, 2, 2}, []float32{1, 2, 3, 4})
+	r := NewRegistry()
+	node := &Node{
+		OpType:     "MaxPool",
+		Attributes: []Attribute{ints("kernel_shape", 2, 2)},
+		Outputs:    []string{"y", "indices"},
+	}
+	if _, err := r.Execute(&Context{Backend: cpu.New()}, node, []*tensor.RawTensor{in}); err == nil {
+		t.Fatal("expected error when MaxPool Indices output is requested, got nil")
+	}
+}
