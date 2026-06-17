@@ -65,6 +65,12 @@ func (cpu *CPUBackend) MatMul(a, b *tensor.RawTensor) *tensor.RawTensor {
 
 // matmulFloat32 multiplies A (m×k) by B (k×n) and writes the result into C (m×n).
 //
+// C is OVERWRITTEN, not accumulated into: the function zeroes c up front, so
+// callers may pass a dirty buffer and rely on getting a pure A×B result without
+// pre-zeroing it themselves (pointwiseConvFloat32 depends on this). Any future
+// accumulate-mode variant must be a separate function, not a behavior change
+// here, or that contract breaks silently.
+//
 // For matrices large enough to benefit from cache locality (m*k*n >= blockThreshold)
 // a three-level cache-tiled algorithm is used: outer loops stride in blocks that fit
 // the L1 cache, while the micro-kernel accumulates a block with sequential B access.
@@ -132,6 +138,9 @@ func matmulNaiveFloat32(c, a, b []float32, m, k, n int) {
 //
 // Identical algorithm to matmulFloat32 but with blockSizeF64 = 32 so that a
 // 32×32 block of float64 still fits within a 32 KB L1 data cache (8 KB used).
+//
+// Like matmulFloat32, C is OVERWRITTEN (zeroed up front), not accumulated into;
+// pointwiseConvFloat64 relies on that to skip its own zeroing.
 //
 // The caller must pass c pre-capped to exactly m*n elements.
 func matmulFloat64(c, a, b []float64, m, k, n int) {

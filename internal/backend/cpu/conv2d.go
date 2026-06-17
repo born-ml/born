@@ -160,6 +160,11 @@ func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 // per-batch matrix multiply output[n] = kernel[COut,CIn] @ input[n][CIn,H*W].
 // matmulFloat32 writes the [COut, H*W] product straight into the output buffer,
 // which is already the [N, COut, H, W] layout, so no im2col or rearrange is needed.
+//
+// This relies on matmulFloat32 OVERWRITING its output (it zeroes the buffer up
+// front), so each per-batch slice is fully written with no pre-zeroing here. See
+// matmulFloat32's documented overwrite contract; an accumulate-mode change there
+// would have to be a separate function, not a behavior change.
 func pointwiseConvFloat32(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	inputData := input.AsFloat32()
 	kernelData := kernel.AsFloat32()
@@ -380,7 +385,8 @@ func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
 }
 
-// pointwiseConvFloat64 is the float64 counterpart of pointwiseConvFloat32.
+// pointwiseConvFloat64 is the float64 counterpart of pointwiseConvFloat32 and
+// relies on the same matmulFloat64 overwrite contract (no pre-zeroing needed).
 func pointwiseConvFloat64(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 	inputData := input.AsFloat64()
 	kernelData := kernel.AsFloat64()
