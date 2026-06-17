@@ -5,6 +5,13 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] - 2026-06-17
+
+### Added
+
+- **AVX2 3x3 depthwise convolution kernel** — avo-generated, 9 taps broadcast into persistent YMM registers, 11.6x geomean speedup over Go kernel ([#103](https://github.com/born-ml/born/pull/103) by [@tphakala](https://github.com/tphakala))
+- **AVX2 pow(x,c) kernel** — Cephes exp·ln composition (~4 ULP), for ONNX Pow with scalar exponent. BirdNET sigmoid/exp hot path 6.58% → ~1% ([#104](https://github.com/born-ml/born/pull/104) by [@tphakala](https://github.com/tphakala))
+
 ## [0.9.9] - 2026-06-17
 
 ### Changed
