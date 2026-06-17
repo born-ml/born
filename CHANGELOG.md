@@ -30,10 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Broadcast indexing** — incremental odometer instead of per-element division/modulo ([#83](https://github.com/born-ml/born/pull/83) by [@tphakala](https://github.com/tphakala))
 - **Gather** — block-copy instead of per-element coordinate math ([#85](https://github.com/born-ml/born/pull/85) by [@tphakala](https://github.com/tphakala))
 - **TransposeAxes** — incremental index walk instead of per-element coordinate math ([#86](https://github.com/born-ml/born/pull/86) by [@tphakala](https://github.com/tphakala))
+- **Depthwise conv** — direct kernel instead of per-channel im2col+GEMM, 3x3 unrolled path ([#87](https://github.com/born-ml/born/pull/87) by [@tphakala](https://github.com/tphakala))
+- **1x1 conv** — direct matmul fast path bypassing im2col for pointwise convolutions ([#88](https://github.com/born-ml/born/pull/88) by [@tphakala](https://github.com/tphakala))
+- **Broadcast multiply** — structured fast paths for trailing-run and leading-tile patterns ([#89](https://github.com/born-ml/born/pull/89) by [@tphakala](https://github.com/tphakala))
 
 ### Contributors
 
-- [@tphakala](https://github.com/tphakala) — 9 PRs: ONNX Conv/Pool/Reduce/Pow, Slice fix, Chunk/Cat/Broadcast/Gather/Transpose perf
+- [@tphakala](https://github.com/tphakala) — 12 PRs: ONNX Conv/Pool/Reduce/Pow, Slice fix, depthwise/1x1 conv, Chunk/Cat/Broadcast/Gather/Transpose perf
 - [@bennibbelink](https://github.com/bennibbelink) — SIMD element-wise arithmetic (AVX/AVX2/AVX-512)
 
 ## [0.9.5] - 2026-06-16
