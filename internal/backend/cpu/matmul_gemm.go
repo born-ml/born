@@ -18,3 +18,15 @@ const gemmMinCols = 16
 // build where the archsimd micro-kernel owns dispatch) the scalar path is used
 // unchanged.
 var gemmF32 func(c, a, b []float32, m, k, n int)
+
+// transposeF32 writes the [rows, cols] -> [cols, rows] transpose of src into dst:
+// dst[c*rows+r] = src[r*cols+c]. Used to recast the conv im2col product
+// out = kernel @ colBuf^T into the GEMM kernel's A @ B form.
+func transposeF32(dst, src []float32, rows, cols int) {
+	for r := 0; r < rows; r++ {
+		base := r * cols
+		for c := 0; c < cols; c++ {
+			dst[c*rows+r] = src[base+c]
+		}
+	}
+}
