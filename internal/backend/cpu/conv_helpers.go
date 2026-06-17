@@ -7,6 +7,37 @@ import "sync"
 // so a pooled (un-zeroed) buffer is safe and avoids a large alloc + zero per conv.
 var colBufTPool = sync.Pool{New: func() any { s := []float32(nil); return &s }}
 
+// The im2col conv path (conv2dFloat32 / conv2dFloat64) recycles two more large
+// ephemeral buffers per call: convColPool* holds the im2col column buffer, and
+// convOutPool* holds the matmul output that feeds the NCHW rearrange. Both are
+// fully overwritten before any read (im2col writes every column entry, including
+// padding zeros; matMulColBuf* writes every output[i*colHeight+j]), so a pooled
+// un-zeroed buffer is safe and skips a make + memclr per conv. Recycling the
+// matmul output also removes the old copy(outputData -> tempBuf) memmove, because
+// the matmul writes the scratch directly and rearrange then permutes it into the
+// output. Mirrors colBufTPool above and the gemmScratch pool from the GEMM kernel.
+var (
+	convColPoolF32 = sync.Pool{New: func() any { s := []float32(nil); return &s }}
+	convOutPoolF32 = sync.Pool{New: func() any { s := []float32(nil); return &s }}
+	convColPoolF64 = sync.Pool{New: func() any { s := []float64(nil); return &s }}
+	convOutPoolF64 = sync.Pool{New: func() any { s := []float64(nil); return &s }}
+)
+
+// poolScratch returns a length-n slice backed by a pooled array from p, growing
+// the array only when the cached capacity is too small. The slice length is
+// exactly n (no backing-slice slack leaks into indexing), and its contents are
+// NOT zeroed: callers must fully overwrite the slice before reading it, then
+// return the pointer to p with Put.
+func poolScratch[T any](p *sync.Pool, n int) *[]T {
+	sp := p.Get().(*[]T)
+	if cap(*sp) < n {
+		*sp = make([]T, n)
+	} else {
+		*sp = (*sp)[:n]
+	}
+	return sp
+}
+
 // conv_helpers.go — inner-loop helper functions for Conv2D and MaxPool2D.
 //
 // These helpers are extracted from the innermost loops to reduce cognitive
@@ -23,17 +54,11 @@ func matMulColBufFloat32(outputData, kernelData, colBuf []float32, cOut, colHeig
 	// vendored GEMM kernel. Guarded to profitable shapes (the kernel needs a full
 	// column tile); tiny depthwise-style calls (cOut=1, small colHeight) stay scalar.
 	if gemmF32 != nil && colHeight >= gemmMinCols && cOut*colWidth*colHeight >= blockThreshold {
-		need := colWidth * colHeight
-		p := colBufTPool.Get().(*[]float32)
-		if cap(*p) < need {
-			*p = make([]float32, need)
-		} else {
-			*p = (*p)[:need]
-		}
+		p := poolScratch[float32](&colBufTPool, colWidth*colHeight)
+		defer colBufTPool.Put(p)
 		colBufT := *p
 		transposeF32(colBufT, colBuf, colHeight, colWidth) // fully overwrites colBufT
 		gemmF32(outputData, kernelData, colBufT, cOut, colWidth, colHeight)
-		colBufTPool.Put(p)
 		return
 	}
 	for i := 0; i < cOut; i++ {

@@ -140,20 +140,26 @@ func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	HOut := dims.HOut
 	WOut := dims.WOut
 
-	// Step 1: Im2col with stride=1, padding=0
+	// Step 1: Im2col with stride=1, padding=0. colBuf is recycled from a pool and
+	// fully overwritten by im2col, so it needs no zeroing.
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
-	colBuf := make([]float32, colHeight*colWidth)
+	colp := poolScratch[float32](&convColPoolF32, colHeight*colWidth)
+	colBuf := *colp
+	defer convColPoolF32.Put(colp)
 
 	im2colFloat32Stride1NoPad(colBuf, inputData, dims)
 
-	// Step 2: Matrix multiplication via helper (inlined by compiler).
-	matMulColBufFloat32(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+	// Step 2: Matrix multiply into pooled scratch (len == len(outputData)).
+	// matMulColBufFloat32 writes every element, so the un-zeroed buffer is safe.
+	matp := poolScratch[float32](&convOutPoolF32, COut*colHeight)
+	matOut := *matp
+	defer convOutPoolF32.Put(matp)
+	matMulColBufFloat32(matOut, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Step 3: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
-	tempBuf := make([]float32, len(outputData))
-	copy(tempBuf, outputData)
-	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
+	// Step 3: Rearrange [C_out, N*H_out*W_out] -> [N, C_out, H_out, W_out],
+	// permuting the matmul scratch straight into the output (no intermediate copy).
+	rearrangeOutputFloat32(outputData, matOut, N, COut, HOut, WOut, colHeight)
 }
 
 // pointwiseConvFloat32 computes a 1x1 convolution (stride=1, padding=0) as a
@@ -196,24 +202,29 @@ func conv2dFloat32General(output, input, kernel *tensor.RawTensor, dims *ConvDim
 	HOut := dims.HOut
 	WOut := dims.WOut
 
-	// Step 1: Im2col transformation
-	// colBuf: [N * H_out * W_out, C_in * K_h * K_w]
+	// Step 1: Im2col transformation. colBuf: [N*H_out*W_out, C_in*K_h*K_w].
+	// Pooled scratch, fully overwritten by im2col, so no zeroing needed.
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
-	colBuf := make([]float32, colHeight*colWidth)
+	colp := poolScratch[float32](&convColPoolF32, colHeight*colWidth)
+	colBuf := *colp
+	defer convColPoolF32.Put(colp)
 
 	im2colFloat32(colBuf, inputData, dims)
 
 	// Step 2: Reshape kernel — already in [C_out, C_in*K_h*K_w] layout (row-major).
 
-	// Step 3: Matrix multiplication via helper (inlined by compiler).
-	// kernel: [C_out, C_in*K_h*K_w] @ colBuf^T -> [C_out, N*H_out*W_out]
-	matMulColBufFloat32(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+	// Step 3: Matrix multiply into pooled scratch (len == len(outputData)).
+	// kernel: [C_out, C_in*K_h*K_w] @ colBuf^T -> [C_out, N*H_out*W_out].
+	// matMulColBufFloat32 writes every element, so the un-zeroed buffer is safe.
+	matp := poolScratch[float32](&convOutPoolF32, COut*colHeight)
+	matOut := *matp
+	defer convOutPoolF32.Put(matp)
+	matMulColBufFloat32(matOut, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Step 4: Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
-	tempBuf := make([]float32, len(outputData))
-	copy(tempBuf, outputData)
-	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
+	// Step 4: Rearrange [C_out, N*H_out*W_out] -> [N, C_out, H_out, W_out],
+	// permuting the matmul scratch straight into the output (no intermediate copy).
+	rearrangeOutputFloat32(outputData, matOut, N, COut, HOut, WOut, colHeight)
 }
 
 // im2colFloat32Stride1NoPad is optimized for stride=1, padding=0.
@@ -370,19 +381,25 @@ func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	HOut := dims.HOut
 	WOut := dims.WOut
 
-	// Im2col with stride=1, padding=0
+	// Im2col with stride=1, padding=0. Pooled scratch, fully overwritten by
+	// im2col, so no zeroing needed.
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
-	colBuf := make([]float64, colHeight*colWidth)
+	colp := poolScratch[float64](&convColPoolF64, colHeight*colWidth)
+	colBuf := *colp
+	defer convColPoolF64.Put(colp)
 	im2colFloat64Stride1NoPad(colBuf, inputData, dims)
 
-	// MatMul via helper (inlined by compiler).
-	matMulColBufFloat64(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+	// MatMul into pooled scratch (len == len(outputData)); matMulColBufFloat64
+	// writes every element, so the un-zeroed buffer is safe.
+	matp := poolScratch[float64](&convOutPoolF64, COut*colHeight)
+	matOut := *matp
+	defer convOutPoolF64.Put(matp)
+	matMulColBufFloat64(matOut, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
-	tempBuf := make([]float64, len(outputData))
-	copy(tempBuf, outputData)
-	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
+	// Rearrange [C_out, N*H_out*W_out] -> [N, C_out, H_out, W_out], permuting the
+	// matmul scratch straight into the output (no intermediate copy).
+	rearrangeOutputFloat64(outputData, matOut, N, COut, HOut, WOut, colHeight)
 }
 
 // pointwiseConvFloat64 is the float64 counterpart of pointwiseConvFloat32 and
@@ -418,19 +435,24 @@ func conv2dFloat64General(output, input, kernel *tensor.RawTensor, dims *ConvDim
 	HOut := dims.HOut
 	WOut := dims.WOut
 
-	// Im2col
+	// Im2col. Pooled scratch, fully overwritten by im2col, so no zeroing needed.
 	colWidth := CIn * KH * KW
 	colHeight := N * HOut * WOut
-	colBuf := make([]float64, colHeight*colWidth)
+	colp := poolScratch[float64](&convColPoolF64, colHeight*colWidth)
+	colBuf := *colp
+	defer convColPoolF64.Put(colp)
 	im2colFloat64(colBuf, inputData, dims)
 
-	// MatMul via helper (inlined by compiler).
-	matMulColBufFloat64(outputData, kernelData, colBuf, COut, colHeight, colWidth)
+	// MatMul into pooled scratch (len == len(outputData)); matMulColBufFloat64
+	// writes every element, so the un-zeroed buffer is safe.
+	matp := poolScratch[float64](&convOutPoolF64, COut*colHeight)
+	matOut := *matp
+	defer convOutPoolF64.Put(matp)
+	matMulColBufFloat64(matOut, kernelData, colBuf, COut, colHeight, colWidth)
 
-	// Rearrange from [C_out, N*H_out*W_out] to [N, C_out, H_out, W_out].
-	tempBuf := make([]float64, len(outputData))
-	copy(tempBuf, outputData)
-	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
+	// Rearrange [C_out, N*H_out*W_out] -> [N, C_out, H_out, W_out], permuting the
+	// matmul scratch straight into the output (no intermediate copy).
+	rearrangeOutputFloat64(outputData, matOut, N, COut, HOut, WOut, colHeight)
 }
 
 // im2colFloat64Stride1NoPad is optimized for stride=1, padding=0.
