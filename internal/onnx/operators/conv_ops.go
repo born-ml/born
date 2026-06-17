@@ -215,6 +215,13 @@ func depthwiseConvForwardFloat32(out, in, weight []float32, n, c, hp, wp, kh, kw
 // are loaded once per channel (highest index first so the compiler drops the
 // other bounds checks) and reused across all output positions.
 func depthwiseConvForward3x3Float32(out, in, weight []float32, n, c, hp, wp, hOut, wOut, s int) {
+	// SIMD fast path: the vendored AVX2 kernel handles stride=1 (the dominant
+	// depthwise pattern); stride>1 maps outputs to strided input columns and stays
+	// on the scalar path below.
+	if s == 1 && depthwise3x3F32 != nil {
+		depthwise3x3F32(out, in, weight, n, c, hp, wp, hOut, wOut)
+		return
+	}
 	planeIn := hp * wp
 	planeOut := hOut * wOut
 	for plane := 0; plane < n*c; plane++ {

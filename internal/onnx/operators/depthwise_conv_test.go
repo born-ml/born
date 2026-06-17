@@ -55,6 +55,15 @@ func fillDet(s []float32) {
 // TestDepthwiseConvForward_MatchesNaive checks the kernel arithmetic against an
 // independent explicit-index reference, bit-for-bit (same accumulation order).
 func TestDepthwiseConvForward_MatchesNaive(t *testing.T) {
+	// Force the scalar reference path: this test asserts bit-for-bit equality with
+	// the explicit-index reference, which only holds for the scalar kernel's
+	// accumulation order. The vendored SIMD kernel reorders FMA accumulation and is
+	// covered within tolerance by TestDepthwise3x3SIMDParity.
+	defer func(prev func(out, in, weight []float32, n, c, hp, wp, hOut, wOut int)) {
+		depthwise3x3F32 = prev
+	}(depthwise3x3F32)
+	depthwise3x3F32 = nil
+
 	for _, tc := range depthwiseCases {
 		t.Run(tc.name, func(t *testing.T) {
 			hOut := (tc.h-tc.k)/tc.s + 1
