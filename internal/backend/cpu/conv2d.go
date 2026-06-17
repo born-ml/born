@@ -119,6 +119,15 @@ func conv2dFloat32(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 // conv2dFloat32Stride1NoPad is optimized for stride=1, padding=0 (most common case).
 // Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
 func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
+	// Pointwise (1x1) fast path: im2col would only transpose the input to
+	// [H*W, CIn] for matMulColBufFloat32 to transpose it straight back, so skip
+	// im2col, the colBuf transpose, and the output rearrange entirely and run the
+	// GEMM directly on the input (kernel[COut,CIn] @ input[CIn,H*W] per batch).
+	if dims.KH == 1 && dims.KW == 1 {
+		pointwiseConvFloat32(output, input, kernel, dims)
+		return
+	}
+
 	inputData := input.AsFloat32()
 	kernelData := kernel.AsFloat32()
 	outputData := output.AsFloat32()
@@ -145,6 +154,32 @@ func conv2dFloat32Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	tempBuf := make([]float32, len(outputData))
 	copy(tempBuf, outputData)
 	rearrangeOutputFloat32(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
+}
+
+// pointwiseConvFloat32 computes a 1x1 convolution (stride=1, padding=0) as a
+// per-batch matrix multiply output[n] = kernel[COut,CIn] @ input[n][CIn,H*W].
+// matmulFloat32 writes the [COut, H*W] product straight into the output buffer,
+// which is already the [N, COut, H, W] layout, so no im2col or rearrange is needed.
+//
+// This relies on matmulFloat32 OVERWRITING its output (it zeroes the buffer up
+// front), so each per-batch slice is fully written with no pre-zeroing here. See
+// matmulFloat32's documented overwrite contract; an accumulate-mode change there
+// would have to be a separate function, not a behavior change.
+func pointwiseConvFloat32(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
+	inputData := input.AsFloat32()
+	kernelData := kernel.AsFloat32()
+	outputData := output.AsFloat32()
+
+	cIn, cOut := dims.CIn, dims.COut
+	hw := dims.HOut * dims.WOut // == H*W for 1x1 stride=1 padding=0
+	inStride := cIn * hw
+	outStride := cOut * hw
+
+	for n := 0; n < dims.N; n++ {
+		in := inputData[n*inStride : n*inStride+inStride]
+		out := outputData[n*outStride : n*outStride+outStride]
+		matmulFloat32(out, kernelData, in, cOut, cIn, hw)
+	}
 }
 
 // conv2dFloat32General handles arbitrary stride and padding.
@@ -316,6 +351,13 @@ func conv2dFloat64(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
 // conv2dFloat64Stride1NoPad is optimized for stride=1, padding=0 (most common case).
 // Compiler can better optimize this with hardcoded stride=1 (loop unrolling, SIMD).
 func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
+	// Pointwise (1x1) fast path: skip im2col/transpose/rearrange (see the float32
+	// version for the rationale) and run the GEMM directly on the input.
+	if dims.KH == 1 && dims.KW == 1 {
+		pointwiseConvFloat64(output, input, kernel, dims)
+		return
+	}
+
 	inputData := input.AsFloat64()
 	kernelData := kernel.AsFloat64()
 	outputData := output.AsFloat64()
@@ -341,6 +383,25 @@ func conv2dFloat64Stride1NoPad(output, input, kernel *tensor.RawTensor, dims *Co
 	tempBuf := make([]float64, len(outputData))
 	copy(tempBuf, outputData)
 	rearrangeOutputFloat64(outputData, tempBuf, N, COut, HOut, WOut, colHeight)
+}
+
+// pointwiseConvFloat64 is the float64 counterpart of pointwiseConvFloat32 and
+// relies on the same matmulFloat64 overwrite contract (no pre-zeroing needed).
+func pointwiseConvFloat64(output, input, kernel *tensor.RawTensor, dims *ConvDims) {
+	inputData := input.AsFloat64()
+	kernelData := kernel.AsFloat64()
+	outputData := output.AsFloat64()
+
+	cIn, cOut := dims.CIn, dims.COut
+	hw := dims.HOut * dims.WOut // == H*W for 1x1 stride=1 padding=0
+	inStride := cIn * hw
+	outStride := cOut * hw
+
+	for n := 0; n < dims.N; n++ {
+		in := inputData[n*inStride : n*inStride+inStride]
+		out := outputData[n*outStride : n*outStride+outStride]
+		matmulFloat64(out, kernelData, in, cOut, cIn, hw)
+	}
 }
 
 // conv2dFloat64General handles arbitrary stride and padding.

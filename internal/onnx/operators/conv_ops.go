@@ -153,7 +153,119 @@ func convForward(ctx *Context, xp, w *tensor.RawTensor, p convParams) (*tensor.R
 	if p.group == 1 {
 		return ctx.Backend.Conv2D(xp, w, p.stride, 0), nil
 	}
+	if isDepthwiseFloat32(xp, w, p) {
+		return depthwiseConv2DFloat32(xp, w, p)
+	}
 	return groupedConv2D(ctx, xp, w, p.stride, p.group)
+}
+
+// isDepthwiseFloat32 reports whether a grouped conv is a plain depthwise
+// convolution the direct CPU kernel can handle: exactly one output channel per
+// input channel (group == Cin == Cout, weight [C,1,kH,kW]), float32, on CPU.
+// Other grouped convs (and non-CPU/non-float32 tensors) fall back to
+// groupedConv2D.
+func isDepthwiseFloat32(xp, w *tensor.RawTensor, p convParams) bool {
+	cin := xp.Shape()[1]
+	return p.group == cin &&
+		w.Shape()[0] == cin &&
+		w.Shape()[1] == 1 &&
+		xp.DType() == tensor.Float32 &&
+		xp.Device() == tensor.CPU
+}
+
+// depthwiseConv2DFloat32 convolves each input channel with its own kH x kW
+// filter directly. This replaces the per-channel im2col + GEMM + Chunk/Cat that
+// groupedConv2D runs for a depthwise layer (one Conv2D per channel, i.e. up to
+// thousands of tiny matmuls) with a single allocation-light loop. The input is
+// already padded by the caller, so this runs at padding 0; bias is added by the
+// caller afterward.
+func depthwiseConv2DFloat32(input, weight *tensor.RawTensor, p convParams) (*tensor.RawTensor, error) {
+	is := input.Shape()
+	n, c, hp, wp := is[0], is[1], is[2], is[3]
+	ws := weight.Shape()
+	kh, kw := ws[2], ws[3]
+	s := p.stride
+	hOut := (hp-kh)/s + 1
+	wOut := (wp-kw)/s + 1
+
+	out, err := tensor.NewRaw(tensor.Shape{n, c, hOut, wOut}, tensor.Float32, input.Device())
+	if err != nil {
+		return nil, fmt.Errorf("conv: depthwise: %w", err)
+	}
+	depthwiseConvForwardFloat32(out.AsFloat32(), input.AsFloat32(), weight.AsFloat32(),
+		n, c, hp, wp, kh, kw, hOut, wOut, s)
+	return out, nil
+}
+
+// depthwiseConvForwardFloat32 runs the direct depthwise convolution. The 3x3
+// kernel (every depthwise layer in models like BirdNET/EfficientNet) gets a
+// fully unrolled path with the nine taps held in registers; other kernel sizes
+// use the generic loop. The batch and channel axes are flattened into one plane
+// index because each (n, c) plane is convolved independently with channel c's
+// filter, and input/output are contiguous NCHW (one H*W block per plane).
+func depthwiseConvForwardFloat32(out, in, weight []float32, n, c, hp, wp, kh, kw, hOut, wOut, s int) {
+	if kh == 3 && kw == 3 {
+		depthwiseConvForward3x3Float32(out, in, weight, n, c, hp, wp, hOut, wOut, s)
+		return
+	}
+	depthwiseConvForwardGenericFloat32(out, in, weight, n, c, hp, wp, kh, kw, hOut, wOut, s)
+}
+
+// depthwiseConvForward3x3Float32 is the unrolled 3x3 path. The nine filter taps
+// are loaded once per channel (highest index first so the compiler drops the
+// other bounds checks) and reused across all output positions.
+func depthwiseConvForward3x3Float32(out, in, weight []float32, n, c, hp, wp, hOut, wOut, s int) {
+	planeIn := hp * wp
+	planeOut := hOut * wOut
+	for plane := 0; plane < n*c; plane++ {
+		inBase := plane * planeIn
+		outBase := plane * planeOut
+		w := weight[(plane%c)*9:]
+		w8 := w[8] // highest tap first: subsequent w[0..7] need no bounds check
+		w0, w1, w2 := w[0], w[1], w[2]
+		w3, w4, w5 := w[3], w[4], w[5]
+		w6, w7 := w[6], w[7]
+		for oh := 0; oh < hOut; oh++ {
+			r0 := inBase + oh*s*wp
+			r1 := r0 + wp
+			r2 := r1 + wp
+			outRow := outBase + oh*wOut
+			for ow := 0; ow < wOut; ow++ {
+				iw := ow * s
+				a0, a1, a2 := r0+iw, r1+iw, r2+iw
+				out[outRow+ow] = in[a0]*w0 + in[a0+1]*w1 + in[a0+2]*w2 +
+					in[a1]*w3 + in[a1+1]*w4 + in[a1+2]*w5 +
+					in[a2]*w6 + in[a2+1]*w7 + in[a2+2]*w8
+			}
+		}
+	}
+}
+
+// depthwiseConvForwardGenericFloat32 handles any kH x kW depthwise filter.
+func depthwiseConvForwardGenericFloat32(out, in, weight []float32, n, c, hp, wp, kh, kw, hOut, wOut, s int) {
+	planeIn := hp * wp
+	planeOut := hOut * wOut
+	for plane := 0; plane < n*c; plane++ {
+		inBase := plane * planeIn
+		outBase := plane * planeOut
+		wBase := (plane % c) * kh * kw
+		for oh := 0; oh < hOut; oh++ {
+			ihBase := inBase + oh*s*wp
+			outRow := outBase + oh*wOut
+			for ow := 0; ow < wOut; ow++ {
+				iw := ow * s
+				var sum float32
+				for r := 0; r < kh; r++ {
+					inRow := ihBase + r*wp + iw
+					wRow := wBase + r*kw
+					for q := 0; q < kw; q++ {
+						sum += in[inRow+q] * weight[wRow+q]
+					}
+				}
+				out[outRow+ow] = sum
+			}
+		}
+	}
 }
 
 // validateConvShapes checks channel agreement and positive output dims so the
@@ -170,7 +282,11 @@ func validateConvShapes(xp, w *tensor.RawTensor, p convParams) error {
 	}
 	hp, wp := xp.Shape()[2], xp.Shape()[3]
 	kh, kw := w.Shape()[2], w.Shape()[3]
-	if (hp-kh)/p.stride+1 <= 0 || (wp-kw)/p.stride+1 <= 0 {
+	// Reject an input smaller than the kernel explicitly: Go integer division
+	// truncates toward zero, so (hp-kh)/stride+1 can be a false positive (e.g.
+	// (2-3)/2+1 == 1) that lets a too-small input reach the conv kernels and
+	// read out of bounds.
+	if hp < kh || wp < kw || (hp-kh)/p.stride+1 <= 0 || (wp-kw)/p.stride+1 <= 0 {
 		return fmt.Errorf("conv: kernel %dx%d too large for padded input %dx%d", kh, kw, hp, wp)
 	}
 	return nil

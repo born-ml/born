@@ -82,7 +82,7 @@ prediction := model.Predict(image)
 - **Text Generation** - Streaming API, stop sequences
 
 ### Model Import & Export
-- **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (49 operators)
+- **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (56 operators)
 - **GGUF Import** - llama.cpp format with K-quant dequantization (Q4_K, Q5_K, Q6_K, Q8_0)
 - **LLaMA** - `models/llama.LoadGGUF()` for end-to-end LLaMA inference; verified on TinyLlama 1.1B Q8_0 and Q4_K_M
 - **Injectable Attention** - swap attention implementation at model load time for research experiments
@@ -364,7 +364,7 @@ func (t *Tensor[float32, B]) MatMul(other *Tensor[float32, B]) *Tensor[float32, 
 - Tokenizers (TikToken, BPE), text generation with streaming
 
 **Model Import & Export**
-- ONNX import (49 operators)
+- ONNX import (56 operators)
 - GGUF loading (LLaMA, Mistral, DeepSeek)
 - Native `.born` format, SafeTensors export
 

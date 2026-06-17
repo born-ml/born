@@ -1,6 +1,7 @@
 package cpu
 
 import (
+	"math"
 	"testing"
 
 	"github.com/born-ml/born/internal/tensor"
@@ -299,6 +300,95 @@ func TestConv2D_MatchesMockBackend(t *testing.T) {
 	}
 }
 
+// fillPointwiseConv writes deterministic values f(i) into a CPU float32/float64
+// tensor, so the same case table drives both dtypes.
+func fillPointwiseConv(t *tensor.RawTensor, f func(i int) float64) {
+	switch t.DType() {
+	case tensor.Float32:
+		d := t.AsFloat32()
+		for i := range d {
+			d[i] = float32(f(i))
+		}
+	case tensor.Float64:
+		d := t.AsFloat64()
+		for i := range d {
+			d[i] = f(i)
+		}
+	}
+}
+
+// maxPointwiseConvDiff returns the largest absolute element difference between
+// two same-dtype tensors and the index where it occurred.
+func maxPointwiseConvDiff(a, b *tensor.RawTensor) (maxD float64, idx int) {
+	idx = -1
+	switch a.DType() {
+	case tensor.Float32:
+		ad, bd := a.AsFloat32(), b.AsFloat32()
+		for i := range ad {
+			if d := math.Abs(float64(ad[i]) - float64(bd[i])); d > maxD {
+				maxD, idx = d, i
+			}
+		}
+	case tensor.Float64:
+		ad, bd := a.AsFloat64(), b.AsFloat64()
+		for i := range ad {
+			if d := math.Abs(ad[i] - bd[i]); d > maxD {
+				maxD, idx = d, i
+			}
+		}
+	}
+	return maxD, idx
+}
+
+// TestConv2D_Pointwise1x1 checks the 1x1 (pointwise) fast path against the naive
+// mock backend across channel counts, spatial sizes, and batch sizes, for both
+// float32 and float64. A 1x1 conv with stride=1, padding=0 reduces to a per-batch
+// GEMM (kernel[COut,CIn] @ input[CIn,H*W]), so the fast path must match the im2col
+// result. The float64 path (pointwiseConvFloat64) was previously uncovered.
+func TestConv2D_Pointwise1x1(t *testing.T) {
+	cpuBackend := New()
+	mockBackend := tensor.NewMockBackend()
+
+	shapes := []struct {
+		n, cIn, h, w, cOut int
+	}{
+		{1, 3, 4, 4, 5},     // small
+		{1, 64, 8, 8, 32},   // channel reduction
+		{1, 16, 5, 7, 48},   // non-square spatial, expansion
+		{2, 8, 3, 3, 4},     // batched
+		{1, 1, 1, 1, 1},     // degenerate
+		{3, 32, 6, 6, 16},   // larger batch
+		{1, 96, 12, 12, 96}, // model-ish pointwise
+	}
+
+	for _, dt := range []tensor.DataType{tensor.Float32, tensor.Float64} {
+		t.Run(dt.String(), func(t *testing.T) {
+			// float32 GEMM-vs-naive reordering stays comfortably under 1e-5 for
+			// these value ranges; float64 is effectively exact.
+			tol := 1e-5
+			if dt == tensor.Float64 {
+				tol = 1e-9
+			}
+			for _, s := range shapes {
+				input, _ := tensor.NewRaw(tensor.Shape{s.n, s.cIn, s.h, s.w}, dt, tensor.CPU)
+				kernel, _ := tensor.NewRaw(tensor.Shape{s.cOut, s.cIn, 1, 1}, dt, tensor.CPU)
+				fillPointwiseConv(input, func(i int) float64 { return float64((i%13)-6) * 0.25 })
+				fillPointwiseConv(kernel, func(i int) float64 { return float64((i%7)-3) * 0.5 })
+
+				got := cpuBackend.Conv2D(input, kernel, 1, 0)
+				want := mockBackend.Conv2D(input, kernel, 1, 0)
+
+				if !got.Shape().Equal(want.Shape()) {
+					t.Fatalf("shape %+v: CPU=%v Mock=%v", s, got.Shape(), want.Shape())
+				}
+				if d, idx := maxPointwiseConvDiff(got, want); d > tol {
+					t.Errorf("shape %+v idx %d: max diff %.3g exceeds tol %.3g", s, idx, d, tol)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkConv2D(b *testing.B) {
 	backend := New()
 
@@ -310,6 +400,24 @@ func BenchmarkConv2D(b *testing.B) {
 		backend.Conv2D(input, kernel, 1, 0)
 	}
 }
+
+// benchPointwise1x1 exercises the 1x1 fast path (direct per-batch GEMM, no
+// im2col/rearrange) at a channel/spatial size typical of pointwise layers.
+func benchPointwise1x1(b *testing.B, n, cIn, h, w, cOut int) {
+	backend := New()
+	input := tensor.Randn[float32](tensor.Shape{n, cIn, h, w}, backend).Raw()
+	kernel := tensor.Randn[float32](tensor.Shape{cOut, cIn, 1, 1}, backend).Raw()
+
+	b.ResetTimer()
+	for b.Loop() {
+		backend.Conv2D(input, kernel, 1, 0)
+	}
+}
+
+// Pointwise (1x1) layers as they appear in MobileNet/EfficientNet-style nets:
+// channel expansion and reduction over a feature map.
+func BenchmarkConv2D_Pointwise1x1_96to96(b *testing.B)   { benchPointwise1x1(b, 1, 96, 12, 12, 96) }
+func BenchmarkConv2D_Pointwise1x1_256to512(b *testing.B) { benchPointwise1x1(b, 1, 256, 14, 14, 512) }
 
 func BenchmarkConv2D_Batch(b *testing.B) {
 	backend := New()
