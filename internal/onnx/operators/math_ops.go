@@ -55,6 +55,10 @@ func handlePow(_ *Context, _ *Node, inputs []*tensor.RawTensor) ([]*tensor.RawTe
 	od := out.AsFloat32()
 	switch {
 	case len(e) == 1:
+		if powConstF32 != nil {
+			powConstF32(od, b, e[0]) // vendored SIMD: exp(c*log(x)), with a scalar tail
+			break
+		}
 		ex := float64(e[0])
 		for i := range b {
 			od[i] = float32(math.Pow(float64(b[i]), ex))
