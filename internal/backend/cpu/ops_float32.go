@@ -90,56 +90,107 @@ func divVectorizedFloat32(dst, a, b []float32) {
 
 // Float32 broadcasting operations
 
+// The broadcasting ops below write a contiguous, row-major dst, so instead of
+// recomputing each source index with computeFlatIndex (an integer division and
+// modulo per output dimension, for every element) they advance the source flat
+// indices incrementally: a mixed-radix odometer over the output coordinates
+// updates aIdx and bIdx with a couple of adds per step and a carry only at
+// dimension boundaries. The result is bit-identical to the division form (the
+// same operands combined in the same order).
+
 func addBroadcastFloat32(dst, a, b []float32, aShape, bShape, outShape tensor.Shape) {
-	// Compute indices for broadcasting
-	outStrides := outShape.ComputeStrides()
 	aStrides := computeBroadcastStridesForShape(aShape, outShape)
 	bStrides := computeBroadcastStridesForShape(bShape, outShape)
 
 	n := outShape.NumElements()
+	ndim := len(outShape)
+	coords := make([]int, ndim)
+	aIdx, bIdx := 0, 0
 	for i := 0; i < n; i++ {
-		aIdx := computeFlatIndex(i, outStrides, aStrides)
-		bIdx := computeFlatIndex(i, outStrides, bStrides)
 		dst[i] = a[aIdx] + b[bIdx]
+		for d := ndim - 1; d >= 0; d-- {
+			coords[d]++
+			aIdx += aStrides[d]
+			bIdx += bStrides[d]
+			if coords[d] < outShape[d] {
+				break
+			}
+			coords[d] = 0
+			aIdx -= outShape[d] * aStrides[d]
+			bIdx -= outShape[d] * bStrides[d]
+		}
 	}
 }
 
 func subBroadcastFloat32(dst, a, b []float32, aShape, bShape, outShape tensor.Shape) {
-	outStrides := outShape.ComputeStrides()
 	aStrides := computeBroadcastStridesForShape(aShape, outShape)
 	bStrides := computeBroadcastStridesForShape(bShape, outShape)
 
 	n := outShape.NumElements()
+	ndim := len(outShape)
+	coords := make([]int, ndim)
+	aIdx, bIdx := 0, 0
 	for i := 0; i < n; i++ {
-		aIdx := computeFlatIndex(i, outStrides, aStrides)
-		bIdx := computeFlatIndex(i, outStrides, bStrides)
 		dst[i] = a[aIdx] - b[bIdx]
+		for d := ndim - 1; d >= 0; d-- {
+			coords[d]++
+			aIdx += aStrides[d]
+			bIdx += bStrides[d]
+			if coords[d] < outShape[d] {
+				break
+			}
+			coords[d] = 0
+			aIdx -= outShape[d] * aStrides[d]
+			bIdx -= outShape[d] * bStrides[d]
+		}
 	}
 }
 
 func mulBroadcastFloat32(dst, a, b []float32, aShape, bShape, outShape tensor.Shape) {
-	outStrides := outShape.ComputeStrides()
 	aStrides := computeBroadcastStridesForShape(aShape, outShape)
 	bStrides := computeBroadcastStridesForShape(bShape, outShape)
 
 	n := outShape.NumElements()
+	ndim := len(outShape)
+	coords := make([]int, ndim)
+	aIdx, bIdx := 0, 0
 	for i := 0; i < n; i++ {
-		aIdx := computeFlatIndex(i, outStrides, aStrides)
-		bIdx := computeFlatIndex(i, outStrides, bStrides)
 		dst[i] = a[aIdx] * b[bIdx]
+		for d := ndim - 1; d >= 0; d-- {
+			coords[d]++
+			aIdx += aStrides[d]
+			bIdx += bStrides[d]
+			if coords[d] < outShape[d] {
+				break
+			}
+			coords[d] = 0
+			aIdx -= outShape[d] * aStrides[d]
+			bIdx -= outShape[d] * bStrides[d]
+		}
 	}
 }
 
 func divBroadcastFloat32(dst, a, b []float32, aShape, bShape, outShape tensor.Shape) {
-	outStrides := outShape.ComputeStrides()
 	aStrides := computeBroadcastStridesForShape(aShape, outShape)
 	bStrides := computeBroadcastStridesForShape(bShape, outShape)
 
 	n := outShape.NumElements()
+	ndim := len(outShape)
+	coords := make([]int, ndim)
+	aIdx, bIdx := 0, 0
 	for i := 0; i < n; i++ {
-		aIdx := computeFlatIndex(i, outStrides, aStrides)
-		bIdx := computeFlatIndex(i, outStrides, bStrides)
 		dst[i] = a[aIdx] / b[bIdx]
+		for d := ndim - 1; d >= 0; d-- {
+			coords[d]++
+			aIdx += aStrides[d]
+			bIdx += bStrides[d]
+			if coords[d] < outShape[d] {
+				break
+			}
+			coords[d] = 0
+			aIdx -= outShape[d] * aStrides[d]
+			bIdx -= outShape[d] * bStrides[d]
+		}
 	}
 }
 

@@ -529,134 +529,103 @@ func TransposeAxes(x *RawTensor, axes ...int) (*RawTensor, error) {
 	return result, nil
 }
 
-func transposeData(in, out []float32, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
+// transposeSrcStrides maps each output dimension to its stride in the source
+// array: srcStride[j] is how far the source flat index advances when output
+// coordinate j increases by one (the source stride of the axis that output
+// dimension j came from).
+func transposeSrcStrides(oldShape Shape, axes []int) []int {
 	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
+	srcStride := make([]int, len(axes))
+	for j := range axes {
+		srcStride[j] = oldStrides[axes[j]]
 	}
+	return srcStride
+}
 
+// transposeData permutes in into out according to axes. out is contiguous and
+// written in row-major order, so the destination index is simply the loop
+// counter; the source flat index is maintained incrementally with an odometer
+// over the output coordinates (an add per element, a carry only at dimension
+// boundaries). This replaces the original per-element coordinate decomposition
+// (a modulo and division per dimension) and the redundant destination-index
+// recompute. Pure data movement, so the output is identical.
+func transposeData(in, out []float32, oldShape, newShape Shape, axes []int) {
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		// Compute new index
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		// Compute old flat index
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		// Compute new flat index
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
 func transposeDataFloat64(in, out []float64, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
-	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
-	}
-
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
 func transposeDataInt32(in, out []int32, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
-	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
-	}
-
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
 func transposeDataInt64(in, out []int64, oldShape, newShape Shape, axes []int) {
-	ndim := len(oldShape)
-	oldStrides := oldShape.ComputeStrides()
-	newStrides := newShape.ComputeStrides()
-
-	total := 1
-	for _, d := range newShape {
-		total *= d
-	}
-
+	srcStride := transposeSrcStrides(oldShape, axes)
+	ndim := len(newShape)
+	total := newShape.NumElements()
 	idx := make([]int, ndim)
+	oldFlat := 0
 	for i := 0; i < total; i++ {
-		tmp := i
+		out[i] = in[oldFlat]
 		for j := ndim - 1; j >= 0; j-- {
-			idx[j] = tmp % newShape[j]
-			tmp /= newShape[j]
+			idx[j]++
+			oldFlat += srcStride[j]
+			if idx[j] < newShape[j] {
+				break
+			}
+			idx[j] = 0
+			oldFlat -= newShape[j] * srcStride[j]
 		}
-
-		oldFlat := 0
-		for j := 0; j < ndim; j++ {
-			oldFlat += idx[j] * oldStrides[axes[j]]
-		}
-
-		newFlat := 0
-		for j := 0; j < ndim; j++ {
-			newFlat += idx[j] * newStrides[j]
-		}
-
-		out[newFlat] = in[oldFlat]
 	}
 }
 
@@ -1436,15 +1405,25 @@ func Gather(x, indices *RawTensor, axis int) (*RawTensor, error) {
 		return nil, fmt.Errorf("Gather: indices must be int32 or int64, got %v", indices.dtype)
 	}
 
+	// ONNX semantics: a negative index i refers to axis_size + i (counting from the
+	// end). Normalize here so the block-copy path only ever sees non-negative
+	// offsets; out-of-range values still fault as before.
+	axisSize := x.shape[axis]
+	for i, v := range indexData {
+		if v < 0 {
+			indexData[i] = axisSize + v
+		}
+	}
+
 	switch x.dtype {
 	case Float32:
-		gatherFloat32(x.AsFloat32(), result.AsFloat32(), x.shape, indices.shape, newShape, indexData, axis)
+		gatherFloat32(x.AsFloat32(), result.AsFloat32(), x.shape, indexData, axis)
 	case Float64:
-		gatherFloat64(x.AsFloat64(), result.AsFloat64(), x.shape, indices.shape, newShape, indexData, axis)
+		gatherFloat64(x.AsFloat64(), result.AsFloat64(), x.shape, indexData, axis)
 	case Int64:
-		gatherInt64(x.AsInt64(), result.AsInt64(), x.shape, indices.shape, newShape, indexData, axis)
+		gatherInt64(x.AsInt64(), result.AsInt64(), x.shape, indexData, axis)
 	case Int32:
-		gatherInt32(x.AsInt32(), result.AsInt32(), x.shape, indices.shape, newShape, indexData, axis)
+		gatherInt32(x.AsInt32(), result.AsInt32(), x.shape, indexData, axis)
 	default:
 		return nil, fmt.Errorf("Gather: unsupported dtype %v", x.dtype)
 	}
@@ -1452,187 +1431,74 @@ func Gather(x, indices *RawTensor, axis int) (*RawTensor, error) {
 	return result, nil
 }
 
-func gatherFloat32(in, out []float32, xShape, idxShape, outShape Shape, indices []int, axis int) {
-	xStrides := xShape.ComputeStrides()
-	outStrides := outShape.ComputeStrides()
-	idxStrides := idxShape.ComputeStrides()
-
-	total := 1
-	for _, d := range outShape {
-		total *= d
+// gatherDims splits x's shape around the gather axis into the product of the
+// leading dimensions (pre), the axis length, and the product of the trailing
+// dimensions (post). ONNX Gather lays the output out as
+// [x dims before axis] + [index dims] + [x dims after axis] in row-major order,
+// so each (pre block, flat index) pair maps to a contiguous post-sized run of x.
+// These let the gather functions copy whole runs instead of decomposing a
+// coordinate vector and doing a modulo and division for every output element.
+func gatherDims(xShape Shape, axis int) (pre, axisDim, post int) {
+	pre, post = 1, 1
+	for i := 0; i < axis; i++ {
+		pre *= xShape[i]
 	}
+	axisDim = xShape[axis]
+	for i := axis + 1; i < len(xShape); i++ {
+		post *= xShape[i]
+	}
+	return pre, axisDim, post
+}
 
-	ndim := len(xShape)
-	idxNdim := len(idxShape)
-
-	for i := 0; i < total; i++ {
-		// Decompose output index
-		outIdx := make([]int, len(outShape))
-		tmp := i
-		for j := len(outShape) - 1; j >= 0; j-- {
-			outIdx[j] = tmp % outShape[j]
-			tmp /= outShape[j]
+func gatherFloat32(in, out []float32, xShape Shape, indices []int, axis int) {
+	pre, axisDim, post := gatherDims(xShape, axis)
+	pos := 0
+	for p := 0; p < pre; p++ {
+		base := p * axisDim * post
+		for _, g := range indices {
+			src := base + g*post
+			copy(out[pos:pos+post], in[src:src+post])
+			pos += post
 		}
-
-		// Get the indices index (middle part of outIdx)
-		idxFlat := 0
-		for j := 0; j < idxNdim; j++ {
-			idxFlat += outIdx[axis+j] * idxStrides[j]
-		}
-		gatherIdx := indices[idxFlat]
-
-		// Build source index
-		srcFlat := 0
-		for j := 0; j < axis; j++ {
-			srcFlat += outIdx[j] * xStrides[j]
-		}
-		srcFlat += gatherIdx * xStrides[axis]
-		for j := axis + 1; j < ndim; j++ {
-			srcFlat += outIdx[axis+idxNdim+j-axis-1] * xStrides[j]
-		}
-
-		// Build dest index
-		dstFlat := 0
-		for j := 0; j < len(outShape); j++ {
-			dstFlat += outIdx[j] * outStrides[j]
-		}
-
-		out[dstFlat] = in[srcFlat]
 	}
 }
 
-func gatherFloat64(in, out []float64, xShape, idxShape, outShape Shape, indices []int, axis int) {
-	xStrides := xShape.ComputeStrides()
-	outStrides := outShape.ComputeStrides()
-	idxStrides := idxShape.ComputeStrides()
-
-	total := 1
-	for _, d := range outShape {
-		total *= d
-	}
-
-	ndim := len(xShape)
-	idxNdim := len(idxShape)
-
-	for i := 0; i < total; i++ {
-		outIdx := make([]int, len(outShape))
-		tmp := i
-		for j := len(outShape) - 1; j >= 0; j-- {
-			outIdx[j] = tmp % outShape[j]
-			tmp /= outShape[j]
+func gatherFloat64(in, out []float64, xShape Shape, indices []int, axis int) {
+	pre, axisDim, post := gatherDims(xShape, axis)
+	pos := 0
+	for p := 0; p < pre; p++ {
+		base := p * axisDim * post
+		for _, g := range indices {
+			src := base + g*post
+			copy(out[pos:pos+post], in[src:src+post])
+			pos += post
 		}
-
-		idxFlat := 0
-		for j := 0; j < idxNdim; j++ {
-			idxFlat += outIdx[axis+j] * idxStrides[j]
-		}
-		gatherIdx := indices[idxFlat]
-
-		srcFlat := 0
-		for j := 0; j < axis; j++ {
-			srcFlat += outIdx[j] * xStrides[j]
-		}
-		srcFlat += gatherIdx * xStrides[axis]
-		for j := axis + 1; j < ndim; j++ {
-			srcFlat += outIdx[axis+idxNdim+j-axis-1] * xStrides[j]
-		}
-
-		dstFlat := 0
-		for j := 0; j < len(outShape); j++ {
-			dstFlat += outIdx[j] * outStrides[j]
-		}
-
-		out[dstFlat] = in[srcFlat]
 	}
 }
 
-func gatherInt64(in, out []int64, xShape, idxShape, outShape Shape, indices []int, axis int) {
-	xStrides := xShape.ComputeStrides()
-	outStrides := outShape.ComputeStrides()
-	idxStrides := idxShape.ComputeStrides()
-
-	total := 1
-	for _, d := range outShape {
-		total *= d
-	}
-
-	ndim := len(xShape)
-	idxNdim := len(idxShape)
-
-	for i := 0; i < total; i++ {
-		outIdx := make([]int, len(outShape))
-		tmp := i
-		for j := len(outShape) - 1; j >= 0; j-- {
-			outIdx[j] = tmp % outShape[j]
-			tmp /= outShape[j]
+func gatherInt64(in, out []int64, xShape Shape, indices []int, axis int) {
+	pre, axisDim, post := gatherDims(xShape, axis)
+	pos := 0
+	for p := 0; p < pre; p++ {
+		base := p * axisDim * post
+		for _, g := range indices {
+			src := base + g*post
+			copy(out[pos:pos+post], in[src:src+post])
+			pos += post
 		}
-
-		idxFlat := 0
-		for j := 0; j < idxNdim; j++ {
-			idxFlat += outIdx[axis+j] * idxStrides[j]
-		}
-		gatherIdx := indices[idxFlat]
-
-		srcFlat := 0
-		for j := 0; j < axis; j++ {
-			srcFlat += outIdx[j] * xStrides[j]
-		}
-		srcFlat += gatherIdx * xStrides[axis]
-		for j := axis + 1; j < ndim; j++ {
-			srcFlat += outIdx[axis+idxNdim+j-axis-1] * xStrides[j]
-		}
-
-		dstFlat := 0
-		for j := 0; j < len(outShape); j++ {
-			dstFlat += outIdx[j] * outStrides[j]
-		}
-
-		out[dstFlat] = in[srcFlat]
 	}
 }
 
-func gatherInt32(in, out []int32, xShape, idxShape, outShape Shape, indices []int, axis int) {
-	xStrides := xShape.ComputeStrides()
-	outStrides := outShape.ComputeStrides()
-	idxStrides := idxShape.ComputeStrides()
-
-	total := 1
-	for _, d := range outShape {
-		total *= d
-	}
-
-	ndim := len(xShape)
-	idxNdim := len(idxShape)
-
-	for i := 0; i < total; i++ {
-		outIdx := make([]int, len(outShape))
-		tmp := i
-		for j := len(outShape) - 1; j >= 0; j-- {
-			outIdx[j] = tmp % outShape[j]
-			tmp /= outShape[j]
+func gatherInt32(in, out []int32, xShape Shape, indices []int, axis int) {
+	pre, axisDim, post := gatherDims(xShape, axis)
+	pos := 0
+	for p := 0; p < pre; p++ {
+		base := p * axisDim * post
+		for _, g := range indices {
+			src := base + g*post
+			copy(out[pos:pos+post], in[src:src+post])
+			pos += post
 		}
-
-		idxFlat := 0
-		for j := 0; j < idxNdim; j++ {
-			idxFlat += outIdx[axis+j] * idxStrides[j]
-		}
-		gatherIdx := indices[idxFlat]
-
-		srcFlat := 0
-		for j := 0; j < axis; j++ {
-			srcFlat += outIdx[j] * xStrides[j]
-		}
-		srcFlat += gatherIdx * xStrides[axis]
-		for j := axis + 1; j < ndim; j++ {
-			srcFlat += outIdx[axis+idxNdim+j-axis-1] * xStrides[j]
-		}
-
-		dstFlat := 0
-		for j := 0; j < len(outShape); j++ {
-			dstFlat += outIdx[j] * outStrides[j]
-		}
-
-		out[dstFlat] = in[srcFlat]
 	}
 }
 
