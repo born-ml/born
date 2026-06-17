@@ -140,17 +140,17 @@ func (cpu *CPUBackend) Chunk(x *tensor.RawTensor, n, dim int) []*tensor.RawTenso
 	// Split data
 	switch x.DType() {
 	case tensor.Float32:
-		chunkFloat32(x, results, dim, chunkSize)
+		chunkFloat32(x, results, dim)
 	case tensor.Float64:
-		chunkFloat64(x, results, dim, chunkSize)
+		chunkFloat64(x, results, dim)
 	case tensor.Int32:
-		chunkInt32(x, results, dim, chunkSize)
+		chunkInt32(x, results, dim)
 	case tensor.Int64:
-		chunkInt64(x, results, dim, chunkSize)
+		chunkInt64(x, results, dim)
 	case tensor.Uint8:
-		chunkUint8(x, results, dim, chunkSize)
+		chunkUint8(x, results, dim)
 	case tensor.Bool:
-		chunkBool(x, results, dim, chunkSize)
+		chunkBool(x, results, dim)
 	default:
 		panic(fmt.Sprintf("chunk: unsupported dtype %s", x.DType()))
 	}
@@ -236,403 +236,236 @@ func (cpu *CPUBackend) Squeeze(x *tensor.RawTensor, dim int) *tensor.RawTensor {
 	return cpu.Reshape(x, newShape)
 }
 
-// catFloat32 concatenates float32 tensors.
+// innerOuter returns the product of the dimensions after dim (the size of the
+// contiguous inner block) and before dim (the number of outer blocks) for a
+// row-major tensor. Chunk and Cat along dim move whole inner blocks, so the
+// per-element coordinate math reduces to contiguous slab copies.
+func innerOuter(shape tensor.Shape, dim int) (inner, outer int) {
+	inner, outer = 1, 1
+	for d := dim + 1; d < len(shape); d++ {
+		inner *= shape[d]
+	}
+	for d := 0; d < dim; d++ {
+		outer *= shape[d]
+	}
+	return inner, outer
+}
+
+// catFloat32 concatenates float32 tensors along dim using contiguous slab copies
+// (one copy per input tensor per outer block) instead of per-element scatter.
 func catFloat32(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 	outData := result.AsFloat32()
 	outShape := result.Shape()
-	outStrides := outShape.ComputeStrides()
+	inner, outer := innerOuter(outShape, dim)
+	outDimStride := outShape[dim] * inner
 
 	offset := 0
 	for _, t := range tensors {
 		data := t.AsFloat32()
-		shape := t.Shape()
-		strides := shape.ComputeStrides()
-
-		// Copy data element by element
-		numElements := shape.NumElements()
-		for i := 0; i < numElements; i++ {
-			// Compute multi-dimensional index
-			outIdx := 0
-			temp := i
-			for d := 0; d < len(shape); d++ {
-				coord := temp / strides[d]
-				temp %= strides[d]
-
-				if d == dim {
-					coord += offset
-				}
-				outIdx += coord * outStrides[d]
-			}
-
-			outData[outIdx] = data[i]
+		block := t.Shape()[dim] * inner
+		for o := 0; o < outer; o++ {
+			d := o*outDimStride + offset*inner
+			copy(outData[d:d+block], data[o*block:o*block+block])
 		}
-
-		offset += shape[dim]
+		offset += t.Shape()[dim]
 	}
 }
 
-// catFloat64 concatenates float64 tensors.
+// catFloat64 concatenates float64 tensors using contiguous slab copies.
 func catFloat64(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 	outData := result.AsFloat64()
 	outShape := result.Shape()
-	outStrides := outShape.ComputeStrides()
+	inner, outer := innerOuter(outShape, dim)
+	outDimStride := outShape[dim] * inner
 
 	offset := 0
 	for _, t := range tensors {
 		data := t.AsFloat64()
-		shape := t.Shape()
-		strides := shape.ComputeStrides()
-
-		numElements := shape.NumElements()
-		for i := 0; i < numElements; i++ {
-			outIdx := 0
-			temp := i
-			for d := 0; d < len(shape); d++ {
-				coord := temp / strides[d]
-				temp %= strides[d]
-
-				if d == dim {
-					coord += offset
-				}
-				outIdx += coord * outStrides[d]
-			}
-
-			outData[outIdx] = data[i]
+		block := t.Shape()[dim] * inner
+		for o := 0; o < outer; o++ {
+			d := o*outDimStride + offset*inner
+			copy(outData[d:d+block], data[o*block:o*block+block])
 		}
-
-		offset += shape[dim]
+		offset += t.Shape()[dim]
 	}
 }
 
-// catInt32 concatenates int32 tensors.
+// catInt32 concatenates int32 tensors using contiguous slab copies.
 func catInt32(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 	outData := result.AsInt32()
 	outShape := result.Shape()
-	outStrides := outShape.ComputeStrides()
+	inner, outer := innerOuter(outShape, dim)
+	outDimStride := outShape[dim] * inner
 
 	offset := 0
 	for _, t := range tensors {
 		data := t.AsInt32()
-		shape := t.Shape()
-		strides := shape.ComputeStrides()
-
-		numElements := shape.NumElements()
-		for i := 0; i < numElements; i++ {
-			outIdx := 0
-			temp := i
-			for d := 0; d < len(shape); d++ {
-				coord := temp / strides[d]
-				temp %= strides[d]
-
-				if d == dim {
-					coord += offset
-				}
-				outIdx += coord * outStrides[d]
-			}
-
-			outData[outIdx] = data[i]
+		block := t.Shape()[dim] * inner
+		for o := 0; o < outer; o++ {
+			d := o*outDimStride + offset*inner
+			copy(outData[d:d+block], data[o*block:o*block+block])
 		}
-
-		offset += shape[dim]
+		offset += t.Shape()[dim]
 	}
 }
 
-// catInt64 concatenates int64 tensors.
+// catInt64 concatenates int64 tensors using contiguous slab copies.
 func catInt64(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 	outData := result.AsInt64()
 	outShape := result.Shape()
-	outStrides := outShape.ComputeStrides()
+	inner, outer := innerOuter(outShape, dim)
+	outDimStride := outShape[dim] * inner
 
 	offset := 0
 	for _, t := range tensors {
 		data := t.AsInt64()
-		shape := t.Shape()
-		strides := shape.ComputeStrides()
-
-		numElements := shape.NumElements()
-		for i := 0; i < numElements; i++ {
-			outIdx := 0
-			temp := i
-			for d := 0; d < len(shape); d++ {
-				coord := temp / strides[d]
-				temp %= strides[d]
-
-				if d == dim {
-					coord += offset
-				}
-				outIdx += coord * outStrides[d]
-			}
-
-			outData[outIdx] = data[i]
+		block := t.Shape()[dim] * inner
+		for o := 0; o < outer; o++ {
+			d := o*outDimStride + offset*inner
+			copy(outData[d:d+block], data[o*block:o*block+block])
 		}
-
-		offset += shape[dim]
+		offset += t.Shape()[dim]
 	}
 }
 
-// catUint8 concatenates uint8 tensors.
+// catUint8 concatenates uint8 tensors using contiguous slab copies.
 func catUint8(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 	outData := result.AsUint8()
 	outShape := result.Shape()
-	outStrides := outShape.ComputeStrides()
+	inner, outer := innerOuter(outShape, dim)
+	outDimStride := outShape[dim] * inner
 
 	offset := 0
 	for _, t := range tensors {
 		data := t.AsUint8()
-		shape := t.Shape()
-		strides := shape.ComputeStrides()
-
-		numElements := shape.NumElements()
-		for i := 0; i < numElements; i++ {
-			outIdx := 0
-			temp := i
-			for d := 0; d < len(shape); d++ {
-				coord := temp / strides[d]
-				temp %= strides[d]
-
-				if d == dim {
-					coord += offset
-				}
-				outIdx += coord * outStrides[d]
-			}
-
-			outData[outIdx] = data[i]
+		block := t.Shape()[dim] * inner
+		for o := 0; o < outer; o++ {
+			d := o*outDimStride + offset*inner
+			copy(outData[d:d+block], data[o*block:o*block+block])
 		}
-
-		offset += shape[dim]
+		offset += t.Shape()[dim]
 	}
 }
 
-// catBool concatenates bool tensors.
+// catBool concatenates bool tensors using contiguous slab copies.
 func catBool(tensors []*tensor.RawTensor, result *tensor.RawTensor, dim int) {
 	outData := result.AsBool()
 	outShape := result.Shape()
-	outStrides := outShape.ComputeStrides()
+	inner, outer := innerOuter(outShape, dim)
+	outDimStride := outShape[dim] * inner
 
 	offset := 0
 	for _, t := range tensors {
 		data := t.AsBool()
-		shape := t.Shape()
-		strides := shape.ComputeStrides()
-
-		numElements := shape.NumElements()
-		for i := 0; i < numElements; i++ {
-			outIdx := 0
-			temp := i
-			for d := 0; d < len(shape); d++ {
-				coord := temp / strides[d]
-				temp %= strides[d]
-
-				if d == dim {
-					coord += offset
-				}
-				outIdx += coord * outStrides[d]
-			}
-
-			outData[outIdx] = data[i]
+		block := t.Shape()[dim] * inner
+		for o := 0; o < outer; o++ {
+			d := o*outDimStride + offset*inner
+			copy(outData[d:d+block], data[o*block:o*block+block])
 		}
-
-		offset += shape[dim]
+		offset += t.Shape()[dim]
 	}
 }
 
-// chunkFloat32 splits float32 tensor into chunks.
-func chunkFloat32(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+// chunkFloat32 splits a float32 tensor into chunks along dim using contiguous
+// slab copies (one copy per chunk per outer block) instead of per-element
+// scatter with per-element coordinate allocation.
+func chunkFloat32(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsFloat32()
 	shape := x.Shape()
-	strides := shape.ComputeStrides()
-	numElements := shape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		// Compute multi-dimensional index
-		temp := i
-		coords := make([]int, len(shape))
-		for d := 0; d < len(shape); d++ {
-			coords[d] = temp / strides[d]
-			temp %= strides[d]
+	inner, outer := innerOuter(shape, dim)
+	srcDimStride := shape[dim] * inner
+	for ci := range results {
+		out := results[ci].AsFloat32()
+		block := results[ci].Shape()[dim] * inner
+		srcBase := ci * block
+		for o := 0; o < outer; o++ {
+			s := o*srcDimStride + srcBase
+			copy(out[o*block:o*block+block], data[s:s+block])
 		}
-
-		// Determine which chunk this element belongs to
-		chunkIdx := coords[dim] / chunkSize
-		localCoord := coords[dim] % chunkSize
-
-		// Compute output index
-		outShape := results[chunkIdx].Shape()
-		outStrides := outShape.ComputeStrides()
-		outIdx := 0
-		for d := 0; d < len(coords); d++ {
-			if d == dim {
-				outIdx += localCoord * outStrides[d]
-			} else {
-				outIdx += coords[d] * outStrides[d]
-			}
-		}
-
-		results[chunkIdx].AsFloat32()[outIdx] = data[i]
 	}
 }
 
-// chunkFloat64 splits float64 tensor into chunks.
-func chunkFloat64(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+// chunkFloat64 splits float64 tensor into chunks using contiguous slab copies.
+func chunkFloat64(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsFloat64()
 	shape := x.Shape()
-	strides := shape.ComputeStrides()
-	numElements := shape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		temp := i
-		coords := make([]int, len(shape))
-		for d := 0; d < len(shape); d++ {
-			coords[d] = temp / strides[d]
-			temp %= strides[d]
+	inner, outer := innerOuter(shape, dim)
+	srcDimStride := shape[dim] * inner
+	for ci := range results {
+		out := results[ci].AsFloat64()
+		block := results[ci].Shape()[dim] * inner
+		srcBase := ci * block
+		for o := 0; o < outer; o++ {
+			s := o*srcDimStride + srcBase
+			copy(out[o*block:o*block+block], data[s:s+block])
 		}
-
-		chunkIdx := coords[dim] / chunkSize
-		localCoord := coords[dim] % chunkSize
-
-		outShape := results[chunkIdx].Shape()
-		outStrides := outShape.ComputeStrides()
-		outIdx := 0
-		for d := 0; d < len(coords); d++ {
-			if d == dim {
-				outIdx += localCoord * outStrides[d]
-			} else {
-				outIdx += coords[d] * outStrides[d]
-			}
-		}
-
-		results[chunkIdx].AsFloat64()[outIdx] = data[i]
 	}
 }
 
-// chunkInt32 splits int32 tensor into chunks.
-func chunkInt32(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+// chunkInt32 splits int32 tensor into chunks using contiguous slab copies.
+func chunkInt32(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsInt32()
 	shape := x.Shape()
-	strides := shape.ComputeStrides()
-	numElements := shape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		temp := i
-		coords := make([]int, len(shape))
-		for d := 0; d < len(shape); d++ {
-			coords[d] = temp / strides[d]
-			temp %= strides[d]
+	inner, outer := innerOuter(shape, dim)
+	srcDimStride := shape[dim] * inner
+	for ci := range results {
+		out := results[ci].AsInt32()
+		block := results[ci].Shape()[dim] * inner
+		srcBase := ci * block
+		for o := 0; o < outer; o++ {
+			s := o*srcDimStride + srcBase
+			copy(out[o*block:o*block+block], data[s:s+block])
 		}
-
-		chunkIdx := coords[dim] / chunkSize
-		localCoord := coords[dim] % chunkSize
-
-		outShape := results[chunkIdx].Shape()
-		outStrides := outShape.ComputeStrides()
-		outIdx := 0
-		for d := 0; d < len(coords); d++ {
-			if d == dim {
-				outIdx += localCoord * outStrides[d]
-			} else {
-				outIdx += coords[d] * outStrides[d]
-			}
-		}
-
-		results[chunkIdx].AsInt32()[outIdx] = data[i]
 	}
 }
 
-// chunkInt64 splits int64 tensor into chunks.
-func chunkInt64(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+// chunkInt64 splits int64 tensor into chunks using contiguous slab copies.
+func chunkInt64(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsInt64()
 	shape := x.Shape()
-	strides := shape.ComputeStrides()
-	numElements := shape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		temp := i
-		coords := make([]int, len(shape))
-		for d := 0; d < len(shape); d++ {
-			coords[d] = temp / strides[d]
-			temp %= strides[d]
+	inner, outer := innerOuter(shape, dim)
+	srcDimStride := shape[dim] * inner
+	for ci := range results {
+		out := results[ci].AsInt64()
+		block := results[ci].Shape()[dim] * inner
+		srcBase := ci * block
+		for o := 0; o < outer; o++ {
+			s := o*srcDimStride + srcBase
+			copy(out[o*block:o*block+block], data[s:s+block])
 		}
-
-		chunkIdx := coords[dim] / chunkSize
-		localCoord := coords[dim] % chunkSize
-
-		outShape := results[chunkIdx].Shape()
-		outStrides := outShape.ComputeStrides()
-		outIdx := 0
-		for d := 0; d < len(coords); d++ {
-			if d == dim {
-				outIdx += localCoord * outStrides[d]
-			} else {
-				outIdx += coords[d] * outStrides[d]
-			}
-		}
-
-		results[chunkIdx].AsInt64()[outIdx] = data[i]
 	}
 }
 
-// chunkUint8 splits uint8 tensor into chunks.
-func chunkUint8(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+// chunkUint8 splits uint8 tensor into chunks using contiguous slab copies.
+func chunkUint8(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsUint8()
 	shape := x.Shape()
-	strides := shape.ComputeStrides()
-	numElements := shape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		temp := i
-		coords := make([]int, len(shape))
-		for d := 0; d < len(shape); d++ {
-			coords[d] = temp / strides[d]
-			temp %= strides[d]
+	inner, outer := innerOuter(shape, dim)
+	srcDimStride := shape[dim] * inner
+	for ci := range results {
+		out := results[ci].AsUint8()
+		block := results[ci].Shape()[dim] * inner
+		srcBase := ci * block
+		for o := 0; o < outer; o++ {
+			s := o*srcDimStride + srcBase
+			copy(out[o*block:o*block+block], data[s:s+block])
 		}
-
-		chunkIdx := coords[dim] / chunkSize
-		localCoord := coords[dim] % chunkSize
-
-		outShape := results[chunkIdx].Shape()
-		outStrides := outShape.ComputeStrides()
-		outIdx := 0
-		for d := 0; d < len(coords); d++ {
-			if d == dim {
-				outIdx += localCoord * outStrides[d]
-			} else {
-				outIdx += coords[d] * outStrides[d]
-			}
-		}
-
-		results[chunkIdx].AsUint8()[outIdx] = data[i]
 	}
 }
 
-// chunkBool splits bool tensor into chunks.
-func chunkBool(x *tensor.RawTensor, results []*tensor.RawTensor, dim, chunkSize int) {
+// chunkBool splits bool tensor into chunks using contiguous slab copies.
+func chunkBool(x *tensor.RawTensor, results []*tensor.RawTensor, dim int) {
 	data := x.AsBool()
 	shape := x.Shape()
-	strides := shape.ComputeStrides()
-	numElements := shape.NumElements()
-
-	for i := 0; i < numElements; i++ {
-		temp := i
-		coords := make([]int, len(shape))
-		for d := 0; d < len(shape); d++ {
-			coords[d] = temp / strides[d]
-			temp %= strides[d]
+	inner, outer := innerOuter(shape, dim)
+	srcDimStride := shape[dim] * inner
+	for ci := range results {
+		out := results[ci].AsBool()
+		block := results[ci].Shape()[dim] * inner
+		srcBase := ci * block
+		for o := 0; o < outer; o++ {
+			s := o*srcDimStride + srcBase
+			copy(out[o*block:o*block+block], data[s:s+block])
 		}
-
-		chunkIdx := coords[dim] / chunkSize
-		localCoord := coords[dim] % chunkSize
-
-		outShape := results[chunkIdx].Shape()
-		outStrides := outShape.ComputeStrides()
-		outIdx := 0
-		for d := 0; d < len(coords); d++ {
-			if d == dim {
-				outIdx += localCoord * outStrides[d]
-			} else {
-				outIdx += coords[d] * outStrides[d]
-			}
-		}
-
-		results[chunkIdx].AsBool()[outIdx] = data[i]
 	}
 }
