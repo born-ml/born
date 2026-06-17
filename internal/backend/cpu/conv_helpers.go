@@ -18,10 +18,11 @@ var colBufTPool = sync.Pool{New: func() any { s := []float32(nil); return &s }}
 // Computes output[i*colHeight+j] = sum_k kernel[i*colWidth+k] * col[j*colWidth+k]
 // for all i in [0, cOut) and j in [0, colHeight).
 func matMulColBufFloat32(outputData, kernelData, colBuf []float32, cOut, colHeight, colWidth int) {
-	// SIMD fast path: this is out = kernel[cOut,colWidth] @ colBuf^T[colWidth,colHeight].
+	// SIMD fast path: out = kernel[cOut,colWidth] @ colBuf^T[colWidth,colHeight].
 	// Transpose colBuf so the reduction axis becomes the row axis, then reuse the
-	// vendored GEMM kernel. Guarded to profitable shapes (the kernel needs a full
-	// column tile); tiny depthwise-style calls (cOut=1, small colHeight) stay scalar.
+	// vendored GEMM kernel. In gemmF32(c, a, b, m, k, n) terms: m=cOut, k=colWidth,
+	// n=colHeight. gemmMinCols is the minimum n for a full 16-wide column tile.
+	// Tiny depthwise-style calls (cOut=1, small colHeight) stay scalar.
 	if gemmF32 != nil && colHeight >= gemmMinCols && cOut*colWidth*colHeight >= blockThreshold {
 		need := colWidth * colHeight
 		p := colBufTPool.Get().(*[]float32)

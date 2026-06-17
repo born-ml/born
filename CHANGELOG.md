@@ -5,6 +5,15 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.8] - 2026-06-17
+
+### Changed
+
+- **Conv im2col GEMM routing** — regular convolutions now route through the AVX2+FMA GEMM kernel via colBuf transpose ([#99](https://github.com/born-ml/born/pull/99) by [@tphakala](https://github.com/tphakala))
+  - 16–22x faster per conv call on BirdNET shapes
+  - Pooled transpose buffer (`sync.Pool`) — zero allocation overhead
+  - Tiny depthwise-style calls (cOut=1, small colHeight) stay on scalar path
+
 ## [0.9.7] - 2026-06-17
 
 ### Added
