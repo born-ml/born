@@ -5,6 +5,15 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.9] - 2026-06-17
+
+### Changed
+
+- **Conv im2col scratch pooling** — `sync.Pool` for colBuf and matOut buffers, eliminating per-call heap allocation and `runtime.memclr` overhead ([#101](https://github.com/born-ml/born/pull/101) by [@tphakala](https://github.com/tphakala))
+  - Generic `poolScratch[T]` helper with grow-in-place capacity
+  - Poisoned-overwrite test proves full overwrite safety
+  - Zero-alloc conv forward pass on warm pool
+
 ## [0.9.8] - 2026-06-17
 
 ### Changed
