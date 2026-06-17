@@ -5,17 +5,36 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.6] - 2026-06-17
 
 ### Added
 
-- **SIMD element-wise arithmetic** — AVX/AVX2/AVX-512 implementations for Add, Sub, Mul, Div across float32, float64, int32, int64 ([#72](https://github.com/born-ml/born/pull/72) by [@bennibbelink](https://github.com/bennibbelink))
-  - float32: AVX (8 lanes) + AVX-512 (16 lanes), 3.5–5.4x speedup
-  - float64: AVX (4 lanes) + AVX-512 (8 lanes), 1.8–2.3x speedup
-  - int32: AVX2 (8 lanes) + AVX-512 (16 lanes), 2.9–4.9x speedup
-  - int64: AVX2 (4 lanes, add/sub) + AVX-512 (8 lanes, add/sub/mul), 1.6–2.5x speedup
-  - Runtime CPU detection via `archsimd`, scalar fallback on non-SIMD builds
-  - 28 correctness tests (SIMD vs scalar parity) + 56 benchmarks
+- **ONNX Conv operator** — grouped convolution, depthwise, asymmetric pads, bias ([#77](https://github.com/born-ml/born/pull/77) by [@tphakala](https://github.com/tphakala))
+- **ONNX MaxPool and AveragePool operators** — kernel_shape, strides, pads, count_include_pad ([#75](https://github.com/born-ml/born/pull/75) by [@tphakala](https://github.com/tphakala))
+- **ONNX Pow and ReduceMean/Max/Min operators** — multi-axis reduction, keepdims, noop_with_empty_axes ([#74](https://github.com/born-ml/born/pull/74) by [@tphakala](https://github.com/tphakala))
+- **SIMD element-wise arithmetic** — AVX/AVX2/AVX-512 for Add, Sub, Mul, Div across float32, float64, int32, int64 ([#72](https://github.com/born-ml/born/pull/72) by [@bennibbelink](https://github.com/bennibbelink))
+  - 3.5–5.4x speedup (float32), 1.8–2.3x (float64), 2.9–4.9x (int32), 1.6–2.5x (int64)
+  - Runtime CPU detection via `archsimd`, 28 correctness tests + 56 benchmarks
+- **ONNX operators**: 49 → 56 registered operators
+
+### Fixed
+
+- **Slice off-by-one** on full-axis reverse with negative step ([#76](https://github.com/born-ml/born/pull/76) by [@tphakala](https://github.com/tphakala))
+- **Gather negative index normalization** — ONNX spec compliance for negative indices ([#85](https://github.com/born-ml/born/pull/85) by [@tphakala](https://github.com/tphakala))
+- **Conv auto_pad=VALID** now forces zero pads per ONNX spec ([#77](https://github.com/born-ml/born/pull/77))
+- **Conv padNCHW** propagates `x.Device()` and `x.DType()` instead of hardcoded CPU/Float32 ([#77](https://github.com/born-ml/born/pull/77))
+
+### Changed
+
+- **Chunk/Cat** — contiguous block copies instead of per-element scatter ([#82](https://github.com/born-ml/born/pull/82) by [@tphakala](https://github.com/tphakala))
+- **Broadcast indexing** — incremental odometer instead of per-element division/modulo ([#83](https://github.com/born-ml/born/pull/83) by [@tphakala](https://github.com/tphakala))
+- **Gather** — block-copy instead of per-element coordinate math ([#85](https://github.com/born-ml/born/pull/85) by [@tphakala](https://github.com/tphakala))
+- **TransposeAxes** — incremental index walk instead of per-element coordinate math ([#86](https://github.com/born-ml/born/pull/86) by [@tphakala](https://github.com/tphakala))
+
+### Contributors
+
+- [@tphakala](https://github.com/tphakala) — 9 PRs: ONNX Conv/Pool/Reduce/Pow, Slice fix, Chunk/Cat/Broadcast/Gather/Transpose perf
+- [@bennibbelink](https://github.com/bennibbelink) — SIMD element-wise arithmetic (AVX/AVX2/AVX-512)
 
 ## [0.9.5] - 2026-06-16
 
