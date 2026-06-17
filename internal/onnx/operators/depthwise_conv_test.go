@@ -110,8 +110,12 @@ func checkDepthwiseVsGrouped(t *testing.T, ctx *Context, tc dwCase) {
 	if len(fd) != len(sd) {
 		t.Fatalf("len mismatch %d vs %d", len(fd), len(sd))
 	}
+	// The direct kernel and groupedConv2D accumulate in the same per-tap order,
+	// so they agree to well within float32 rounding (empirically bit-identical
+	// for these inputs). A 1e-5 bound keeps margin while still catching any
+	// future regression that perturbs the arithmetic.
 	for i := range fd {
-		if d := fd[i] - sd[i]; d > 1e-3 || d < -1e-3 {
+		if d := fd[i] - sd[i]; d > 1e-5 || d < -1e-5 {
 			t.Fatalf("idx %d: fast %v grouped %v (diff %v)", i, fd[i], sd[i], d)
 		}
 	}
@@ -121,6 +125,53 @@ func TestDepthwise_MatchesGroupedConv(t *testing.T) {
 	ctx := &Context{Backend: cpu.New()}
 	for _, tc := range depthwiseCases {
 		t.Run(tc.name, func(t *testing.T) { checkDepthwiseVsGrouped(t, ctx, tc) })
+	}
+}
+
+// TestNonDepthwiseFallsBackToGrouped documents the dispatch boundary: a grouped
+// conv that is NOT depthwise (group=2, Cin=4, Cout=4, so weight [4,2,k,k] with
+// Cin/group==2 channels per group) must not take the direct depthwise kernel.
+// isDepthwiseFloat32 has to report false, and convForward must route to
+// groupedConv2D and produce its result unchanged.
+func TestNonDepthwiseFallsBackToGrouped(t *testing.T) {
+	ctx := &Context{Backend: cpu.New()}
+	const n, cin, cout, h, w, k, s, group = 1, 4, 4, 8, 8, 3, 1, 2
+
+	in, err := tensor.NewRaw(tensor.Shape{n, cin, h, w}, tensor.Float32, tensor.CPU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Grouped (non-depthwise) weight: [Cout, Cin/group, kH, kW] = [4, 2, 3, 3].
+	weight, err := tensor.NewRaw(tensor.Shape{cout, cin / group, k, k}, tensor.Float32, tensor.CPU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillDet(in.AsFloat32())
+	fillDet(weight.AsFloat32())
+
+	p := convParams{stride: s, group: group}
+	if isDepthwiseFloat32(in, weight, p) {
+		t.Fatal("isDepthwiseFloat32 = true for a non-depthwise grouped conv (group=2, Cin=4, Cout=4)")
+	}
+
+	// convForward must dispatch to groupedConv2D for this shape, so its output
+	// has to match a direct groupedConv2D call bit-for-bit.
+	got, err := convForward(ctx, in, weight, p)
+	if err != nil {
+		t.Fatalf("convForward: %v", err)
+	}
+	want, err := groupedConv2D(ctx, in, weight, s, group)
+	if err != nil {
+		t.Fatalf("groupedConv2D: %v", err)
+	}
+	gd, wd := got.AsFloat32(), want.AsFloat32()
+	if len(gd) != len(wd) {
+		t.Fatalf("len mismatch %d vs %d", len(gd), len(wd))
+	}
+	for i := range gd {
+		if gd[i] != wd[i] {
+			t.Fatalf("idx %d: convForward %v grouped %v", i, gd[i], wd[i])
+		}
 	}
 }
 
