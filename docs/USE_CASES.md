@@ -289,7 +289,7 @@ Born doesn't yet support distributed training (planned for future releases).
 No model zoo yet (planned future releases).
 
 **Workaround:**
-- Use ONNX import (ONNX import (49 ops))
+- Use ONNX import (ONNX import (56 ops))
 - Port models manually (if simple)
 
 **When Born will be ready:**
@@ -342,7 +342,7 @@ No model zoo yet (planned future releases).
 **What works today:**
 - ✅ LLaMA-compatible models via `models/llama.LoadGGUF()`
 - ✅ Tokenizers (TikToken, BPE), streaming generation
-- ✅ ONNX import (49 operators) for encoder-style models (BERT, etc.)
+- ✅ ONNX import (56 operators) for encoder-style models (BERT, etc.)
 
 **Use Born when:**
 - You have a GGUF or ONNX file and need single-binary deployment
@@ -382,13 +382,13 @@ No model zoo yet (planned future releases).
 
 ### From PyTorch to Born
 
-**Option 1: ONNX Import (ONNX import (49 ops))**
+**Option 1: ONNX Import (ONNX import (56 ops))**
 ```python
 # PyTorch
 torch.onnx.export(model, "model.onnx")
 ```
 ```go
-// Born (ONNX import (49 ops))
+// Born (ONNX import (56 ops))
 model := born.LoadONNX("model.onnx")
 ```
 
@@ -401,13 +401,13 @@ model := born.LoadONNX("model.onnx")
 
 ### From TensorFlow to Born
 
-**Option 1: ONNX Import (ONNX import (49 ops))**
+**Option 1: ONNX Import (ONNX import (56 ops))**
 ```python
 # TensorFlow
 tf2onnx.convert.from_keras(model, output_path="model.onnx")
 ```
 ```go
-// Born (ONNX import (49 ops))
+// Born (ONNX import (56 ops))
 model := born.LoadONNX("model.onnx")
 ```
 
@@ -506,7 +506,7 @@ model := born.LoadONNX("model.onnx")
 - ✅ Production-tested (MNIST 97%+, GPU 123x speedup, MLP GPU training 77.8 steps/sec)
 - ✅ LLM inference: LLaMA via `models/llama.LoadGGUF()`, verified on TinyLlama 1.1B Q8_0 and Q4_K_M
 - ✅ GPU training: all forward+backward ops on GPU, explicit buffer lifecycle, TieredPool memory management
-- ✅ ONNX import (49 operators)
+- ✅ ONNX import (56 operators)
 - ⚠️ API may evolve before v1.0
 
 **Recommendation:** Ready for production inference and GPU training workloads.
