@@ -5,6 +5,25 @@ All notable changes to the Born ML Framework will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7] - 2026-06-17
+
+### Added
+
+- **AVX2+FMA GEMM kernel** — avo-generated 6x16 register-blocked micro-kernel, default-buildable, always-on dispatch via `golang.org/x/sys/cpu` ([#96](https://github.com/born-ml/born/pull/96) by [@tphakala](https://github.com/tphakala))
+  - BirdNET v2.4: scalar 1450ms → 408ms per inference (3.55x end-to-end)
+  - Per-kernel: up to 29x on large GEMM shapes (512×512×512)
+  - 1x16 remainder/GEMV path — no shape falls to scalar inner loop
+  - Allocation-free via pooled packing scratch (`sync.Pool`)
+  - Three-layer coexistence: vendored asm (default) / archsimd (GOEXPERIMENT) / scalar
+- **AVX2 vectorized sigmoid** — Cephes expf approximation (~1 ULP), for Sigmoid and SiLU ([#97](https://github.com/born-ml/born/pull/97) by [@tphakala](https://github.com/tphakala))
+  - BirdNET: sigmoid/exp hot path 18% → 3% of inference time
+  - SiLU fast path: `sigmoid(x)` then `out *= x` — avoids double computation
+  - Scalar tail for non-8-aligned lengths
+
+### Contributors
+
+- [@tphakala](https://github.com/tphakala) — AVX2+FMA GEMM kernel, vectorized sigmoid/SiLU
+
 ## [0.9.6] - 2026-06-17
 
 ### Added
