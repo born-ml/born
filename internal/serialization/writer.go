@@ -15,7 +15,8 @@ const bornVersion = "0.5.4" // Current Born version
 
 // BornWriter writes models in .born format.
 type BornWriter struct {
-	file   *os.File
+	w      io.Writer
+	closer io.Closer
 	closed bool
 }
 
@@ -26,10 +27,18 @@ func NewBornWriter(path string) (*BornWriter, error) {
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
 
-	return &BornWriter{
-		file:   file,
-		closed: false,
-	}, nil
+	writer := newBornWriterToWriter(file)
+	writer.closer = file
+	return writer, nil
+}
+
+// newBornWriterToWriter creates a new .born writer over any io.Writer.
+//
+// The returned BornWriter has no closer, so Close() is a no-op unless one is
+// set on the closer field. Otherwise, the caller is responsible for managing
+// the underlying writer's lifecycle.
+func newBornWriterToWriter(w io.Writer) *BornWriter {
+	return &BornWriter{w: w}
 }
 
 // WriteStateDictWithHeader writes a state dictionary with custom header to the .born file.
@@ -75,12 +84,12 @@ func (w *BornWriter) WriteStateDictWithHeader(stateDict map[string]*tensor.RawTe
 	}
 
 	// Write magic bytes
-	if _, err := w.file.WriteString(MagicBytes); err != nil {
+	if _, err := io.WriteString(w.w, MagicBytes); err != nil {
 		return fmt.Errorf("failed to write magic bytes: %w", err)
 	}
 
 	// Write version
-	if err := binary.Write(w.file, binary.LittleEndian, uint32(FormatVersion)); err != nil {
+	if err := binary.Write(w.w, binary.LittleEndian, uint32(FormatVersion)); err != nil {
 		return fmt.Errorf("failed to write version: %w", err)
 	}
 
@@ -92,18 +101,18 @@ func (w *BornWriter) WriteStateDictWithHeader(stateDict map[string]*tensor.RawTe
 	if header.CheckpointMeta != nil && header.CheckpointMeta.IsCheckpoint {
 		flags |= FlagHasOptimizer
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, flags); err != nil {
+	if err := binary.Write(w.w, binary.LittleEndian, flags); err != nil {
 		return fmt.Errorf("failed to write flags: %w", err)
 	}
 
 	// Write header size
 	headerSize := uint64(len(headerJSON))
-	if err := binary.Write(w.file, binary.LittleEndian, headerSize); err != nil {
+	if err := binary.Write(w.w, binary.LittleEndian, headerSize); err != nil {
 		return fmt.Errorf("failed to write header size: %w", err)
 	}
 
 	// Write header JSON
-	if _, err := w.file.Write(headerJSON); err != nil {
+	if _, err := w.w.Write(headerJSON); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
 
@@ -112,7 +121,7 @@ func (w *BornWriter) WriteStateDictWithHeader(stateDict map[string]*tensor.RawTe
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
-		if _, err := w.file.Write(paddingBytes); err != nil {
+		if _, err := w.w.Write(paddingBytes); err != nil {
 			return fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
@@ -121,7 +130,7 @@ func (w *BornWriter) WriteStateDictWithHeader(stateDict map[string]*tensor.RawTe
 	for _, name := range tensorOrder {
 		raw := stateDict[name]
 		data := raw.Data()
-		if _, err := w.file.Write(data); err != nil {
+		if _, err := w.w.Write(data); err != nil {
 			return fmt.Errorf("failed to write tensor %s: %w", name, err)
 		}
 	}
@@ -179,12 +188,12 @@ func (w *BornWriter) WriteStateDict(stateDict map[string]*tensor.RawTensor, mode
 	}
 
 	// Write magic bytes
-	if _, err := w.file.WriteString(MagicBytes); err != nil {
+	if _, err := io.WriteString(w.w, MagicBytes); err != nil {
 		return fmt.Errorf("failed to write magic bytes: %w", err)
 	}
 
 	// Write version
-	if err := binary.Write(w.file, binary.LittleEndian, uint32(FormatVersion)); err != nil {
+	if err := binary.Write(w.w, binary.LittleEndian, uint32(FormatVersion)); err != nil {
 		return fmt.Errorf("failed to write version: %w", err)
 	}
 
@@ -193,18 +202,18 @@ func (w *BornWriter) WriteStateDict(stateDict map[string]*tensor.RawTensor, mode
 	if len(metadata) > 0 {
 		flags |= FlagHasMetadata
 	}
-	if err := binary.Write(w.file, binary.LittleEndian, flags); err != nil {
+	if err := binary.Write(w.w, binary.LittleEndian, flags); err != nil {
 		return fmt.Errorf("failed to write flags: %w", err)
 	}
 
 	// Write header size
 	headerSize := uint64(len(headerJSON))
-	if err := binary.Write(w.file, binary.LittleEndian, headerSize); err != nil {
+	if err := binary.Write(w.w, binary.LittleEndian, headerSize); err != nil {
 		return fmt.Errorf("failed to write header size: %w", err)
 	}
 
 	// Write header JSON
-	if _, err := w.file.Write(headerJSON); err != nil {
+	if _, err := w.w.Write(headerJSON); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
 
@@ -214,7 +223,7 @@ func (w *BornWriter) WriteStateDict(stateDict map[string]*tensor.RawTensor, mode
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
-		if _, err := w.file.Write(paddingBytes); err != nil {
+		if _, err := w.w.Write(paddingBytes); err != nil {
 			return fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
@@ -223,7 +232,7 @@ func (w *BornWriter) WriteStateDict(stateDict map[string]*tensor.RawTensor, mode
 	for _, name := range tensorOrder {
 		raw := stateDict[name]
 		data := raw.Data()
-		if _, err := w.file.Write(data); err != nil {
+		if _, err := w.w.Write(data); err != nil {
 			return fmt.Errorf("failed to write tensor %s: %w", name, err)
 		}
 	}
@@ -324,12 +333,12 @@ func (w *BornWriter) WriteStateDictV2(stateDict map[string]*tensor.RawTensor, mo
 	copy(fixedHeader[ChecksumOffsetV2:ChecksumOffsetV2+ChecksumSize], checksum[:])
 
 	// Write fixed header
-	if _, err := w.file.Write(fixedHeader); err != nil {
+	if _, err := w.w.Write(fixedHeader); err != nil {
 		return fmt.Errorf("failed to write fixed header: %w", err)
 	}
 
 	// Write header JSON
-	if _, err := w.file.Write(headerJSON); err != nil {
+	if _, err := w.w.Write(headerJSON); err != nil {
 		return fmt.Errorf("failed to write header JSON: %w", err)
 	}
 
@@ -339,13 +348,13 @@ func (w *BornWriter) WriteStateDictV2(stateDict map[string]*tensor.RawTensor, mo
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
-		if _, err := w.file.Write(paddingBytes); err != nil {
+		if _, err := w.w.Write(paddingBytes); err != nil {
 			return fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
 
 	// Write tensor data
-	if _, err := w.file.Write(tensorDataBuf); err != nil {
+	if _, err := w.w.Write(tensorDataBuf); err != nil {
 		return fmt.Errorf("failed to write tensor data: %w", err)
 	}
 
@@ -442,12 +451,12 @@ func (w *BornWriter) WriteStateDictWithHeaderV2(stateDict map[string]*tensor.Raw
 	copy(fixedHeader[ChecksumOffsetV2:ChecksumOffsetV2+ChecksumSize], checksum[:])
 
 	// Write fixed header
-	if _, err := w.file.Write(fixedHeader); err != nil {
+	if _, err := w.w.Write(fixedHeader); err != nil {
 		return fmt.Errorf("failed to write fixed header: %w", err)
 	}
 
 	// Write header JSON
-	if _, err := w.file.Write(headerJSON); err != nil {
+	if _, err := w.w.Write(headerJSON); err != nil {
 		return fmt.Errorf("failed to write header JSON: %w", err)
 	}
 
@@ -457,13 +466,13 @@ func (w *BornWriter) WriteStateDictWithHeaderV2(stateDict map[string]*tensor.Raw
 	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
 	if padding > 0 {
 		paddingBytes := make([]byte, padding)
-		if _, err := w.file.Write(paddingBytes); err != nil {
+		if _, err := w.w.Write(paddingBytes); err != nil {
 			return fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
 
 	// Write tensor data
-	if _, err := w.file.Write(tensorDataBuf); err != nil {
+	if _, err := w.w.Write(tensorDataBuf); err != nil {
 		return fmt.Errorf("failed to write tensor data: %w", err)
 	}
 
@@ -476,101 +485,14 @@ func (w *BornWriter) Close() error {
 		return nil
 	}
 	w.closed = true
-	return w.file.Close()
+	if w.closer == nil {
+		return nil
+	}
+	return w.closer.Close()
 }
 
 // WriteTo writes the state dictionary to an io.Writer.
 // This is useful for writing to buffers or network connections.
 func WriteTo(writer io.Writer, stateDict map[string]*tensor.RawTensor, modelType string, metadata map[string]string) error {
-	// Build header
-	header := Header{
-		FormatVersion: FormatVersion,
-		BornVersion:   bornVersion,
-		ModelType:     modelType,
-		CreatedAt:     time.Now().UTC(),
-		Tensors:       make([]TensorMeta, 0, len(stateDict)),
-		Metadata:      metadata,
-	}
-
-	if header.Metadata == nil {
-		header.Metadata = make(map[string]string)
-	}
-
-	// Calculate tensor offsets
-	var currentOffset int64
-	tensorOrder := make([]string, 0, len(stateDict))
-
-	for name, raw := range stateDict {
-		tensorOrder = append(tensorOrder, name)
-		shape := raw.Shape()
-		size := int64(raw.NumElements() * raw.DType().Size())
-
-		header.Tensors = append(header.Tensors, TensorMeta{
-			Name:   name,
-			DType:  dtypeToString(raw.DType()),
-			Shape:  []int(shape),
-			Offset: currentOffset,
-			Size:   size,
-		})
-
-		currentOffset += size
-	}
-
-	// Marshal header to JSON
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return fmt.Errorf("failed to marshal header: %w", err)
-	}
-
-	// Write magic bytes
-	if _, err := writer.Write([]byte(MagicBytes)); err != nil {
-		return fmt.Errorf("failed to write magic bytes: %w", err)
-	}
-
-	// Write version
-	if err := binary.Write(writer, binary.LittleEndian, uint32(FormatVersion)); err != nil {
-		return fmt.Errorf("failed to write version: %w", err)
-	}
-
-	// Write flags
-	flags := uint32(0)
-	if len(metadata) > 0 {
-		flags |= FlagHasMetadata
-	}
-	if err := binary.Write(writer, binary.LittleEndian, flags); err != nil {
-		return fmt.Errorf("failed to write flags: %w", err)
-	}
-
-	// Write header size
-	headerSize := uint64(len(headerJSON))
-	if err := binary.Write(writer, binary.LittleEndian, headerSize); err != nil {
-		return fmt.Errorf("failed to write header size: %w", err)
-	}
-
-	// Write header JSON
-	if _, err := writer.Write(headerJSON); err != nil {
-		return fmt.Errorf("failed to write header: %w", err)
-	}
-
-	// Calculate padding to align tensor data
-
-	currentPos := int64(4+4+4+8) + int64(headerSize) //nolint:gosec // G115: integer overflow conversion uint64 -> int64
-	padding := (HeaderAlignment - (currentPos % HeaderAlignment)) % HeaderAlignment
-	if padding > 0 {
-		paddingBytes := make([]byte, padding)
-		if _, err := writer.Write(paddingBytes); err != nil {
-			return fmt.Errorf("failed to write padding: %w", err)
-		}
-	}
-
-	// Write tensor data in order
-	for _, name := range tensorOrder {
-		raw := stateDict[name]
-		data := raw.Data()
-		if _, err := writer.Write(data); err != nil {
-			return fmt.Errorf("failed to write tensor %s: %w", name, err)
-		}
-	}
-
-	return nil
+	return newBornWriterToWriter(writer).WriteStateDict(stateDict, modelType, metadata)
 }
