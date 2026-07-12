@@ -117,13 +117,15 @@ func Load[B tensor.Backend](path string, backend B, module Module[B]) (serializa
 //   - module: The module to load into (will be modified)
 //
 // Returns the header and an error if loading fails.
-func LoadFromBytes[B tensor.Backend](data []byte, backend B, module Module[B]) (serialization.Header, error) {
+func LoadFromBytes[B tensor.Backend](data []byte, backend B, module Module[B]) (header serialization.Header, err error) {
 	reader, err := serialization.NewBornReaderFromBytes(data)
 	if err != nil {
 		return serialization.Header{}, err
 	}
 	defer func() {
-		_ = reader.Close()
+		if closeErr := reader.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
 	}()
 
 	stateDict, err := reader.ReadStateDict(backend)
@@ -131,8 +133,8 @@ func LoadFromBytes[B tensor.Backend](data []byte, backend B, module Module[B]) (
 		return serialization.Header{}, err
 	}
 
-	if err := module.LoadStateDict(stateDict); err != nil {
-		return serialization.Header{}, err
+	if loadErr := module.LoadStateDict(stateDict); loadErr != nil {
+		return serialization.Header{}, loadErr
 	}
 
 	return reader.Header(), nil
