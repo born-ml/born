@@ -5,6 +5,9 @@
 package nn
 
 import (
+	"bytes"
+	"io"
+
 	"github.com/born-ml/born/internal/nn"
 	"github.com/born-ml/born/internal/serialization"
 	"github.com/born-ml/born/tensor"
@@ -104,21 +107,59 @@ func Load[B tensor.Backend](path string, backend B, module Module[B]) (serializa
 	return nn.Load(path, backend, module)
 }
 
-// LoadFromBytes loads a module from an in-memory .born byte slice.
+// SaveTo serializes a module to an io.Writer in the Born native format.
 //
-// This is a convenience function that reads a state dictionary from a byte
-// slice and loads it into the provided module. It is useful for loading models
-// from HTTP responses, embedded files, or database blobs without writing to
-// disk first.
+// This is the streaming counterpart to Save: it exports the module's state
+// dictionary and writes it to any io.Writer instead of a file, for streaming to
+// HTTP responses, network connections, or in-memory buffers. The caller owns
+// the writer's lifecycle.
 //
 // Parameters:
-//   - data: The .born file contents as a byte slice
+//   - w: The writer to encode into
+//   - module: The module to serialize
+//   - modelType: Type name of the model (e.g., "Sequential", "Linear")
+//   - metadata: Optional metadata (can be nil)
+//
+// Returns an error if serialization fails.
+func SaveTo[B tensor.Backend](w io.Writer, module Module[B], modelType string, metadata map[string]string) error {
+	return serialization.WriteTo(w, module.StateDict(), modelType, metadata)
+}
+
+// SaveToBytes serializes a module to an in-memory .born byte slice.
+//
+// This is the in-memory counterpart to Save, for embedded assets or database
+// blobs without touching disk. It is the save-side twin of LoadFromBytes and a
+// thin wrapper over SaveTo.
+//
+// Parameters:
+//   - module: The module to serialize
+//   - modelType: Type name of the model (e.g., "Sequential", "Linear")
+//   - metadata: Optional metadata (can be nil)
+//
+// Returns the encoded .born bytes and an error if serialization fails.
+func SaveToBytes[B tensor.Backend](module Module[B], modelType string, metadata map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := SaveTo(&buf, module, modelType, metadata); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// LoadFrom loads a module from an io.ReadSeeker in the Born native format.
+//
+// This is the streaming counterpart to Load: it reads a state dictionary from
+// any seekable stream instead of a file and loads it into the provided module.
+// Seeking is required because tensor payloads are read at their header offsets.
+// The caller owns the reader's lifecycle.
+//
+// Parameters:
+//   - r: The seekable stream to read from
 //   - backend: Backend to use for tensors
 //   - module: The module to load into (will be modified)
 //
 // Returns the header and an error if loading fails.
-func LoadFromBytes[B tensor.Backend](data []byte, backend B, module Module[B]) (header serialization.Header, err error) {
-	reader, err := serialization.NewBornReaderFromBytes(data)
+func LoadFrom[B tensor.Backend](r io.ReadSeeker, backend B, module Module[B]) (header serialization.Header, err error) {
+	reader, err := serialization.NewBornReaderFromReadSeeker(r)
 	if err != nil {
 		return serialization.Header{}, err
 	}
@@ -138,4 +179,19 @@ func LoadFromBytes[B tensor.Backend](data []byte, backend B, module Module[B]) (
 	}
 
 	return reader.Header(), nil
+}
+
+// LoadFromBytes loads a module from an in-memory .born byte slice.
+//
+// This is the in-memory counterpart to Load, for embedded assets or database
+// blobs without touching disk. It is a thin wrapper over LoadFrom.
+//
+// Parameters:
+//   - data: The .born file contents as a byte slice
+//   - backend: Backend to use for tensors
+//   - module: The module to load into (will be modified)
+//
+// Returns the header and an error if loading fails.
+func LoadFromBytes[B tensor.Backend](data []byte, backend B, module Module[B]) (serialization.Header, error) {
+	return LoadFrom(bytes.NewReader(data), backend, module)
 }

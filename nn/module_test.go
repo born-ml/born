@@ -219,3 +219,78 @@ func TestLoadFromBytesShapeMismatch(t *testing.T) {
 		t.Fatal("Expected error for shape mismatch, got nil")
 	}
 }
+
+func TestSaveToBytesRoundTrip(t *testing.T) {
+	backend := cpu.New()
+
+	model := nn.NewLinear(784, 128, backend)
+
+	input := tensor.Randn[float32](tensor.Shape{1, 784}, backend)
+	pred1 := model.Forward(input)
+
+	data, err := nn.SaveToBytes(model, "Linear", nil)
+	if err != nil {
+		t.Fatalf("SaveToBytes failed: %v", err)
+	}
+
+	model2 := nn.NewLinear(784, 128, backend)
+	if _, err := nn.LoadFromBytes(data, backend, model2); err != nil {
+		t.Fatalf("LoadFromBytes failed: %v", err)
+	}
+
+	pred2 := model2.Forward(input)
+
+	pred1Data := pred1.Data()
+	pred2Data := pred2.Data()
+	if err := tolerance.AssertAllApproxEqual(pred1Data, pred2Data, tolerance.NewDefaultTolerance[float32]()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSaveToBytesHeader(t *testing.T) {
+	backend := cpu.New()
+
+	model := nn.NewLinear(10, 5, backend)
+
+	data, err := nn.SaveToBytes(model, "Linear", map[string]string{"dataset": "MNIST"})
+	if err != nil {
+		t.Fatalf("SaveToBytes failed: %v", err)
+	}
+
+	model2 := nn.NewLinear(10, 5, backend)
+	header, err := nn.LoadFromBytes(data, backend, model2)
+	if err != nil {
+		t.Fatalf("LoadFromBytes failed: %v", err)
+	}
+
+	if header.ModelType != "Linear" {
+		t.Errorf("Expected model type %q, got %q", "Linear", header.ModelType)
+	}
+	if got := header.Metadata["dataset"]; got != "MNIST" {
+		t.Errorf("Expected metadata dataset %q, got %q", "MNIST", got)
+	}
+}
+
+func TestSaveToLoadFromRoundTrip(t *testing.T) {
+	backend := cpu.New()
+
+	model := nn.NewLinear(784, 128, backend)
+
+	input := tensor.Randn[float32](tensor.Shape{1, 784}, backend)
+	pred1 := model.Forward(input)
+
+	var buf bytes.Buffer
+	if err := nn.SaveTo(&buf, model, "Linear", nil); err != nil {
+		t.Fatalf("SaveTo failed: %v", err)
+	}
+
+	model2 := nn.NewLinear(784, 128, backend)
+	if _, err := nn.LoadFrom(bytes.NewReader(buf.Bytes()), backend, model2); err != nil {
+		t.Fatalf("LoadFrom failed: %v", err)
+	}
+
+	pred2 := model2.Forward(input)
+	if err := tolerance.AssertAllApproxEqual(pred1.Data(), pred2.Data(), tolerance.NewDefaultTolerance[float32]()); err != nil {
+		t.Fatal(err)
+	}
+}

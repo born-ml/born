@@ -101,6 +101,30 @@ func NewBornReaderFromBytesWithOptions(data []byte, opts ReaderOptions) (*BornRe
 	return newBornReaderFromReader(bytes.NewReader(data), int64(len(data)), opts)
 }
 
+// NewBornReaderFromReadSeeker creates a new .born reader from any io.ReadSeeker.
+//
+// The readable size is derived from the stream by seeking to its end. Validation
+// defaults to ValidationStrict; use NewBornReaderFromReadSeekerWithOptions to
+// override. The reader holds no closer, so the caller owns the stream lifecycle.
+func NewBornReaderFromReadSeeker(r io.ReadSeeker) (*BornReader, error) {
+	return NewBornReaderFromReadSeekerWithOptions(r, ReaderOptions{
+		ValidationLevel: ValidationStrict,
+	})
+}
+
+// NewBornReaderFromReadSeekerWithOptions creates a new .born reader from any
+// io.ReadSeeker with custom options, deriving the readable size from the stream.
+func NewBornReaderFromReadSeekerWithOptions(r io.ReadSeeker, opts ReaderOptions) (*BornReader, error) {
+	size, err := r.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine size: %w", err)
+	}
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek to start: %w", err)
+	}
+	return newBornReaderFromReader(r, size, opts)
+}
+
 // parseHeader reads and parses the .born file header.
 func (r *BornReader) parseHeader() error {
 	// Read magic bytes
