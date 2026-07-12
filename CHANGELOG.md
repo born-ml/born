@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.17] - 2026-07-12
+
 ### Added
 
 - **`nn.LoadFromBytes`** — load `.born` models from byte slices (`go:embed`, HTTP responses, database blobs). `BornReader` generalized from `*os.File` to `io.ReadSeeker` ([#122](https://github.com/born-ml/born/pull/122) by [@bennibbelink](https://github.com/bennibbelink))
