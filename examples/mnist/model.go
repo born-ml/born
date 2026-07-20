@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/born-ml/born/internal/nn"
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -72,4 +74,31 @@ func (m *MNISTNet[B]) Parameters() []*nn.Parameter[B] {
 	params = append(params, m.fc1.Parameters()...)
 	params = append(params, m.fc2.Parameters()...)
 	return params
+}
+
+func (m *MNISTNet[B]) StateDict() map[string]*tensor.RawTensor {
+	state := make(map[string]*tensor.RawTensor)
+	for k, v := range m.fc1.StateDict() {
+		state["fc1."+k] = v
+	}
+	for k, v := range m.fc2.StateDict() {
+		state["fc2."+k] = v
+	}
+	return state
+}
+
+func (m *MNISTNet[B]) LoadStateDict(stateDict map[string]*tensor.RawTensor) error {
+	fc1State := make(map[string]*tensor.RawTensor)
+	fc2State := make(map[string]*tensor.RawTensor)
+	for k, v := range stateDict {
+		if rest, ok := strings.CutPrefix(k, "fc1."); ok {
+			fc1State[rest] = v
+		} else if rest, ok := strings.CutPrefix(k, "fc2."); ok {
+			fc2State[rest] = v
+		}
+	}
+	if err := m.fc1.LoadStateDict(fc1State); err != nil {
+		return err
+	}
+	return m.fc2.LoadStateDict(fc2State)
 }

@@ -22,6 +22,7 @@ func main() {
 	batchSize := flag.Int("batch", 32, "Batch size for training")
 	lr := flag.Float64("lr", 0.001, "Learning rate for Adam optimizer")
 	useSynthetic := flag.Bool("synthetic", false, "Use synthetic data (for testing without MNIST files)")
+	outPath := flag.String("out", "", "Output .born file to write serialized model")
 	flag.Parse()
 
 	fmt.Println("🚀 Born ML Framework - MNIST CNN Classification (LeNet-5 Style)")
@@ -156,6 +157,14 @@ func main() {
 	fmt.Println("   ✓ CrossEntropyLoss with autodiff integration")
 	fmt.Println("   ✓ Adam optimizer with bias correction")
 	fmt.Println("   ✓ Real MNIST dataset (60,000 samples)")
+
+	if *outPath != "" {
+		fmt.Printf("Writing model to %s\n", *outPath)
+		err := nn.Save(model, *outPath, "MNISTNetCNN", nil)
+		if err != nil {
+			log.Printf("Error saving model: %v\n", err)
+		}
+	}
 }
 
 // trainEpoch trains the model for one epoch.
