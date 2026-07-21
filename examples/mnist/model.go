@@ -3,8 +3,8 @@ package main
 import (
 	"strings"
 
-	"github.com/born-ml/born/internal/nn"
-	"github.com/born-ml/born/internal/tensor"
+	"github.com/born-ml/born/nn"
+	"github.com/born-ml/born/tensor"
 )
 
 // MNISTNet is a simple fully-connected neural network for MNIST classification.

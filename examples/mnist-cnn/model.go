@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/born-ml/born/internal/nn"
-	"github.com/born-ml/born/internal/tensor"
+	"github.com/born-ml/born/nn"
+	"github.com/born-ml/born/tensor"
 )
 
 // MNISTNetCNN is a LeNet-5 style convolutional neural network for MNIST classification.
