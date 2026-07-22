@@ -149,6 +149,9 @@ func (m *MNISTNetCNN[B]) String() string {
 	)
 }
 
+// StateDict returns the model's state as a map of parameter names to raw tensors.
+//
+// Keys are prefixed with the layer name (e.g., "conv1.weight", "fc3.bias").
 func (m *MNISTNetCNN[B]) StateDict() map[string]*tensor.RawTensor {
 	state := make(map[string]*tensor.RawTensor)
 
@@ -170,6 +173,9 @@ func (m *MNISTNetCNN[B]) StateDict() map[string]*tensor.RawTensor {
 	return state
 }
 
+// LoadStateDict loads the model's state from a map of parameter names to raw tensors.
+//
+// Keys must match the format returned by StateDict (e.g., "conv1.weight", "fc3.bias").
 func (m *MNISTNetCNN[B]) LoadStateDict(stateDict map[string]*tensor.RawTensor) error {
 	conv1State := make(map[string]*tensor.RawTensor)
 	conv2State := make(map[string]*tensor.RawTensor)

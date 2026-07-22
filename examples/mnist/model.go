@@ -76,6 +76,9 @@ func (m *MNISTNet[B]) Parameters() []*nn.Parameter[B] {
 	return params
 }
 
+// StateDict returns the model's state as a map of parameter names to raw tensors.
+//
+// Keys are prefixed with the layer name (e.g., "fc1.weight", "fc2.bias").
 func (m *MNISTNet[B]) StateDict() map[string]*tensor.RawTensor {
 	state := make(map[string]*tensor.RawTensor)
 	for k, v := range m.fc1.StateDict() {
@@ -87,6 +90,9 @@ func (m *MNISTNet[B]) StateDict() map[string]*tensor.RawTensor {
 	return state
 }
 
+// LoadStateDict loads the model's state from a map of parameter names to raw tensors.
+//
+// Keys must match the format returned by StateDict (e.g., "fc1.weight", "fc2.bias").
 func (m *MNISTNet[B]) LoadStateDict(stateDict map[string]*tensor.RawTensor) error {
 	fc1State := make(map[string]*tensor.RawTensor)
 	fc2State := make(map[string]*tensor.RawTensor)

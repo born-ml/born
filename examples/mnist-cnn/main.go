@@ -159,7 +159,7 @@ func main() {
 	fmt.Println("   ✓ Real MNIST dataset (60,000 samples)")
 
 	if *outPath != "" {
-		fmt.Printf("Writing model to %s\n", *outPath)
+		fmt.Printf("   ✓ Writing model to %s\n", *outPath)
 		err := nn.Save(model, *outPath, "MNISTNetCNN", nil)
 		if err != nil {
 			log.Printf("Error saving model: %v\n", err)
