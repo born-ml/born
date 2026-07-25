@@ -468,6 +468,10 @@ func (m *Model[B]) Forward(
 	hidden2D := hidden.Reshape(batch*seqLen, m.Config.HiddenSize)
 
 	if m.cpuLMHeadData != nil {
+		if batch != 1 {
+			panic(fmt.Sprintf("llama: cpu lm head only supports batch=1, got %d", batch))
+		}
+
 		// CPU LM head: only compute logits for the last position.
 		// Access flat data directly (avoids Reshape which may not propagate
 		// GPU realization correctly on all backends).
@@ -475,8 +479,7 @@ func (m *Model[B]) Forward(
 		hData := hidden.Raw().AsFloat32()
 		hs := m.Config.HiddenSize
 		vocab := m.Config.VocabSize
-		totalTokens := batch * seqLen
-		lastRow := hData[(totalTokens-1)*hs : totalTokens*hs]
+		lastRow := hData[(seqLen-1)*hs : seqLen*hs]
 
 		logits := make([]float32, vocab)
 		for j := 0; j < vocab; j++ {

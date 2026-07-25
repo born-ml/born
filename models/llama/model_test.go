@@ -318,6 +318,52 @@ func TestNewModelCache_LayerCount(t *testing.T) {
 	}
 }
 
+// TestNewModel_CPUEmbeddingForward verifies Forward() falls back to CPU embedding
+// lookup and CPU LM head when weights are kept on CPU (e.g. for large vocab models).
+func TestNewModel_CPUEmbeddingForward(t *testing.T) {
+	backend := newCPUBackend()
+	cfg := tinyConfig()
+	model := NewModel(cfg, backend)
+
+	model.EnableCPUEmbedding()
+
+	if model.CPUEmbedData() == nil {
+		t.Fatal("cpuEmbedData is nil after EnableCPUEmbedding")
+	}
+	if model.cpuLMHeadData == nil {
+		t.Fatal("cpuLMHeadData is nil after EnableCPUEmbedding")
+	}
+	if model.cpuHiddenSize != cfg.HiddenSize {
+		t.Fatalf("cpuHiddenSize = %d, want %d", model.cpuHiddenSize, cfg.HiddenSize)
+	}
+
+	// Prefill: CPU path returns [1, 1, vocab] (last token only).
+	prompt := makeInt32Input(1, 4, cfg.VocabSize)
+	logits := model.Forward(prompt, nil, 0)
+	if logits == nil {
+		t.Fatal("Forward returned nil (CPU embedding prefill)")
+	}
+	shape := logits.Shape()
+	if len(shape) != 3 || shape[0] != 1 || shape[1] != 1 || shape[2] != cfg.VocabSize {
+		t.Errorf("prefill logits shape = %v, want [1, 1, %d]", shape, cfg.VocabSize)
+	}
+
+	// Decode with KV cache.
+	cache := NewModelCache(cfg, cfg.MaxSeqLen, backend)
+	nextTok := makeInt32Input(1, 1, cfg.VocabSize)
+	logits2 := model.Forward(nextTok, cache, 4)
+	if logits2 == nil {
+		t.Fatal("Forward returned nil (CPU embedding decode)")
+	}
+	shape2 := logits2.Shape()
+	if len(shape2) != 3 || shape2[0] != 1 || shape2[1] != 1 || shape2[2] != cfg.VocabSize {
+		t.Errorf("decode logits shape = %v, want [1, 1, %d]", shape2, cfg.VocabSize)
+	}
+
+	// EnableCPUEmbedding again should be a no-op.
+	model.EnableCPUEmbedding()
+}
+
 // makeInt32Input creates a RawTensor of int32 token IDs of shape [batch, seq].
 func makeInt32Input(batch, seq, vocabSize int) *tensor.RawTensor {
 	raw, _ := tensor.NewRaw(tensor.Shape{batch, seq}, tensor.Int32, tensor.CPU)

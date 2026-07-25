@@ -269,8 +269,8 @@ func (r *GGUFReader) readArray() (interface{}, error) {
 
 	switch elemType {
 	case GGUFTypeString:
-		arr := make([]string, length)
-		for i := uint64(0); i < length; i++ {
+		arr := make([]string, int(length))
+		for i := range arr {
 			s, err := r.readString()
 			if err != nil {
 				return nil, err
@@ -279,32 +279,32 @@ func (r *GGUFReader) readArray() (interface{}, error) {
 		}
 		return arr, nil
 	case GGUFTypeFloat32:
-		arr := make([]float32, length)
-		for i := uint64(0); i < length; i++ {
+		arr := make([]float32, int(length))
+		for i := range arr {
 			if err := binary.Read(r.file, binary.LittleEndian, &arr[i]); err != nil {
 				return nil, err
 			}
 		}
 		return arr, nil
 	case GGUFTypeUint32:
-		arr := make([]uint32, length)
-		for i := uint64(0); i < length; i++ {
+		arr := make([]uint32, int(length))
+		for i := range arr {
 			if err := binary.Read(r.file, binary.LittleEndian, &arr[i]); err != nil {
 				return nil, err
 			}
 		}
 		return arr, nil
 	case GGUFTypeInt32:
-		arr := make([]int32, length)
-		for i := uint64(0); i < length; i++ {
+		arr := make([]int32, int(length))
+		for i := range arr {
 			if err := binary.Read(r.file, binary.LittleEndian, &arr[i]); err != nil {
 				return nil, err
 			}
 		}
 		return arr, nil
 	case GGUFTypeBool:
-		arr := make([]bool, length)
-		for i := uint64(0); i < length; i++ {
+		arr := make([]bool, int(length))
+		for i := range arr {
 			var v uint8
 			if err := binary.Read(r.file, binary.LittleEndian, &v); err != nil {
 				return nil, err

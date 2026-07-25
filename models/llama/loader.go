@@ -164,6 +164,8 @@ func (wl *weightLoader[B]) loadTensor(ggufName, bornName string) error {
 			wl.lmHeadLoaded = true
 			wl.model.cpuLMHeadData = float32Data
 			return nil
+		default:
+			return fmt.Errorf("tensor %q (%d bytes) exceeds GPU max buffer size (%d bytes)", bornName, len(float32Data)*4, gpuMaxBufferSize)
 		}
 	}
 
