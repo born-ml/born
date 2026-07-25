@@ -115,3 +115,18 @@ func GetChatTemplate(name string) (ChatTemplate, error) {
 func ExampleBPE() Tokenizer {
 	return tokenizer.ExampleBPEVocab()
 }
+
+// NewGGUFTokenizer builds a tokenizer from GGUF metadata arrays.
+//
+// This is used when loading a model from a GGUF file that embeds the tokenizer
+// (tokenizer.ggml.tokens, tokenizer.ggml.merges, tokenizer.ggml.model).
+// It supports "gpt2" (byte-level BPE with merges) and "llama"/"unigram"
+// (SentencePiece-style with ▁ markers) model types.
+func NewGGUFTokenizer(
+	tokens []string,
+	merges []string,
+	modelType string,
+	bosID, eosID, padID, unkID int32,
+) (Tokenizer, error) {
+	return tokenizer.NewGGUFTokenizer(tokens, merges, modelType, bosID, eosID, padID, unkID)
+}

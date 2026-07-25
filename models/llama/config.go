@@ -96,8 +96,16 @@ func ConfigFromGGUF(file *gguf.File) Config {
 	hiddenSize := file.EmbeddingLength()
 	numHeads := file.HeadCount()
 
+	// HeadDim: prefer explicit key_length/value_length from GGUF metadata
+	// (some models like Qwen2/MiniCPM5 use a HeadDim != HiddenSize/NumHeads).
+	// Fall back to HiddenSize/NumHeads when not specified.
 	headDim := 0
-	if numHeads > 0 && hiddenSize > 0 {
+	arch := file.Architecture()
+	if keyLen, ok := file.Metadata[arch+".attention.key_length"].(uint32); ok && keyLen > 0 {
+		headDim = int(keyLen)
+	} else if valLen, ok := file.Metadata[arch+".attention.value_length"].(uint32); ok && valLen > 0 {
+		headDim = int(valLen)
+	} else if numHeads > 0 && hiddenSize > 0 {
 		headDim = hiddenSize / numHeads
 	}
 

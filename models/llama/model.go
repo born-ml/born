@@ -300,6 +300,14 @@ type Model[B tensor.Backend] struct {
 	Config Config
 
 	backend B
+
+	// CPU-side fallback for large embedding/LM-head weights that exceed
+	// WebGPU's max buffer size (256 MB). When non-nil, embedding lookup
+	// and LM head matmul are computed on CPU; only the small hidden-state
+	// tensors cross the CPU↔GPU boundary.
+	cpuEmbedData  []float32 // [vocab_size * hidden_size]
+	cpuLMHeadData []float32 // [vocab_size * hidden_size] (may alias cpuEmbedData for tied)
+	cpuHiddenSize int
 }
 
 // NewModel creates an uninitialised LLaMA Model with random weights.
@@ -344,6 +352,42 @@ func (m *Model[B]) Release() {
 	release(m.Head.Parameters())
 }
 
+// EnableCPUEmbedding moves the embedding and LM head weights to CPU memory.
+//
+// This is needed when the vocab is too large for a single WebGPU buffer
+// (> 256 MB). After calling this, Forward() will:
+//   - Look up token embeddings on CPU (fast: O(seq × hidden) index copy)
+//   - Transfer the small hidden tensor [batch, seq, hidden] to GPU
+//   - Run transformer layers on GPU
+//   - Transfer final hidden states back to CPU
+//   - Compute LM head matmul on CPU (only last position's logits)
+//
+// Safe to call once after LoadGGUF. No-op if already enabled.
+// Note: LoadGGUF automatically calls this when the backend is GPU and the
+// embedding exceeds 256 MB, so manual calls are usually unnecessary.
+func (m *Model[B]) EnableCPUEmbedding() {
+	if m.cpuEmbedData != nil {
+		return
+	}
+	embedRaw := m.Embed.Weight.Tensor().Raw()
+	m.cpuEmbedData = append([]float32(nil), embedRaw.AsFloat32()...)
+	m.cpuHiddenSize = m.Config.HiddenSize
+
+	// Extract LM head weight (may be tied with embedding).
+	headRaw := m.Head.Weight().Tensor().Raw()
+	headData := headRaw.AsFloat32()
+	if len(headData) == len(m.cpuEmbedData) {
+		m.cpuLMHeadData = m.cpuEmbedData // tied
+	} else {
+		m.cpuLMHeadData = append([]float32(nil), headData...)
+	}
+}
+
+// CPUEmbedData returns the CPU-side embedding data, or nil if not enabled.
+func (m *Model[B]) CPUEmbedData() []float32 {
+	return m.cpuEmbedData
+}
+
 // Forward performs a forward pass and returns logits.
 //
 // This method satisfies the generate.LLMModel interface.
@@ -357,16 +401,46 @@ func (m *Model[B]) Release() {
 //     tokens already in the cache for incremental decoding).
 //
 // Returns logits [batch, seq_len, vocab_size] as a *tensor.RawTensor.
+// When CPU embedding is enabled, returns [1, 1, vocab_size] (last position only)
+// since the sampler only needs the last token's logits.
 func (m *Model[B]) Forward(
 	input *tensor.RawTensor,
 	cache generate.KVCache,
 	startPos int,
 ) *tensor.RawTensor {
-	// Convert raw int32 input to typed tensor for embedding lookup.
-	inputTyped := tensor.New[int32, B](input, m.backend)
+	var hidden *tensor.Tensor[float32, B]
 
-	// Token embeddings: [batch, seq, hidden_size].
-	hidden := m.Embed.Forward(inputTyped)
+	if m.cpuEmbedData != nil {
+		// CPU embedding lookup: index into the flat weight slice.
+		tokenIDs := input.AsInt32()
+		inShape := input.Shape()
+		batch := inShape[0]
+		seq := inShape[1]
+		hs := m.cpuHiddenSize
+
+		lookup := make([]float32, batch*seq*hs)
+		for i := 0; i < batch*seq; i++ {
+			tok := int(tokenIDs[i])
+			if tok >= 0 && tok < m.Config.VocabSize {
+				copy(lookup[i*hs:(i+1)*hs], m.cpuEmbedData[tok*hs:(tok+1)*hs])
+			}
+		}
+
+		// Create tensor on the backend's device (GPU if applicable).
+		// Using m.backend.Device() instead of tensor.CPU ensures the WebGPU
+		// backend creates a proper GPU buffer with the data, rather than a
+		// CPU tensor that might not transfer correctly.
+		raw, err := tensor.NewRaw(tensor.Shape{batch, seq, hs}, tensor.Float32, m.backend.Device())
+		if err != nil {
+			panic(fmt.Sprintf("llama: cpu embedding: %v", err))
+		}
+		copy(raw.AsFloat32(), lookup)
+		hidden = tensor.New[float32, B](raw, m.backend)
+	} else {
+		// Original path: GPU embedding lookup.
+		inputTyped := tensor.New[int32, B](input, m.backend)
+		hidden = m.Embed.Forward(inputTyped)
+	}
 
 	// Cast cache to the model-specific per-layer cache type.
 	var modelCache *ModelCache[B]
@@ -392,9 +466,38 @@ func (m *Model[B]) Forward(
 	shape := hidden.Shape()
 	batch, seqLen := shape[0], shape[1]
 	hidden2D := hidden.Reshape(batch*seqLen, m.Config.HiddenSize)
+
+	if m.cpuLMHeadData != nil {
+		// CPU LM head: only compute logits for the last position.
+		// Access flat data directly (avoids Reshape which may not propagate
+		// GPU realization correctly on all backends).
+		_ = hidden.Raw().Data() // force GPU realization
+		hData := hidden.Raw().AsFloat32()
+		hs := m.Config.HiddenSize
+		vocab := m.Config.VocabSize
+		totalTokens := batch * seqLen
+		lastRow := hData[(totalTokens-1)*hs : totalTokens*hs]
+
+		logits := make([]float32, vocab)
+		for j := 0; j < vocab; j++ {
+			var sum float32
+			wOff := j * hs
+			for k := 0; k < hs; k++ {
+				sum += lastRow[k] * m.cpuLMHeadData[wOff+k]
+			}
+			logits[j] = sum
+		}
+
+		raw, err := tensor.NewRaw(tensor.Shape{1, 1, vocab}, tensor.Float32, tensor.CPU)
+		if err != nil {
+			panic(fmt.Sprintf("llama: cpu lm head: %v", err))
+		}
+		copy(raw.AsFloat32(), logits)
+		return raw
+	}
+
 	logits2D := m.Head.Forward(hidden2D)
 	logits := logits2D.Reshape(batch, seqLen, m.Config.VocabSize)
-
 	return logits.Raw()
 }
 

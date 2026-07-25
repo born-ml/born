@@ -245,10 +245,75 @@ func (r *GGUFReader) readMetadataValue(valueType GGUFType) (interface{}, error) 
 		err := binary.Read(r.file, binary.LittleEndian, &v)
 		return v, err
 	case GGUFTypeArray:
-		// For simplicity, skip arrays for now
-		return nil, fmt.Errorf("array type not yet supported")
+		return r.readArray()
 	default:
 		return nil, fmt.Errorf("unknown value type: %d", valueType)
+	}
+}
+
+// readArray reads a GGUF array: element type (uint32) + length (uint64) + elements.
+func (r *GGUFReader) readArray() (interface{}, error) {
+	var elemType GGUFType
+	if err := binary.Read(r.file, binary.LittleEndian, &elemType); err != nil {
+		return nil, fmt.Errorf("read array element type: %w", err)
+	}
+
+	var length uint64
+	if err := binary.Read(r.file, binary.LittleEndian, &length); err != nil {
+		return nil, fmt.Errorf("read array length: %w", err)
+	}
+
+	if length > 100_000_000 {
+		return nil, fmt.Errorf("array too large: %d elements", length)
+	}
+
+	switch elemType {
+	case GGUFTypeString:
+		arr := make([]string, length)
+		for i := uint64(0); i < length; i++ {
+			s, err := r.readString()
+			if err != nil {
+				return nil, err
+			}
+			arr[i] = s
+		}
+		return arr, nil
+	case GGUFTypeFloat32:
+		arr := make([]float32, length)
+		for i := uint64(0); i < length; i++ {
+			if err := binary.Read(r.file, binary.LittleEndian, &arr[i]); err != nil {
+				return nil, err
+			}
+		}
+		return arr, nil
+	case GGUFTypeUint32:
+		arr := make([]uint32, length)
+		for i := uint64(0); i < length; i++ {
+			if err := binary.Read(r.file, binary.LittleEndian, &arr[i]); err != nil {
+				return nil, err
+			}
+		}
+		return arr, nil
+	case GGUFTypeInt32:
+		arr := make([]int32, length)
+		for i := uint64(0); i < length; i++ {
+			if err := binary.Read(r.file, binary.LittleEndian, &arr[i]); err != nil {
+				return nil, err
+			}
+		}
+		return arr, nil
+	case GGUFTypeBool:
+		arr := make([]bool, length)
+		for i := uint64(0); i < length; i++ {
+			var v uint8
+			if err := binary.Read(r.file, binary.LittleEndian, &v); err != nil {
+				return nil, err
+			}
+			arr[i] = v != 0
+		}
+		return arr, nil
+	default:
+		return nil, fmt.Errorf("unsupported array element type: %d", elemType)
 	}
 }
 
