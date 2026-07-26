@@ -18,6 +18,9 @@ import (
 // Defined as a constant to satisfy goconst (used in setParameter and tests).
 const bornNameEmbeddingWeight = "embedding.weight"
 
+// bornNameLMHeadWeight is the canonical Born name for the LM head weight.
+const bornNameLMHeadWeight = "lm_head.weight"
+
 // LoadGGUF loads a LLaMA model from a GGUF file.
 //
 // It reads architecture metadata, constructs a Model with the correct shape,
@@ -135,7 +138,7 @@ func (wl *weightLoader[B]) loadAll(file *gguf.File) error {
 
 // gpuMaxBufferSize is the minimum guaranteed max buffer size per the WebGPU
 // spec (256 MB). Tensors larger than this are kept on CPU when using GPU.
-const gpuMaxBufferSize = 268435456
+const gpuMaxBufferSize = 256 * 1024 * 1024
 
 // loadTensor dequantizes a single GGUF tensor and copies it into the matching
 // Born model parameter identified by bornName.
@@ -160,7 +163,7 @@ func (wl *weightLoader[B]) loadTensor(ggufName, bornName string) error {
 			wl.model.cpuEmbedData = float32Data
 			wl.model.cpuHiddenSize = wl.model.Config.HiddenSize
 			return nil
-		case "lm_head.weight":
+		case bornNameLMHeadWeight:
 			wl.lmHeadLoaded = true
 			wl.model.cpuLMHeadData = float32Data
 			return nil
@@ -191,7 +194,7 @@ func (wl *weightLoader[B]) setParameter(bornName string, raw *tensor.RawTensor) 
 	case bornName == "norm.weight":
 		return copyToParam(m.Norm.Gamma, raw)
 
-	case bornName == "lm_head.weight":
+	case bornName == bornNameLMHeadWeight:
 		wl.lmHeadLoaded = true
 		return copyToLinearWeight(m.Head, raw)
 

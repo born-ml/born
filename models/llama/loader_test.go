@@ -46,7 +46,7 @@ func TestWeightLoader_setParameter(t *testing.T) {
 		},
 		{
 			name:     "lm_head_weight",
-			bornName: "lm_head.weight",
+			bornName: bornNameLMHeadWeight,
 			shape:    tensor.Shape{cfg.VocabSize, cfg.HiddenSize},
 		},
 		{

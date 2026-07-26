@@ -130,7 +130,6 @@ func (t *GGUFTokenizer) Encode(text string) ([]int32, error) {
 
 // encodeText encodes regular text (no special tokens) using BPE or greedy match.
 func (t *GGUFTokenizer) encodeText(text string) ([]int32, error) {
-
 	var preTokens []string
 	if t.byteLevel {
 		preTokens = gpt2PreTokenize(text)
@@ -238,14 +237,28 @@ func (t *GGUFTokenizer) Decode(tokens []int32) (string, error) {
 		return byteLevelDecode(joined), nil
 	}
 
-	return joined, nil
+	// SentencePiece: convert ▁ space markers back to spaces, then strip the
+	// leading space produced by the sentence-start ▁ marker.
+	decoded := strings.ReplaceAll(joined, "▁", " ")
+	return strings.TrimPrefix(decoded, " "), nil
 }
 
-func (t *GGUFTokenizer) VocabSize() int      { return len(t.vocab) }
-func (t *GGUFTokenizer) BosToken() int32     { return t.bosToken }
-func (t *GGUFTokenizer) EosToken() int32     { return t.eosToken }
-func (t *GGUFTokenizer) PadToken() int32     { return t.padToken }
-func (t *GGUFTokenizer) UnkToken() int32     { return t.unkToken }
+// VocabSize returns the number of tokens in the vocabulary.
+func (t *GGUFTokenizer) VocabSize() int { return len(t.vocab) }
+
+// BosToken returns the beginning-of-sequence token ID.
+func (t *GGUFTokenizer) BosToken() int32 { return t.bosToken }
+
+// EosToken returns the end-of-sequence token ID.
+func (t *GGUFTokenizer) EosToken() int32 { return t.eosToken }
+
+// PadToken returns the padding token ID.
+func (t *GGUFTokenizer) PadToken() int32 { return t.padToken }
+
+// UnkToken returns the unknown token ID.
+func (t *GGUFTokenizer) UnkToken() int32 { return t.unkToken }
+
+// IsSpecialToken reports whether the given token ID is a special token.
 func (t *GGUFTokenizer) IsSpecialToken(id int32) bool { return t.specialTokens[id] }
 
 // --- GPT-2 byte-level encoding ---
@@ -302,53 +315,60 @@ func byteLevelDecode(text string) string {
 
 // --- Pre-tokenization ---
 
+// gpt2RuneClass classifies a rune for GPT-2 pre-tokenization.
+type gpt2RuneClass int
+
+const (
+	classLetter gpt2RuneClass = iota
+	classPunct
+	classOther
+)
+
+func classifyRune(r rune) gpt2RuneClass {
+	if isLetterOrDigit(r) {
+		return classLetter
+	}
+	if isPunctuation(r) {
+		return classPunct
+	}
+	return classOther
+}
+
+// gpt2TokenEnd returns the exclusive end index of the pre-token starting at i.
+// It consumes a maximal run of runes in the same class, or a single rune for
+// the "other" class (spaces, symbols, etc.).
+func gpt2TokenEnd(runes []rune, i int) int {
+	if i >= len(runes) {
+		return i
+	}
+	class := classifyRune(runes[i])
+	if class == classOther {
+		return i + 1
+	}
+	for i < len(runes) && classifyRune(runes[i]) == class {
+		i++
+	}
+	return i
+}
+
 // gpt2PreTokenize splits text into pre-tokens for GPT-2 BPE.
 // Each pre-token includes its leading space (if any).
 func gpt2PreTokenize(text string) []string {
 	var result []string
 	runes := []rune(text)
-	i := 0
 
-	for i < len(runes) {
-		if runes[i] == ' ' {
-			j := i + 1
-			if j < len(runes) {
-				k := j
-				if isLetterOrDigit(runes[j]) {
-					for k < len(runes) && isLetterOrDigit(runes[k]) {
-						k++
-					}
-				} else if isPunctuation(runes[j]) {
-					for k < len(runes) && isPunctuation(runes[k]) {
-						k++
-					}
-				} else {
-					k = j + 1
-				}
-				result = append(result, string(runes[i:k]))
-				i = k
-			} else {
-				result = append(result, " ")
-				i++
-			}
-		} else if isLetterOrDigit(runes[i]) {
-			j := i
-			for j < len(runes) && isLetterOrDigit(runes[j]) {
-				j++
-			}
-			result = append(result, string(runes[i:j]))
-			i = j
-		} else if isPunctuation(runes[i]) {
-			j := i
-			for j < len(runes) && isPunctuation(runes[j]) {
-				j++
-			}
-			result = append(result, string(runes[i:j]))
-			i = j
-		} else {
-			result = append(result, string(runes[i]))
-			i++
+	for i := 0; i < len(runes); {
+		// A leading space attaches to the following token of the same class.
+		if runes[i] == ' ' && i+1 < len(runes) {
+			k := gpt2TokenEnd(runes, i+1)
+			result = append(result, string(runes[i:k]))
+			i = k
+			continue
 		}
+		// Trailing space or a non-space run.
+		k := gpt2TokenEnd(runes, i)
+		result = append(result, string(runes[i:k]))
+		i = k
 	}
 
 	return result
@@ -381,7 +401,7 @@ func sentencePiecePreTokenize(text string) []string {
 }
 
 func splitToChars(s string) []string {
-	var result []string
+	result := make([]string, 0, len(s))
 	for _, r := range s {
 		result = append(result, string(r))
 	}
@@ -395,9 +415,6 @@ func isLetterOrDigit(r rune) bool {
 func isPunctuation(r rune) bool {
 	return unicode.IsPunct(r) || (r != ' ' && !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsSpace(r))
 }
-
-// Ensure sorted merge keys for deterministic behavior (unused but kept for future).
-var _ = sort.Strings
 
 // --- Special token handling ---
 
@@ -440,14 +457,9 @@ func isSpecialTokenString(tok string) bool {
 	return false
 }
 
-// splitOnSpecialTokens splits text into segments, identifying special tokens.
-// Special tokens are matched greedily (longest match first).
-func splitOnSpecialTokens(text string, specialTokens map[string]int32) []textSegment {
-	if len(specialTokens) == 0 {
-		return []textSegment{{text: text, isSpecial: false}}
-	}
-
-	// Sort special token strings by length (longest first) for greedy matching.
+// sortSpecialTokensByLength returns special token strings sorted longest-first
+// for greedy matching.
+func sortSpecialTokensByLength(specialTokens map[string]int32) []string {
 	sortedSpecials := make([]string, 0, len(specialTokens))
 	for tok := range specialTokens {
 		sortedSpecials = append(sortedSpecials, tok)
@@ -455,41 +467,57 @@ func splitOnSpecialTokens(text string, specialTokens map[string]int32) []textSeg
 	sort.Slice(sortedSpecials, func(i, j int) bool {
 		return len(sortedSpecials[i]) > len(sortedSpecials[j])
 	})
+	return sortedSpecials
+}
+
+// matchSpecialPrefix checks whether remaining starts with a special token.
+// Returns the matched segment and the remaining text after it.
+func matchSpecialPrefix(remaining string, sortedSpecials []string) (textSegment, string, bool) {
+	for _, special := range sortedSpecials {
+		if strings.HasPrefix(remaining, special) {
+			return textSegment{text: special, isSpecial: true}, remaining[len(special):], true
+		}
+	}
+	return textSegment{}, "", false
+}
+
+// nextSpecialIndex returns the byte offset of the earliest special token in
+// remaining, or len(remaining) if none is found.
+func nextSpecialIndex(remaining string, sortedSpecials []string) int {
+	minIdx := len(remaining)
+	for _, special := range sortedSpecials {
+		if idx := strings.Index(remaining, special); idx >= 0 && idx < minIdx {
+			minIdx = idx
+		}
+	}
+	if minIdx == 0 {
+		minIdx = 1 // safety: shouldn't happen (prefixes checked first)
+	}
+	return minIdx
+}
+
+// splitOnSpecialTokens splits text into segments, identifying special tokens.
+// Special tokens are matched greedily (longest match first).
+func splitOnSpecialTokens(text string, specialTokens map[string]int32) []textSegment {
+	if len(specialTokens) == 0 {
+		return []textSegment{{text: text, isSpecial: false}}
+	}
+
+	sortedSpecials := sortSpecialTokensByLength(specialTokens)
 
 	var segments []textSegment
 	remaining := text
 
-	for len(remaining) > 0 {
-		found := false
-		for _, special := range sortedSpecials {
-			if strings.HasPrefix(remaining, special) {
-				segments = append(segments, textSegment{text: special, isSpecial: true})
-				remaining = remaining[len(special):]
-				found = true
-				break
-			}
+	for remaining != "" {
+		if seg, rest, matched := matchSpecialPrefix(remaining, sortedSpecials); matched {
+			segments = append(segments, seg)
+			remaining = rest
+			continue
 		}
-		if !found {
-			// Find the next special token in the remaining text.
-			minIdx := len(remaining)
-			for _, special := range sortedSpecials {
-				if idx := strings.Index(remaining, special); idx >= 0 && idx < minIdx {
-					minIdx = idx
-				}
-			}
-			if minIdx == 0 {
-				// Shouldn't happen (we checked prefixes above), but safety.
-				minIdx = 1
-			}
-			if minIdx == len(remaining) {
-				// No more special tokens; emit the rest as regular text.
-				segments = append(segments, textSegment{text: remaining, isSpecial: false})
-				remaining = ""
-			} else {
-				segments = append(segments, textSegment{text: remaining[:minIdx], isSpecial: false})
-				remaining = remaining[minIdx:]
-			}
-		}
+		// No special token at current position: emit up to the next one.
+		idx := nextSpecialIndex(remaining, sortedSpecials)
+		segments = append(segments, textSegment{text: remaining[:idx], isSpecial: false})
+		remaining = remaining[idx:]
 	}
 
 	return segments

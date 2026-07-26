@@ -173,18 +173,6 @@ func (g *TextGenerator) GenerateStream(prompt string, config GenerateConfig) (<-
 	go func() {
 		defer close(ch)
 
-		// Recover from panics (e.g. GPU VRAM exhaustion) and send an error
-		// result so the caller can handle it gracefully instead of crashing.
-		defer func() {
-			if r := recover(); r != nil {
-				ch <- GenerateResult{
-					Done:  true,
-					Reason: "panic",
-					Error:  fmt.Errorf("generation panic: %v", r),
-				}
-			}
-		}()
-
 		if config.EchoPrompt {
 			// Send prompt tokens first
 			promptText, _ := g.tokenizer.Decode(inputIDs)

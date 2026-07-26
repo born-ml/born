@@ -69,8 +69,9 @@ func TestGGUFTokenizer_SentencePiece(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// SentencePiece uses ▁ for spaces, prepended at sentence start
-	expected := "▁Hello▁world"
+	// SentencePiece uses ▁ for spaces; Decode converts them back and strips
+	// the leading sentence-start marker.
+	expected := "Hello world"
 	if text != expected {
 		t.Errorf("expected %q, got %q", expected, text)
 	}

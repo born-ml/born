@@ -346,6 +346,17 @@ func (f *File) HeadCountKV() int {
 	return kv
 }
 
+// KeyLength returns the attention key length (dimension per head).
+// Some models (Qwen2, MiniCPM5) set a HeadDim != HiddenSize/NumHeads.
+func (f *File) KeyLength() int {
+	return f.getIntMetadata(f.Architecture() + ".attention.key_length")
+}
+
+// ValueLength returns the attention value length (dimension per head).
+func (f *File) ValueLength() int {
+	return f.getIntMetadata(f.Architecture() + ".attention.value_length")
+}
+
 // FeedForwardLength returns the FFN intermediate size.
 func (f *File) FeedForwardLength() int {
 	return f.getIntMetadata(f.Architecture() + ".feed_forward_length")
