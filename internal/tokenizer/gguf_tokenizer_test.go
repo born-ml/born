@@ -13,10 +13,10 @@ func TestGGUFTokenizer_GPT2ByteLevel(t *testing.T) {
 		"Hello", "world",
 	}
 	merges := []string{
-		"H e",   // → He
-		"l l",   // → ll
-		"He llo", // → Hello (won't match, no "llo")
-		"Ġ w",   // → Ġw
+		"H e",     // → He
+		"l l",     // → ll
+		"He llo",  // → Hello (won't match, no "llo")
+		"Ġ w",     // → Ġw
 		"Ġw orld", // → Ġworld (won't match, no "orld")
 	}
 
@@ -28,7 +28,7 @@ func TestGGUFTokenizer_GPT2ByteLevel(t *testing.T) {
 	// "Hello world" → pre-tokenize → ["Hello", " world"]
 	// byte-level: ["Hello", "Ġworld"]
 	// BPE on "Hello": H+e→He, l+l→ll, then He+ll→? no merge. Chars: He, ll, o
-	// BPE on "Ġworld": Ġ+w→Ġw, then Ġw+orld→? no merge. 
+	// BPE on "Ġworld": Ġ+w→Ġw, then Ġw+orld→? no merge.
 	ids, err := tok.Encode("Hello world")
 	if err != nil {
 		t.Fatal(err)
