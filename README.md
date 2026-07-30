@@ -83,12 +83,12 @@ prediction := model.Predict(image)
 
 ### Model Import & Export
 - **ONNX Import** - Load PyTorch/TensorFlow models via `.onnx` (57 operators)
-- **GGUF Import** - llama.cpp format with K-quant dequantization (Q4_K, Q5_K, Q6_K, Q8_0)
-- **LLaMA** - `models/llama.LoadGGUF()` for end-to-end LLaMA inference; verified on TinyLlama 1.1B Q8_0 and Q4_K_M
+- **GGUF Import** - llama.cpp format with K-quant dequantization (Q4_K, Q5_K, Q6_K, Q8_0); embedded tokenizer support (GPT-2 BPE, SentencePiece)
+- **LLaMA** - `models/llama.LoadGGUF()` for end-to-end LLaMA inference; verified on TinyLlama 1.1B Q8_0 and Q4_K_M; CPU embedding fallback for large-vocab models
 - **Injectable Attention** - swap attention implementation at model load time for research experiments
 - **Native Format** - `.born` format with `nn.Save()` / `nn.Load()` / `nn.SaveTo()` / `nn.LoadFrom()` (file, stream, or `[]byte`)
 - **Checkpoints** - Resume training with optimizer state preservation
-- **SafeTensors** - HuggingFace compatible export
+- **SafeTensors** - HuggingFace compatible; F16/BF16 tensors widened to float32 on load
 - **Reproducibility** - `nn.SetSeed()` for deterministic weight initialization
 
 ---

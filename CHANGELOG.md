@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **GGUF tokenizer** — full tokenizer built from GGUF-embedded metadata arrays. Supports GPT-2 byte-level BPE and SentencePiece (greedy match). Pre-tokenization, special token handling, and byte-level encode/decode included. Public API: `tokenizer.NewGGUFTokenizer()` ([#140](https://github.com/born-ml/born/pull/140) by [@linkerlin](https://github.com/linkerlin))
+- **GGUF array metadata** — `readArray()` now parses all 11 GGUF numeric element types via generic `readBinaryArray[T]`. Previously returned "unsupported" for arrays, blocking tokenizer vocabulary loading ([#140](https://github.com/born-ml/born/pull/140) by [@linkerlin](https://github.com/linkerlin))
+- **CPU embedding fallback** — models whose embedding/LM-head weights exceed WebGPU's 256 MB buffer limit are automatically kept on CPU. Embedding lookup and final projection run as CPU matmul; all other layers stay on GPU ([#140](https://github.com/born-ml/born/pull/140) by [@linkerlin](https://github.com/linkerlin))
+- **HeadDim from GGUF metadata** — `ConfigFromGGUF` reads `attention.key_length`/`attention.value_length` for models like Qwen2/MiniCPM5 where HeadDim ≠ HiddenSize/NumHeads. `KeyLength()`/`ValueLength()` helpers added to `gguf.File` ([#140](https://github.com/born-ml/born/pull/140) by [@linkerlin](https://github.com/linkerlin))
+- **`BFloat16ToFloat32`** — IEEE 754 BF16→float32 conversion added to `internal/half`. Full test suite: normals, subnormals, signed zero, ±Inf, NaN ([#142](https://github.com/born-ml/born/pull/142) by [@amery](https://github.com/amery))
+- **SafeTensors F16/BF16 widening** — `LoadTensor` now transparently widens F16 and BF16 tensors to float32 on load, matching GGUF loader behavior. Previously returned an error for half-precision tensors ([#142](https://github.com/born-ml/born/pull/142) by [@amery](https://github.com/amery))
+
+### Fixed
+
+- **SafeTensors reader hardening** — header offset validation rewritten: bounds-checked before allocation (prevents OOM on crafted offsets), `ReadAt` replaces `Seek+ReadFull` (concurrent-safe), negative/reversed/out-of-bounds offsets rejected. Security test suite added ([#142](https://github.com/born-ml/born/pull/142) by [@amery](https://github.com/amery))
+- **Shape overflow guard** — `Shape.Validate()` now rejects shapes whose element count overflows `int` (e.g. `{4, 1<<62}`). Previously `NumElements()` silently wrapped to zero, enabling a crafted model file to create a tensor with a mismatched buffer ([#142](https://github.com/born-ml/born/pull/142) by [@amery](https://github.com/amery))
+
 ## [0.9.18] - 2026-07-23
 
 ### Added
