@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.19] - 2026-07-30
+
 ### Added
 
 - **GGUF tokenizer** — full tokenizer built from GGUF-embedded metadata arrays. Supports GPT-2 byte-level BPE and SentencePiece (greedy match). Pre-tokenization, special token handling, and byte-level encode/decode included. Public API: `tokenizer.NewGGUFTokenizer()` ([#140](https://github.com/born-ml/born/pull/140) by [@linkerlin](https://github.com/linkerlin))
@@ -20,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SafeTensors reader hardening** — header offset validation rewritten: bounds-checked before allocation (prevents OOM on crafted offsets), `ReadAt` replaces `Seek+ReadFull` (concurrent-safe), negative/reversed/out-of-bounds offsets rejected. Security test suite added ([#142](https://github.com/born-ml/born/pull/142) by [@amery](https://github.com/amery))
 - **Shape overflow guard** — `Shape.Validate()` now rejects shapes whose element count overflows `int` (e.g. `{4, 1<<62}`). Previously `NumElements()` silently wrapped to zero, enabling a crafted model file to create a tensor with a mismatched buffer ([#142](https://github.com/born-ml/born/pull/142) by [@amery](https://github.com/amery))
+
+### Changed
+
+- **gogpu/wgpu** v0.30.10 → v0.30.29, **gogpu/naga** v0.17.15 → v0.17.16, **gogpu/gpucontext** v0.21.0 → v0.23.0, **goffi** v0.5.6 → v0.6.2, **golang.org/x/sys** v0.46.0 → v0.47.0
 
 ## [0.9.18] - 2026-07-23
 
