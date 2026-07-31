@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.20] - 2026-07-31
+
+### Changed
+
+- **gogpu/wgpu** v0.30.29 → v0.30.30
+
 ## [0.9.19] - 2026-07-30
 
 ### Added
