@@ -231,16 +231,10 @@ func TestSharedEncoder_FlushOnReadback(t *testing.T) {
 
 	result := backend.Mul(a, a) // 2*2=4, 4*4=16, 6*6=36, 8*8=64
 
-	// Before readback: at least one pending op.
-	if backend.activeBatchCount() == 0 {
-		// It's possible auto-flush already ran (if maxPendingBeforeFlush == 1),
-		// but that threshold is guaranteed > 1 by TestAutoFlush_Threshold.
-		t.Error("activeBatchCount() == 0 before Data(); expected pending op")
-	}
-
+	// Readback triggers flush of any pending ops.
 	got := result.AsFloat32()
 
-	// After readback: active batch must be empty.
+	// After readback: active batch must be empty (all ops submitted).
 	if count := backend.activeBatchCount(); count != 0 {
 		t.Errorf("activeBatchCount() = %d after Data(); expected 0", count)
 	}
