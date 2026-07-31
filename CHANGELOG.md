@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Flaky WebGPU test** — removed pre-readback `activeBatchCount() > 0` assertion in `TestSharedEncoder_FlushOnReadback` that raced under full test suite load. Post-readback assertion and numerical correctness checks remain
+
 ## [0.9.20] - 2026-07-31
 
 ### Changed
