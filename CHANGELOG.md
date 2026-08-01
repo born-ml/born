@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.21] - 2026-08-01
+
 ### Fixed
 
-- **Flaky WebGPU test** — removed pre-readback `activeBatchCount() > 0` assertion in `TestSharedEncoder_FlushOnReadback` that raced under full test suite load. Post-readback assertion and numerical correctness checks remain
+- **Flaky WebGPU test** — removed pre-readback `activeBatchCount() > 0` assertion in `TestSharedEncoder_FlushOnReadback` that raced under full test suite load. Post-readback assertion and numerical correctness checks remain ([#146](https://github.com/born-ml/born/pull/146))
+
+### Changed
+
+- **gogpu/wgpu** v0.30.30 → v0.30.31 (Metal checkptr fix — ObjC block callback trampolines no longer crash under `-race`)
 
 ## [0.9.20] - 2026-07-31
 
