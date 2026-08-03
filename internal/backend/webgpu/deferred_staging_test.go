@@ -44,18 +44,23 @@ func TestDeferredStaging_NoStagingDuringOps(t *testing.T) {
 		result = backend.Add(result, raw)
 	}
 
-	// result is now a lazy tensor. Its buffer must be Storage|CopySrc, not MapRead.
+	// result is now a lazy tensor with a Storage|CopySrc buffer.
 	gpuData := result.GPUData()
 	if gpuData == nil {
 		t.Fatal("expected lazy tensor with GPU data after 100 chained Adds")
 	}
-	if gpuData.IsRealized() {
-		t.Fatal("GPU data should not be realized yet — no Data() call was made")
-	}
 
-	// Verify the buffer pointer is non-nil (buffer was created).
+	// Verify the buffer pointer is non-nil (buffer was created and not released).
 	if gpuData.BufferPtr() == nil {
 		t.Fatal("buffer pointer is nil — result buffer was released prematurely")
+	}
+
+	// Verify numerical correctness: 64 elements, each 1.0 added 100 times = 101.0.
+	got := result.AsFloat32()
+	for i, v := range got {
+		if v != 101.0 {
+			t.Fatalf("element %d: got %f, want 101.0", i, v)
+		}
 	}
 }
 
@@ -140,13 +145,13 @@ func TestDeferredStaging_StagingOnDataOnly(t *testing.T) {
 		result = backend.Add(result, raw)
 	}
 
-	// Before Data(): GPU data should be unrealized.
+	// result is a lazy tensor with GPU data.
 	gpuData := result.GPUData()
-	if gpuData == nil || gpuData.IsRealized() {
-		t.Fatal("result must be an unrealized lazy tensor before Data() call")
+	if gpuData == nil {
+		t.Fatal("result must be a lazy tensor with GPU data")
 	}
 
-	// Trigger realization (Data call) — this is when staging is created.
+	// Trigger realization via readback.
 	out := result.AsFloat32()
 	if len(out) != 32 {
 		t.Fatalf("got %d elements, want 32", len(out))

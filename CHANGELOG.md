@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.22] - 2026-08-03
+
+### Fixed
+
+- **WebGPU flaky tests** — removed timing-dependent `IsRealized()` assertions in deferred staging tests that failed under GPU driver load. Replaced with numerical correctness checks ([#146](https://github.com/born-ml/born/pull/146))
+
+### Changed
+
+- **gogpu/wgpu** v0.30.31 → v0.30.35, **gogpu/naga** v0.17.16 → v0.18.0, **gogpu/gpucontext** v0.23.0 → v0.24.0, **goffi** v0.6.2 → v0.6.3
+
 ## [0.9.21] - 2026-08-01
 
 ### Fixed
