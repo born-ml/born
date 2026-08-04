@@ -45,6 +45,7 @@ func ensureCap(buf *[]float32, n int) []float32 {
 func init() {
 	if cpu.X86.HasAVX2 && cpu.X86.HasFMA {
 		gemmF32 = gemmAVX2F32
+		gemmMinCols = gemmNr // 16 for AVX2
 	}
 }
 

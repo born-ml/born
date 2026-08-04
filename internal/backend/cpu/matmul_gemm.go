@@ -1,11 +1,17 @@
 package cpu
 
-// gemmMinCols is the smallest n the SIMD GEMM kernel handles with at least one
-// full 16-wide column tile. The kernel vectorizes over n (4-row tiles plus a
-// 1-row remainder/GEMV path), so any m >= 1 is fine, but for n below this every
-// column would fall to a naive scalar loop that loses to the cache-tiled scalar
-// path, so the dispatch keeps such narrow shapes on scalar.
-const gemmMinCols = 16
+// gemmMinCols is the smallest n for which the SIMD GEMM kernel dispatches.
+// The kernel vectorizes over columns in gemmNr-wide tiles; shapes with n < gemmMinCols
+// have no full tile and lose to the cache-tiled scalar path, so dispatch skips them.
+//
+// Initialized to gemmNr by the arch-specific init (matmul_gemm_<arch>.go):
+//
+//	amd64: 16 (gemmNr=16, AVX2 256-bit)
+//	arm64:  8 (gemmNr=8,  NEON 128-bit)
+//
+// The zero value keeps gemmMinCols disabled (no SIMD dispatch) on arches without
+// a vendored kernel.
+var gemmMinCols int
 
 // gemmF32 is the optional vendored-SIMD GEMM fast path for float32:
 //
