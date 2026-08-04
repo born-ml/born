@@ -7,13 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.23] - 2026-08-04
+
+### Added
+
+- **ARM64 NEON GEMM micro-kernel** — 4×8 register-blocked GEMM using VFMLA/VLD1/VLD1R/VST1 Plan 9 mnemonics. Runtime dispatch via `cpu.ARM64.HasASIMD`. Packed A/B panels, tile/tail/GEMV paths mirroring the AVX2 6×16 kernel ([#106](https://github.com/born-ml/born/issues/106), [#152](https://github.com/born-ml/born/pull/152))
+- **ARM64 NEON element-wise ops** — Add/Sub/Mul/Div float32 via WORD-encoded FADD/FSUB/FMUL/FDIV (.4S vectors). Wired into existing SIMD function pointers with `simdMinLen=32` threshold ([#106](https://github.com/born-ml/born/issues/106), [#152](https://github.com/born-ml/born/pull/152))
+- **WebGPU subgroup MatMul** — cooperative K-reduction using `subgroupAdd` across lanes. `@workgroup_size(32)`, runtime feature gate via `FeatureSubgroupOperations`. Scalar fallback on unsupported hardware ([#141](https://github.com/born-ml/born/issues/141), [#151](https://github.com/born-ml/born/pull/151))
+- **WebGPU subgroup BatchMatMul** — same cooperative pattern with batch index via `wid.z` ([#141](https://github.com/born-ml/born/issues/141), [#151](https://github.com/born-ml/born/pull/151))
+- **WebGPU subgroup Softmax** — three-phase cooperative: `subgroupMax` for max, `subgroupAdd` for exp-sum, per-lane normalize ([#141](https://github.com/born-ml/born/issues/141), [#151](https://github.com/born-ml/born/pull/151))
+- **SIMD minimum slice-length threshold** — `simdMinLen=32` guard on all 47 SIMD dispatch sites. Below 32 elements, scalar loop runs ([#90](https://github.com/born-ml/born/issues/90), [#150](https://github.com/born-ml/born/pull/150))
+
 ### Changed
 
-- **ADR-019: Opaque backend data** — removed all GPU knowledge from core tensor package (`internal/tensor/`). `RawTensor` no longer has GPU-specific fields (`gpuData`, `gpuPersistDefer`) or methods (`GPUData`, `SetGPUData`, `ReleaseGPU`, `SetGPUPersistent`, `IsLazy`). GPU data is now managed through opaque `backendData any` field with `Materialize` (readback), `BackendReleaser` (lifecycle), and `Materializer` (lazy evaluation) interfaces. `LazyGPUData` moved to `internal/backend/webgpu/`. Vendored sigmoid SIMD kernel removed from tensor (cpu backend already has `goexperiment.simd` version). `internal/tensor/` now has zero `//go:build` tags, zero platform-specific files — WASM builds without stubs. ([#126](https://github.com/born-ml/born/issues/126))
+- **ADR-019: Opaque backend data** — removed all GPU knowledge from `internal/tensor/`. GPU data managed through opaque `backendData any` with `Materialize`, `BackendReleaser`, and `Materializer` interfaces. `LazyGPUData` moved to `internal/backend/webgpu/`. Zero `//go:build` tags in core tensor — WASM builds without stubs ([#126](https://github.com/born-ml/born/issues/126), [#149](https://github.com/born-ml/born/pull/149))
 
 ### Fixed
 
-- **WebGPU flaky tests** — eliminated all timing-dependent assertions (`activeBatchCount`, `IsRealized`) across shared encoder, deferred staging, and encoder batch tests. Replaced with numerical correctness checks. Tests now verify computed values, not internal GPU state
+- **CPU hot paths** — eliminated per-element index math in reduce (innerOuter block iteration), scatter-add (pre-allocated buffer, allocs O(N)→O(1)), and batched broadcast matmul (precomputed offset table). All 8/8 tracking items complete ([#81](https://github.com/born-ml/born/issues/81), [#150](https://github.com/born-ml/born/pull/150))
+- **WebGPU flaky tests** — eliminated all timing-dependent assertions across shared encoder, deferred staging, and encoder batch tests. Replaced with numerical correctness checks ([#149](https://github.com/born-ml/born/pull/149))
 
 ## [0.9.22] - 2026-08-03
 
