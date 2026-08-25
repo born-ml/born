@@ -603,7 +603,11 @@ A: Check our [Contributing Guide](CONTRIBUTING.md) and [GitHub Issues](https://g
 ## Star History
 
 <a href="https://starhistory.io">
- <img alt="Star History Chart" src="https://api.starhistory.io/png?repos=born-ml/born" width="800" />
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.starhistory.io/png?repos=born-ml/born&style=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.starhistory.io/png?repos=born-ml/born&style=professional" />
+   <img alt="Star History Chart" src="https://api.starhistory.io/png?repos=born-ml/born" width="800" />
+ </picture>
 </a>
 
 ---
