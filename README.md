@@ -600,6 +600,14 @@ A: Check our [Contributing Guide](CONTRIBUTING.md) and [GitHub Issues](https://g
 
 ---
 
+## Star History
+
+<a href="https://starhistory.io">
+ <img alt="Star History Chart" src="https://api.starhistory.io/png?repos=born-ml/born" width="800" />
+</a>
+
+---
+
 <div align="center">
 
 **Born for Production. Ready from Day One.**
