@@ -103,7 +103,7 @@ func (t *GradientTape) Backward(outputTensor *tensor.RawTensor, outputGrad *tens
 	grads := make(map[*tensor.RawTensor]*tensor.RawTensor)
 
 	// Find the operation that produced the loss tensor.
-	rootIdx := len(t.operations) - 1
+	rootIdx := -1
 	if outputTensor != nil {
 		for i := len(t.operations) - 1; i >= 0; i-- {
 			if t.operations[i].Output() == outputTensor {
@@ -111,6 +111,11 @@ func (t *GradientTape) Backward(outputTensor *tensor.RawTensor, outputGrad *tens
 				break
 			}
 		}
+		if rootIdx == -1 {
+			panic("backward: loss tensor is not an output of any recorded operation (was it created outside the tape?)")
+		}
+	} else {
+		rootIdx = len(t.operations) - 1
 	}
 	grads[t.operations[rootIdx].Output()] = outputGrad
 

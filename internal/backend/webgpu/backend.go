@@ -226,8 +226,13 @@ func newHardwareBackend(backends gputypes.Backends) (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
 	}
 
+	pref := gputypes.PowerPreferenceHighPerformance
+	if os.Getenv("BORN_GPU_POWER") == "low" {
+		pref = gputypes.PowerPreferenceLowPower
+	}
+
 	adapter, err := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
-		PowerPreference: gputypes.PowerPreferenceHighPerformance,
+		PowerPreference: pref,
 	})
 	if err != nil {
 		instance.Release()
@@ -939,12 +944,24 @@ func (b *Backend) ReclaimMemory() {
 // If t is already CPU-resident (no LazyGPUData), it is returned as-is.
 // If t has unrealized GPU data, a GPU→CPU readback is performed and a new
 // CPU tensor is returned — the caller does not need to release it.
+// materializeForCPU reads GPU tensor data into a fresh CPU-resident tensor
+// WITHOUT freeing the source GPU buffer. Unlike Materialize/Realize, the
+// original tensor remains valid for subsequent ops. This avoids regression R3
+// (Fable 5.1) where Realize freed the buffer and chained backward ops
+// (Conv2D→ReLU→Conv2D) hit a nil bufferPtr.
 func (b *Backend) materializeForCPU(t *tensor.RawTensor) *tensor.RawTensor {
-	if _, ok := t.BackendData().(*LazyGPUData); !ok {
-		// Already CPU-resident.
+	gpuData, ok := t.BackendData().(*LazyGPUData)
+	if !ok {
 		return t
 	}
-	data, err := b.Materialize(t)
+	if gpuData.IsRealized() {
+		return t
+	}
+	bufPtr := gpuData.BufferPtr()
+	if bufPtr == nil {
+		return t
+	}
+	data, err := b.ReadGPUBuffer(bufPtr, gpuData.Size())
 	if err != nil {
 		panic(fmt.Sprintf("webgpu: materializeForCPU: GPU readback failed: %v", err))
 	}

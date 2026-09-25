@@ -16,9 +16,9 @@ import "github.com/born-ml/born/internal/tensor"
 // gradient passes through by casting it back to the original dtype.
 // Shape is unchanged.
 type CastOp struct {
-	input      *tensor.RawTensor  // original input (used for Inputs())
-	output     *tensor.RawTensor  // cast output
-	inputDType tensor.DataType    // original dtype; backward casts grad back to this
+	input      *tensor.RawTensor // original input (used for Inputs())
+	output     *tensor.RawTensor // cast output
+	inputDType tensor.DataType   // original dtype; backward casts grad back to this
 }
 
 // NewCastOp creates a CastOp that records the forward-pass input and output.
