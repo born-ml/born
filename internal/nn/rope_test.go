@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/born-ml/born/internal/autodiff"
 	"github.com/born-ml/born/internal/backend/cpu"
 	"github.com/born-ml/born/internal/tensor"
 )
@@ -393,6 +394,100 @@ func TestRotaryEncodingRotateHalf4D(t *testing.T) {
 		if math.Abs(float64(d[i]-want)) > 1e-4 {
 			t.Errorf("4D out[%d]=%.6f, want %.6f", i, d[i], want)
 		}
+	}
+}
+
+// TestRoPE_GradientFlows_3D verifies that gradients flow through RoPE for 3D input.
+//
+// With the old CPU-loop implementation, applyRotation called x.Data() which read
+// data out of the compute graph — the tape saw nothing, gradients were nil.
+// After the rewrite to use backend tensor ops (Chunk, Mul, Sub, Add, Cat),
+// every operation is recorded and backward must produce non-nil, non-zero gradients.
+func TestRoPE_GradientFlows_3D(t *testing.T) {
+	adBackend := autodiff.New(cpu.New())
+	adBackend.Tape().StartRecording()
+
+	cfg := RotaryEncodingConfig{DModel: 4, MaxSeqLen: 10, Theta: 10000.0}
+	rope := NewRotaryEncoding(cfg, adBackend)
+
+	// [batch=1, seq=2, d_model=4]
+	x, err := tensor.FromSlice[float32](
+		[]float32{1, 2, 3, 4, 5, 6, 7, 8},
+		tensor.Shape{1, 2, 4},
+		adBackend,
+	)
+	if err != nil {
+		t.Fatalf("FromSlice: %v", err)
+	}
+	x.RequireGrad()
+
+	out := rope.Forward(x)
+
+	// Sum all outputs to get a scalar loss.
+	loss := out.SumDim(0, false).SumDim(0, false).SumDim(0, false)
+
+	grads := autodiff.Backward(loss, adBackend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("RoPE 3D: gradient for x is nil — applyRotation must use backend ops, not x.Data()")
+	}
+	if !grad.Shape().Equal(tensor.Shape{1, 2, 4}) {
+		t.Errorf("gradient shape = %v, want [1, 2, 4]", grad.Shape())
+	}
+	// At least one gradient element must be non-zero.
+	vals := grad.AsFloat32()
+	hasNonZero := false
+	for _, v := range vals {
+		if math.Abs(float64(v)) > 1e-6 {
+			hasNonZero = true
+			break
+		}
+	}
+	if !hasNonZero {
+		t.Error("RoPE 3D: all gradient values are zero — expected non-zero gradients")
+	}
+}
+
+// TestRoPE_GradientFlows_4D verifies gradient flow through RoPE for 4D input.
+func TestRoPE_GradientFlows_4D(t *testing.T) {
+	adBackend := autodiff.New(cpu.New())
+	adBackend.Tape().StartRecording()
+
+	cfg := RotaryEncodingConfig{DModel: 4, MaxSeqLen: 10, Theta: 10000.0}
+	rope := NewRotaryEncoding(cfg, adBackend)
+
+	// [batch=1, heads=2, seq=1, d_k=4]
+	x, err := tensor.FromSlice[float32](
+		[]float32{1, 2, 3, 4, 5, 6, 7, 8},
+		tensor.Shape{1, 2, 1, 4},
+		adBackend,
+	)
+	if err != nil {
+		t.Fatalf("FromSlice: %v", err)
+	}
+	x.RequireGrad()
+
+	out := rope.Forward(x)
+	loss := out.SumDim(0, false).SumDim(0, false).SumDim(0, false).SumDim(0, false)
+
+	grads := autodiff.Backward(loss, adBackend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("RoPE 4D: gradient for x is nil — applyRotation must use backend ops, not x.Data()")
+	}
+	if !grad.Shape().Equal(tensor.Shape{1, 2, 1, 4}) {
+		t.Errorf("gradient shape = %v, want [1, 2, 1, 4]", grad.Shape())
+	}
+	vals := grad.AsFloat32()
+	hasNonZero := false
+	for _, v := range vals {
+		if math.Abs(float64(v)) > 1e-6 {
+			hasNonZero = true
+			break
+		}
+	}
+	if !hasNonZero {
+		t.Error("RoPE 4D: all gradient values are zero — expected non-zero gradients")
 	}
 }
 

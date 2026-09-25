@@ -224,77 +224,73 @@ func (r *RotaryEncoding[B]) ForwardWithOffset(x *tensor.Tensor[float32, B], offs
 
 // applyRotation applies the rotation matrix using cos/sin values.
 //
-// Rotation formula for dimension pair (2i, 2i+1):
+// Uses the rotate-half convention (LLaMA/GPT-NeoX standard):
+// pairs (x[i], x[i+d/2]) rather than interleaved (x[2i], x[2i+1]).
 //
-//	x_rotated[2i]   = x[2i] * cos(θ) - x[2i+1] * sin(θ)
-//	x_rotated[2i+1] = x[2i] * sin(θ) + x[2i+1] * cos(θ)
+// Rotation formula implemented via backend tensor ops so every operation
+// is recorded on the autodiff tape and gradients flow through RoPE:
 //
-// This is implemented by:
-//  1. Splitting input into even and odd indices
-//  2. Applying rotation formula
-//  3. Interleaving results back
+//  1. Split x into first half and second half along the last dimension.
+//  2. Broadcast cos/sin from [seq, d/2] to match x's full shape.
+//  3. rotated_first  = first_half  * cos - second_half * sin
+//  4. rotated_second = second_half * cos + first_half  * sin
+//  5. Concatenate rotated_first and rotated_second along the last dimension.
+//
+// Supports both 3D [batch, seq, d] and 4D [batch, heads, seq, d] inputs.
 func (r *RotaryEncoding[B]) applyRotation(
 	x *tensor.Tensor[float32, B],
 	posCos *tensor.Tensor[float32, B],
 	posSin *tensor.Tensor[float32, B],
 ) *tensor.Tensor[float32, B] {
 	shape := x.Shape()
-	xData := x.Data()
-	cosData := posCos.Data()
-	sinData := posSin.Data()
-
-	halfDim := r.DModel / 2
-	var batchSize, numHeads, seqLen int
 	is3D := len(shape) == 3
 
+	// Split x into [first_half, second_half] along the last dimension.
+	// Chunk requires the split dimension to be divisible by n=2.
+	// x shape: [batch, seq, d] → each half is [batch, seq, d/2]
+	// x shape: [batch, heads, seq, d] → each half is [batch, heads, seq, d/2]
+	halves := x.Chunk(2, -1)
+	firstHalf := halves[0]  // [..., :d/2]
+	secondHalf := halves[1] // [..., d/2:]
+
+	// posCos/posSin have shape [seq, d/2].
+	// Broadcast to match x's shape so element-wise Mul works correctly.
+	var cos, sin *tensor.Tensor[float32, B]
 	if is3D {
-		batchSize = shape[0]
-		numHeads = 1
-		seqLen = shape[1]
+		// Target: [batch, seq, d/2]
+		batchSize := shape[0]
+		seqLen := shape[1]
+		halfDim := r.DModel / 2
+		// [seq, d/2] → [1, seq, d/2] → [batch, seq, d/2]
+		cos = posCos.Unsqueeze(0).Expand(tensor.Shape{batchSize, seqLen, halfDim})
+		sin = posSin.Unsqueeze(0).Expand(tensor.Shape{batchSize, seqLen, halfDim})
 	} else {
-		batchSize = shape[0]
-		numHeads = shape[1]
-		seqLen = shape[2]
+		// Target: [batch, heads, seq, d/2]
+		batchSize := shape[0]
+		numHeads := shape[1]
+		seqLen := shape[2]
+		halfDim := r.DModel / 2
+		// [seq, d/2] → [1, seq, d/2] → [1, 1, seq, d/2] → [batch, heads, seq, d/2]
+		cos = posCos.Unsqueeze(0).Unsqueeze(0).Expand(tensor.Shape{batchSize, numHeads, seqLen, halfDim})
+		sin = posSin.Unsqueeze(0).Unsqueeze(0).Expand(tensor.Shape{batchSize, numHeads, seqLen, halfDim})
 	}
 
-	// Create output
-	outData := make([]float32, len(xData))
+	// Apply rotate-half: recorded on tape via Mul, Sub, Add.
+	//
+	// Each half is used twice (once for rotatedFirst, once for rotatedSecond).
+	// The CPU backend short-circuits to in-place mutation when a.IsUnique() is
+	// true, which would corrupt the raw buffer before the second use reads it.
+	// ForceNonUnique increments the refcount so IsUnique() returns false for the
+	// duration of this function, forcing the backend to allocate fresh output
+	// tensors. The deferred restores drop the extra refcount when we return.
+	restoreFirst := firstHalf.Raw().ForceNonUnique()
+	defer restoreFirst()
+	restoreSecond := secondHalf.Raw().ForceNonUnique()
+	defer restoreSecond()
 
-	// Apply rotation for each batch, head, and position
-	for b := 0; b < batchSize; b++ {
-		for h := 0; h < numHeads; h++ {
-			for pos := 0; pos < seqLen; pos++ {
-				// Base index for this (batch, head, position)
-				var baseIdx int
-				if is3D {
-					baseIdx = b*seqLen*r.DModel + pos*r.DModel
-				} else {
-					baseIdx = b*numHeads*seqLen*r.DModel + h*seqLen*r.DModel + pos*r.DModel
-				}
+	rotatedFirst := firstHalf.Mul(cos).Sub(secondHalf.Mul(sin))
+	rotatedSecond := secondHalf.Mul(cos).Add(firstHalf.Mul(sin))
 
-				// Index for cos/sin (only depends on position)
-				cossinBaseIdx := pos * halfDim
-
-				// Apply rotation using rotate-half convention (LLaMA/GPT-NeoX standard).
-				// Pairs (x[i], x[i+d/2]) instead of interleaved (x[2i], x[2i+1]).
-				for i := 0; i < halfDim; i++ {
-					xi := xData[baseIdx+i]
-					xiHalf := xData[baseIdx+halfDim+i]
-					cosVal := cosData[cossinBaseIdx+i]
-					sinVal := sinData[cossinBaseIdx+i]
-
-					outData[baseIdx+i] = xi*cosVal - xiHalf*sinVal
-					outData[baseIdx+halfDim+i] = xiHalf*cosVal + xi*sinVal
-				}
-			}
-		}
-	}
-
-	// Create output tensor
-	out, err := tensor.FromSlice[float32, B](outData, shape, r.backend)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create output tensor: %v", err))
-	}
-
-	return out
+	// Concatenate along last dimension to restore original shape.
+	return tensor.Cat([]*tensor.Tensor[float32, B]{rotatedFirst, rotatedSecond}, -1)
 }
