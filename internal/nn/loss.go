@@ -29,41 +29,37 @@ func NewMSELoss[B tensor.Backend](backend B) *MSELoss[B] {
 
 // Forward computes the MSE loss.
 //
-// Loss = mean((predictions - targets)²)
+// Loss = mean((predictions - targets)²) = sum((predictions - targets)²) / N
+//
+// All operations go through the backend so they are recorded on the autodiff
+// tape and gradients flow back to predictions: d(MSE)/dx = 2*(x-t)/N.
 //
 // Parameters:
 //   - predictions: Model predictions with shape [batch_size, ...]
 //   - targets: Ground truth targets with same shape as predictions
 //
-// Returns a scalar loss value (shape [1] or []).
+// Returns a scalar loss value (shape [1]).
 func (m *MSELoss[B]) Forward(predictions, targets *tensor.Tensor[float32, B]) *tensor.Tensor[float32, B] {
 	// Validate shapes match
 	if !predictions.Shape().Equal(targets.Shape()) {
 		panic("MSELoss: predictions and targets must have the same shape")
 	}
 
-	// Compute difference: (predictions - targets)
+	// diff = predictions - targets
 	diff := predictions.Sub(targets)
 
-	// Square: (predictions - targets)²
+	// squared = diff²
 	squared := diff.Mul(diff)
 
-	// Mean: sum / num_elements
-	data := squared.Raw().AsFloat32()
-	var sum float32
-	for _, v := range data {
-		sum += v
-	}
-	mean := sum / float32(len(data))
+	// sumRaw = sum of all squared elements (scalar, recorded on tape)
+	sumRaw := m.backend.Sum(squared.Raw())
 
-	// Return scalar loss
-	lossRaw, err := tensor.NewRaw(tensor.Shape{1}, tensor.Float32, m.backend.Device())
-	if err != nil {
-		panic(err)
-	}
-	lossRaw.AsFloat32()[0] = mean
+	// mean = sum / N — DivScalar is also a backend op, recorded on tape.
+	// This ensures the full gradient chain: d(mean)/d(squared_i) = 1/N flows back.
+	n := float32(predictions.Shape().NumElements())
+	meanRaw := m.backend.DivScalar(sumRaw, n)
 
-	return tensor.New[float32, B](lossRaw, m.backend)
+	return tensor.New[float32, B](meanRaw, m.backend)
 }
 
 // Parameters returns an empty slice (loss functions have no trainable parameters).
