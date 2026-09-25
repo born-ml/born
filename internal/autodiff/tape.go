@@ -82,7 +82,7 @@ func (t *GradientTape) Clear() {
 // starts from the operation that produced outputTensor, ignoring any
 // operations recorded after it (e.g., metrics, logging). If outputTensor
 // is nil or not found on the tape, falls back to the last recorded op.
-func (t *GradientTape) Backward(outputTensor *tensor.RawTensor, outputGrad *tensor.RawTensor, backend tensor.Backend) map[*tensor.RawTensor]*tensor.RawTensor {
+func (t *GradientTape) Backward(outputTensor, outputGrad *tensor.RawTensor, backend tensor.Backend) map[*tensor.RawTensor]*tensor.RawTensor {
 	if len(t.operations) == 0 {
 		return make(map[*tensor.RawTensor]*tensor.RawTensor)
 	}

@@ -239,7 +239,7 @@ func (b *Backend) clearInputBufferCache() {
 	defer b.inputBufferCache.mu.Unlock()
 
 	for _, cb := range b.inputBufferCache.cache {
-		b.DeferReleaseGPUBuffer(unsafe.Pointer(cb.buffer))
+		b.DeferReleaseGPUBuffer(unsafe.Pointer(cb.buffer)) //nolint:gosec // G103: safe — cb.buffer is *wgpu.Buffer from our cache
 	}
 	b.inputBufferCache.cache = nil
 }
