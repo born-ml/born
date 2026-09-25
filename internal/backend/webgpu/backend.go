@@ -889,12 +889,19 @@ func (b *Backend) FlushGPU() {
 // then flushes pending commands and blocks until the GPU completes them.
 // Persistent tensors (optimizer moments, model weights) survive — only
 // transient intermediates (forward pass, NoGrad blocks, masks) are released.
+//
+// ForceRelease is used instead of ScheduleRelease because ReclaimMemory is a
+// deliberate end-of-step fence: all GPU work for the step has been submitted
+// before this call, so deferred release via submission index is not needed.
+// ForceRelease also resets refCount to 0, which correctly handles the case
+// where Clone() incremented refCount above 1 — without ForceRelease those
+// cloned tensors would survive the reclaim and leak GPU memory.
 func (b *Backend) ReclaimMemory() {
 	b.liveGPU.mu.Lock()
 	toRelease := make([]*LazyGPUData, 0, len(b.liveGPU.tensors))
 	surviving := make(map[*LazyGPUData]struct{})
 	for l := range b.liveGPU.tensors {
-		if l.IsPersistent() || l.RefCount() > 1 {
+		if l.IsPersistent() {
 			surviving[l] = struct{}{}
 		} else {
 			toRelease = append(toRelease, l)
@@ -903,12 +910,11 @@ func (b *Backend) ReclaimMemory() {
 	b.liveGPU.tensors = surviving
 	b.liveGPU.mu.Unlock()
 
-	// Use ScheduleRelease (deferred) rather than Release (immediate) so buffers
-	// that are still referenced by pending command buffers in the active encoder
-	// batch are not freed until after queue.Submit completes. If no batch is
-	// active, ScheduleRelease degrades to an immediate pool return.
+	// ForceRelease unconditionally frees non-persistent GPU buffers regardless
+	// of refcount. ReclaimMemory is a step boundary — all aliased clones of
+	// transient tensors become invalid after this call by design.
 	for _, l := range toRelease {
-		l.ScheduleRelease()
+		l.ForceRelease()
 	}
 
 	b.flushCommands()

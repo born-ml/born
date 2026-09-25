@@ -260,3 +260,56 @@ func TestRawTensorScalar(t *testing.T) {
 		t.Errorf("Scalar tensor data length = %d, want 1", len(data))
 	}
 }
+
+// mockRefCounter is a test double for BackendDataRefCounter that counts AddRef calls.
+type mockRefCounter struct {
+	addRefCalls int
+}
+
+func (m *mockRefCounter) AddRef() {
+	m.addRefCalls++
+}
+
+// TestClone_IncrementsBackendDataRefCount verifies that Clone calls AddRef on
+// backendData when it implements BackendDataRefCounter (the use-after-free fix).
+// Before this fix, Clone copied the pointer without incrementing the refcount,
+// so releasing one clone would destroy GPU data still aliased by other clones.
+func TestClone_IncrementsBackendDataRefCount(t *testing.T) {
+	raw, _ := NewRaw(Shape{2, 2}, Float32, CPU)
+	rc := &mockRefCounter{}
+	raw.SetBackendData(rc)
+
+	_ = raw.Clone()
+
+	if rc.addRefCalls != 1 {
+		t.Errorf("Clone() AddRef calls = %d, want 1", rc.addRefCalls)
+	}
+
+	// Cloning twice must call AddRef twice (once per clone).
+	_ = raw.Clone()
+	if rc.addRefCalls != 2 {
+		t.Errorf("after two Clone() calls, AddRef calls = %d, want 2", rc.addRefCalls)
+	}
+}
+
+// TestClone_WithoutRefCounter verifies that Clone works correctly when backendData
+// does not implement BackendDataRefCounter (plain CPU tensors, nil backendData).
+func TestClone_WithoutRefCounter(t *testing.T) {
+	raw, _ := NewRaw(Shape{2, 2}, Float32, CPU)
+	data := raw.AsFloat32()
+	data[0] = 42.0
+
+	// No backendData set — should Clone without panic.
+	clone := raw.Clone()
+	if clone.AsFloat32()[0] != 42.0 {
+		t.Error("Clone should share CPU data when backendData has no AddRef")
+	}
+
+	// Non-RefCounter backendData (a plain string) — should Clone without panic.
+	raw2, _ := NewRaw(Shape{1}, Float32, CPU)
+	raw2.SetBackendData("plain-string-no-addref")
+	clone2 := raw2.Clone()
+	if clone2.BackendData() != "plain-string-no-addref" {
+		t.Error("Clone should copy non-RefCounter backendData verbatim")
+	}
+}
