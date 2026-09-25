@@ -226,6 +226,7 @@ func newHardwareBackend(backends gputypes.Backends) (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
 	}
 
+	// TODO(wgpu#360): remove once EnumerateAdapters lands in public API.
 	pref := gputypes.PowerPreferenceHighPerformance
 	if os.Getenv("BORN_GPU_POWER") == "low" {
 		pref = gputypes.PowerPreferenceLowPower

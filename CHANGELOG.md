@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Sum, Expand, Cast autodiff ops** — recorded on tape with proper backward; `loss = y.Sum()` now produces correct gradients (ADR-020 F6)
-- **One-hot identity cache** — `sync.Map` cache per `(numClasses, dtype)` prevents O(C²) allocation every backward step (ADR-020 F4)
+- **One-hot identity cache** — `sync.Map` cache per `(numClasses, dtype)`, caches the C×C identity per process (C×C-free one-hot via Gather still open) (ADR-020 F4)
 - **Fable regression tests** — `TestRV_TrainingLoopMemory`, `TestRV_DiamondGraph`, `TestRV_Conv2DBackwardGPU`
 
 ### Changed
