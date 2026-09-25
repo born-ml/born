@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/born-ml/born/internal/backend/cpu"
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
 	wgpu "github.com/gogpu/wgpu"
@@ -928,28 +929,72 @@ func (b *Backend) ReclaimMemory() {
 	b.clearInputBufferCache()
 }
 
+// materializeForCPU returns a CPU-resident *tensor.RawTensor.
+// If t is already CPU-resident (no LazyGPUData), it is returned as-is.
+// If t has unrealized GPU data, a GPU→CPU readback is performed and a new
+// CPU tensor is returned — the caller does not need to release it.
+func (b *Backend) materializeForCPU(t *tensor.RawTensor) *tensor.RawTensor {
+	if _, ok := t.BackendData().(*LazyGPUData); !ok {
+		// Already CPU-resident.
+		return t
+	}
+	data, err := b.Materialize(t)
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: materializeForCPU: GPU readback failed: %v", err))
+	}
+	cpuT, err := tensor.NewRaw(t.Shape(), t.DType(), tensor.CPU)
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: materializeForCPU: NewRaw failed: %v", err))
+	}
+	copy(cpuT.Data(), data)
+	return cpuT
+}
+
 // Conv2DInputBackward computes gradient with respect to input for Conv2D.
-// Not yet implemented for WebGPU backend.
+// CPU fallback: tensors are materialized to host memory, the CPU backend
+// computes the transposed convolution, and the result is returned as a
+// CPU-resident tensor.
 //
-//nolint:revive // Parameters unused in stub implementation.
+// TODO(born): implement WGSL compute shaders for Conv2D/MaxPool2D backward.
 func (b *Backend) Conv2DInputBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
-	panic("webgpu: Conv2DInputBackward not implemented")
+	cpuBe := cpu.New()
+	return cpuBe.Conv2DInputBackward(
+		b.materializeForCPU(input),
+		b.materializeForCPU(kernel),
+		b.materializeForCPU(grad),
+		stride, padding,
+	)
 }
 
 // Conv2DKernelBackward computes gradient with respect to kernel for Conv2D.
-// Not yet implemented for WebGPU backend.
+// CPU fallback: tensors are materialized to host memory, the CPU backend
+// computes the gradient, and the result is returned as a CPU-resident tensor.
 //
-//nolint:revive // Parameters unused in stub implementation.
+// TODO(born): implement WGSL compute shaders for Conv2D/MaxPool2D backward.
 func (b *Backend) Conv2DKernelBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
-	panic("webgpu: Conv2DKernelBackward not implemented")
+	cpuBe := cpu.New()
+	return cpuBe.Conv2DKernelBackward(
+		b.materializeForCPU(input),
+		b.materializeForCPU(kernel),
+		b.materializeForCPU(grad),
+		stride, padding,
+	)
 }
 
 // MaxPool2DBackward computes gradient with respect to input for MaxPool2D.
-// Not yet implemented for WebGPU backend.
+// CPU fallback: tensors are materialized to host memory, the CPU backend
+// routes gradients to max positions, and the result is returned as a
+// CPU-resident tensor.
 //
-//nolint:revive // Parameters unused in stub implementation.
+// TODO(born): implement WGSL compute shaders for Conv2D/MaxPool2D backward.
 func (b *Backend) MaxPool2DBackward(input, grad *tensor.RawTensor, maxIndices []int, kernelSize, stride int) *tensor.RawTensor {
-	panic("webgpu: MaxPool2DBackward not implemented")
+	cpuBe := cpu.New()
+	return cpuBe.MaxPool2DBackward(
+		b.materializeForCPU(input),
+		b.materializeForCPU(grad),
+		maxIndices,
+		kernelSize, stride,
+	)
 }
 
 // ReleaseBackendData schedules the GPU buffer for deferred release.
