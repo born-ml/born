@@ -711,9 +711,14 @@ func (b *AutodiffBackend[B]) Not(x *tensor.RawTensor) *tensor.RawTensor {
 	return b.inner.Not(x)
 }
 
-// Sum reduces tensor to a single scalar by summing all elements (autodiff proxy).
+// Sum reduces tensor to a single scalar by summing all elements.
+// Records on the tape so gradients flow back through this operation.
 func (b *AutodiffBackend[B]) Sum(x *tensor.RawTensor) *tensor.RawTensor {
-	return b.inner.Sum(x)
+	result := b.inner.Sum(x)
+	if b.tape.IsRecording() {
+		b.tape.Record(ops.NewSumOp(x, result))
+	}
+	return result
 }
 
 // Argmax returns indices of maximum values along a dimension (autodiff proxy).
@@ -721,14 +726,24 @@ func (b *AutodiffBackend[B]) Argmax(x *tensor.RawTensor, dim int) *tensor.RawTen
 	return b.inner.Argmax(x, dim)
 }
 
-// Expand broadcasts tensor to a larger shape (autodiff proxy).
+// Expand broadcasts tensor to a larger shape.
+// Records on the tape so gradients are reduced back to the input shape on backward.
 func (b *AutodiffBackend[B]) Expand(x *tensor.RawTensor, shape tensor.Shape) *tensor.RawTensor {
-	return b.inner.Expand(x, shape)
+	result := b.inner.Expand(x, shape)
+	if b.tape.IsRecording() {
+		b.tape.Record(ops.NewExpandOp(x, result))
+	}
+	return result
 }
 
-// Cast converts tensor to a different data type (autodiff proxy).
+// Cast converts tensor to a different data type.
+// Records on the tape so the gradient is cast back to the input dtype on backward.
 func (b *AutodiffBackend[B]) Cast(x *tensor.RawTensor, dtype tensor.DataType) *tensor.RawTensor {
-	return b.inner.Cast(x, dtype)
+	result := b.inner.Cast(x, dtype)
+	if b.tape.IsRecording() {
+		b.tape.Record(ops.NewCastOp(x, result))
+	}
+	return result
 }
 
 // Cat concatenates tensors along a dimension.
@@ -989,6 +1004,20 @@ func (b *AutodiffBackend[B]) Materialize(t *tensor.RawTensor) ([]byte, error) {
 func (b *AutodiffBackend[B]) ReclaimMemory() {
 	if reclaimer, ok := any(b.inner).(tensor.MemoryReclaimer); ok {
 		reclaimer.ReclaimMemory()
+	}
+}
+
+// ClearInputBufferCache forwards to the inner backend's ClearInputBufferCache
+// if available. Optimizers call this via optim.CacheInvalidator type-assertion
+// at the end of Step() to invalidate stale GPU buffer entries after weight
+// tensors are replaced by new *RawTensor objects.
+//
+// Without this forwarding method the type-assertion in invalidateCacheIfNeeded
+// fails silently when the backend is AutodiffBackend[*webgpu.Backend], meaning
+// the cache is never cleared and the next forward pass reads stale weights.
+func (b *AutodiffBackend[B]) ClearInputBufferCache() {
+	if ci, ok := any(b.inner).(interface{ ClearInputBufferCache() }); ok {
+		ci.ClearInputBufferCache()
 	}
 }
 

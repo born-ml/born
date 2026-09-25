@@ -93,7 +93,11 @@ func (p *Parameter[B]) SetTensor(t *tensor.Tensor[float32, B]) {
 			p.tensor.Raw().SetBackendData(nil)
 		}
 	}
-	p.tensor = t.Detach()
+	// Take ownership of t's RawTensor directly — no Clone/AddRef.
+	// Detach() calls Clone()→AddRef() creating shared LazyGPUData with
+	// refcount=2, but nobody releases the original's ref → GPU memory leak
+	// of all weights every step (regression R2, Fable 5.1).
+	p.tensor = tensor.New[float32, B](t.Raw(), t.Backend())
 	// Mark the new parameter buffer as persistent so ReclaimMemory skips it.
 	if br != nil {
 		br.SetPersistent(p.tensor.Raw().BackendData(), true)

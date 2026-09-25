@@ -290,6 +290,12 @@ func (r *RawTensor) AsBool() []bool {
 // The buffer is reference-counted and will be copied only when modified (copy-on-write).
 // This enables cheap cloning and inplace optimizations when refCount == 1.
 //
+// When backendData implements BackendDataRefCounter, Clone calls AddRef so that
+// the backend's own reference count stays accurate. Without this call, two clones
+// would share the same GPU data with refcount=1; releasing the first clone would
+// destroy the GPU buffer while the second clone still holds a pointer to it
+// (use-after-free).
+//
 // Example:
 //
 //	a := tensor.Ones[float32](Shape{1000, 1000}, backend)
@@ -298,6 +304,12 @@ func (r *RawTensor) AsBool() []bool {
 func (r *RawTensor) Clone() *RawTensor {
 	if r.buffer != nil {
 		r.buffer.addRef()
+	}
+	// Notify the backend that backendData now has one more owner. GPU backends
+	// implement BackendDataRefCounter so their internal refcount matches the
+	// number of live RawTensor aliases pointing at the same GPU buffer.
+	if rc, ok := r.backendData.(BackendDataRefCounter); ok {
+		rc.AddRef()
 	}
 	return &RawTensor{
 		buffer:       r.buffer,

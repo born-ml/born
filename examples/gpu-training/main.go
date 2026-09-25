@@ -113,7 +113,7 @@ func main() {
 
 		grads := autodiff.Backward(loss, backend)
 		optimizer.Step(grads)
-		autodiff.ReleaseGradients(grads)
+		autodiff.ReleaseGradients(grads, backend)
 		backend.ClearTape()
 
 		if step%5 == 0 || step == *steps-1 {

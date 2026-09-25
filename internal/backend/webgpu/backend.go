@@ -13,9 +13,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/born-ml/born/internal/backend/cpu"
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
 	wgpu "github.com/gogpu/wgpu"
+	"github.com/gogpu/wgpu/hal"
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 	"github.com/gogpu/wgpu/hal/software"
 )
@@ -100,7 +102,7 @@ type Backend struct {
 	mu        sync.RWMutex
 
 	// Device info
-	adapterInfo *wgpu.AdapterInfo
+	adapterInfo *gputypes.AdapterInfo
 
 	// Buffer pool for memory management
 	bufferPool *BufferPool
@@ -216,7 +218,7 @@ func New() (*Backend, error) {
 	return b, err
 }
 
-func newHardwareBackend(backends wgpu.Backends) (*Backend, error) {
+func newHardwareBackend(backends gputypes.Backends) (*Backend, error) {
 	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{
 		Backends: backends,
 	})
@@ -224,8 +226,14 @@ func newHardwareBackend(backends wgpu.Backends) (*Backend, error) {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
 	}
 
+	// TODO(wgpu#360): remove once EnumerateAdapters lands in public API.
+	pref := gputypes.PowerPreferenceHighPerformance
+	if os.Getenv("BORN_GPU_POWER") == "low" {
+		pref = gputypes.PowerPreferenceLowPower
+	}
+
 	adapter, err := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
-		PowerPreference: gputypes.PowerPreferenceHighPerformance,
+		PowerPreference: pref,
 	})
 	if err != nil {
 		instance.Release()
@@ -276,8 +284,8 @@ func newHardwareBackend(backends wgpu.Backends) (*Backend, error) {
 // compute with SPIR-V interpreter. No GPU hardware required.
 // Used when GOGPU_GRAPHICS_API=software (CI, testing, headless).
 func newSoftwareBackend() (*Backend, error) {
-	api := software.API{}
-	inst, err := api.CreateInstance(nil)
+	swBackend := software.NewBackend()
+	inst, err := swBackend.CreateInstance(&hal.InstanceDescriptor{})
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: software CreateInstance: %w", err)
 	}
@@ -304,11 +312,11 @@ func newSoftwareBackend() (*Backend, error) {
 	}
 
 	queue := device.Queue()
-	info := wgpu.AdapterInfo{Name: "Software Renderer", DeviceType: gputypes.DeviceTypeCPU}
+	info := gputypes.AdapterInfo{Name: "Software Renderer", DeviceType: gputypes.DeviceTypeCPU}
 	return newBackendFromDevice(nil, nil, device, queue, &info)
 }
 
-func newBackendFromDevice(instance *wgpu.Instance, adapter *wgpu.Adapter, device *wgpu.Device, queue *wgpu.Queue, info *wgpu.AdapterInfo) (*Backend, error) {
+func newBackendFromDevice(instance *wgpu.Instance, adapter *wgpu.Adapter, device *wgpu.Device, queue *wgpu.Queue, info *gputypes.AdapterInfo) (*Backend, error) {
 	b := &Backend{
 		instance:    instance,
 		adapter:     adapter,
@@ -493,7 +501,7 @@ func (b *Backend) Device() tensor.Device {
 }
 
 // AdapterInfo returns information about the GPU adapter.
-func (b *Backend) AdapterInfo() *wgpu.AdapterInfo {
+func (b *Backend) AdapterInfo() *gputypes.AdapterInfo {
 	return b.adapterInfo
 }
 
@@ -563,7 +571,7 @@ func isAvailableProbe() (available bool) {
 }
 
 // ListAdapters returns information about all available GPU adapters.
-func ListAdapters() ([]*wgpu.AdapterInfo, error) {
+func ListAdapters() ([]*gputypes.AdapterInfo, error) {
 	instance, err := wgpu.CreateInstance(nil)
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
@@ -579,7 +587,7 @@ func ListAdapters() ([]*wgpu.AdapterInfo, error) {
 
 	// In gogpu/wgpu, Info() returns AdapterInfo by value (no error).
 	info := adapter.Info()
-	return []*wgpu.AdapterInfo{&info}, nil
+	return []*gputypes.AdapterInfo{&info}, nil
 }
 
 // MemoryStats represents GPU memory usage statistics.
@@ -887,12 +895,19 @@ func (b *Backend) FlushGPU() {
 // then flushes pending commands and blocks until the GPU completes them.
 // Persistent tensors (optimizer moments, model weights) survive — only
 // transient intermediates (forward pass, NoGrad blocks, masks) are released.
+//
+// ForceRelease is used instead of ScheduleRelease because ReclaimMemory is a
+// deliberate end-of-step fence: all GPU work for the step has been submitted
+// before this call, so deferred release via submission index is not needed.
+// ForceRelease also resets refCount to 0, which correctly handles the case
+// where Clone() incremented refCount above 1 — without ForceRelease those
+// cloned tensors would survive the reclaim and leak GPU memory.
 func (b *Backend) ReclaimMemory() {
 	b.liveGPU.mu.Lock()
 	toRelease := make([]*LazyGPUData, 0, len(b.liveGPU.tensors))
 	surviving := make(map[*LazyGPUData]struct{})
 	for l := range b.liveGPU.tensors {
-		if l.IsPersistent() || l.RefCount() > 1 {
+		if l.IsPersistent() {
 			surviving[l] = struct{}{}
 		} else {
 			toRelease = append(toRelease, l)
@@ -901,12 +916,11 @@ func (b *Backend) ReclaimMemory() {
 	b.liveGPU.tensors = surviving
 	b.liveGPU.mu.Unlock()
 
-	// Use ScheduleRelease (deferred) rather than Release (immediate) so buffers
-	// that are still referenced by pending command buffers in the active encoder
-	// batch are not freed until after queue.Submit completes. If no batch is
-	// active, ScheduleRelease degrades to an immediate pool return.
+	// ForceRelease unconditionally frees non-persistent GPU buffers regardless
+	// of refcount. ReclaimMemory is a step boundary — all aliased clones of
+	// transient tensors become invalid after this call by design.
 	for _, l := range toRelease {
-		l.ScheduleRelease()
+		l.ForceRelease()
 	}
 
 	b.flushCommands()
@@ -918,30 +932,93 @@ func (b *Backend) ReclaimMemory() {
 	if b.gpuPool != nil {
 		b.gpuPool.Cleanup(false)
 	}
+
+	// Defense-in-depth: clear the input buffer cache so that weight tensors
+	// replaced by the optimizer are re-uploaded on the next forward pass.
+	// This complements the explicit ClearInputBufferCache() call made by
+	// optimizers via optim.CacheInvalidator — ReclaimMemory may be called
+	// from ClearTape() between training steps even if no optimizer ran.
+	b.clearInputBufferCache()
+}
+
+// materializeForCPU returns a CPU-resident *tensor.RawTensor.
+// If t is already CPU-resident (no LazyGPUData), it is returned as-is.
+// If t has unrealized GPU data, a GPU→CPU readback is performed and a new
+// CPU tensor is returned — the caller does not need to release it.
+// materializeForCPU reads GPU tensor data into a fresh CPU-resident tensor
+// WITHOUT freeing the source GPU buffer. Unlike Materialize/Realize, the
+// original tensor remains valid for subsequent ops. This avoids regression R3
+// (Fable 5.1) where Realize freed the buffer and chained backward ops
+// (Conv2D→ReLU→Conv2D) hit a nil bufferPtr.
+func (b *Backend) materializeForCPU(t *tensor.RawTensor) *tensor.RawTensor {
+	gpuData, ok := t.BackendData().(*LazyGPUData)
+	if !ok {
+		return t
+	}
+	if gpuData.IsRealized() {
+		return t
+	}
+	bufPtr := gpuData.BufferPtr()
+	if bufPtr == nil {
+		return t
+	}
+	data, err := b.ReadGPUBuffer(bufPtr, gpuData.Size())
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: materializeForCPU: GPU readback failed: %v", err))
+	}
+	cpuT, err := tensor.NewRaw(t.Shape(), t.DType(), tensor.CPU)
+	if err != nil {
+		panic(fmt.Sprintf("webgpu: materializeForCPU: NewRaw failed: %v", err))
+	}
+	copy(cpuT.Data(), data)
+	return cpuT
 }
 
 // Conv2DInputBackward computes gradient with respect to input for Conv2D.
-// Not yet implemented for WebGPU backend.
+// CPU fallback: tensors are materialized to host memory, the CPU backend
+// computes the transposed convolution, and the result is returned as a
+// CPU-resident tensor.
 //
-//nolint:revive // Parameters unused in stub implementation.
+// TODO(born): implement WGSL compute shaders for Conv2D/MaxPool2D backward.
 func (b *Backend) Conv2DInputBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
-	panic("webgpu: Conv2DInputBackward not implemented")
+	cpuBe := cpu.New()
+	return cpuBe.Conv2DInputBackward(
+		b.materializeForCPU(input),
+		b.materializeForCPU(kernel),
+		b.materializeForCPU(grad),
+		stride, padding,
+	)
 }
 
 // Conv2DKernelBackward computes gradient with respect to kernel for Conv2D.
-// Not yet implemented for WebGPU backend.
+// CPU fallback: tensors are materialized to host memory, the CPU backend
+// computes the gradient, and the result is returned as a CPU-resident tensor.
 //
-//nolint:revive // Parameters unused in stub implementation.
+// TODO(born): implement WGSL compute shaders for Conv2D/MaxPool2D backward.
 func (b *Backend) Conv2DKernelBackward(input, kernel, grad *tensor.RawTensor, stride, padding int) *tensor.RawTensor {
-	panic("webgpu: Conv2DKernelBackward not implemented")
+	cpuBe := cpu.New()
+	return cpuBe.Conv2DKernelBackward(
+		b.materializeForCPU(input),
+		b.materializeForCPU(kernel),
+		b.materializeForCPU(grad),
+		stride, padding,
+	)
 }
 
 // MaxPool2DBackward computes gradient with respect to input for MaxPool2D.
-// Not yet implemented for WebGPU backend.
+// CPU fallback: tensors are materialized to host memory, the CPU backend
+// routes gradients to max positions, and the result is returned as a
+// CPU-resident tensor.
 //
-//nolint:revive // Parameters unused in stub implementation.
+// TODO(born): implement WGSL compute shaders for Conv2D/MaxPool2D backward.
 func (b *Backend) MaxPool2DBackward(input, grad *tensor.RawTensor, maxIndices []int, kernelSize, stride int) *tensor.RawTensor {
-	panic("webgpu: MaxPool2DBackward not implemented")
+	cpuBe := cpu.New()
+	return cpuBe.MaxPool2DBackward(
+		b.materializeForCPU(input),
+		b.materializeForCPU(grad),
+		maxIndices,
+		kernelSize, stride,
+	)
 }
 
 // ReleaseBackendData schedules the GPU buffer for deferred release.

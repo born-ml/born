@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.24] - 2026-09-25
+
+### Fixed
+
+- **Autodiff backward root** — `tape.Backward` now roots at the loss tensor, not the last recorded op. Operations after loss (metrics, logging) no longer corrupt gradients (ADR-020 F5)
+- **AutodiffBackend cache invalidation** — forwards `ClearInputBufferCache()` to inner backend; optimizer cache invalidation now reaches GPU backend through autodiff wrapper (ADR-020 F1)
+- **GPU buffer deferred release** — `clearInputBufferCache` uses `DeferReleaseGPUBuffer` instead of immediate `Release()`, preventing panic when called from `optimizer.Step()` with pending GPU commands (R1)
+- **SetTensor ownership** — takes ownership of tensor without Clone/AddRef, preventing GPU memory leak of all weights every training step (R2)
+- **materializeForCPU** — reads GPU buffer via `ReadGPUBuffer` without calling `Realize()`, preventing stack overflow on chained backward ops like Conv2D→ReLU→Conv2D (R3)
+- **Clone+AddRef lifecycle** — `RawTensor.Clone()` calls `AddRef()` through `BackendDataRefCounter` interface; `ReclaimMemory` uses `ForceRelease()` for all non-persistent entries (ADR-020 F3)
+- **ReleaseGradients public API** — accepts optional backend parameter, actually releases GPU gradient buffers (ADR-020 F2)
+- **MSELoss gradient flow** — uses `backend.Sum` + `backend.DivScalar` instead of CPU `.AsFloat32()` loop (ADR-020 F8)
+- **RoPE gradient flow** — `applyRotation` rewritten with Chunk/Mul/Sub/Add/Cat tensor ops, all on autodiff tape (ADR-020 F7)
+- **Conv2D/MaxPool2D backward GPU** — CPU fallback instead of `panic("not implemented")` (ADR-020 F9)
+- **Subgroup shader tests** — skip when adapter lacks `FeatureSubgroupOperations` (wgpu v0.34.4 validates features at shader compile time)
+
+### Added
+
+- **Sum, Expand, Cast autodiff ops** — recorded on tape with proper backward; `loss = y.Sum()` now produces correct gradients (ADR-020 F6)
+- **One-hot identity cache** — `sync.Map` cache per `(numClasses, dtype)`, caches the C×C identity per process (C×C-free one-hot via Gather still open) (ADR-020 F4)
+- **Fable regression tests** — `TestRV_TrainingLoopMemory`, `TestRV_DiamondGraph`, `TestRV_Conv2DBackwardGPU`
+
+### Changed
+
+- **gogpu deps** — wgpu v0.30.35→v0.34.4, gputypes v0.5.1→v0.8.0, naga v0.18.0→v0.19.0, gpucontext v0.24.0→v0.31.3
+
 ## [0.9.23] - 2026-08-04
 
 ### Added
@@ -282,7 +308,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **GPU shared encoder accumulator** ([ADR-012](docs/dev/ADR-012-gpu-encoder-batching-buffer-cache.md))
+- **GPU shared encoder accumulator** ([ADR-012](docs/dev/architecture/ADR-012-gpu-encoder-batching-buffer-cache.md))
   - One CommandEncoder for N compute passes instead of N encoders
   - 128 Finish() calls → 1 per batch. GPU utilization 55% → 70-80%
   - All 15 lazy ops simplified via `addComputePassToEncoder` (-456 lines)
@@ -392,7 +418,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Autodiff backward ops**: Migrated 7 ops from CPU-fallback to forward composition ([ADR-009](docs/dev/ADR-009-backward-ops-composition.md))
+- **Autodiff backward ops**: Migrated 7 ops from CPU-fallback to forward composition ([ADR-009](docs/dev/architecture/ADR-009-backward-ops-composition.md))
   - SiLU, Log, ReLU, CrossEntropy, MeanDim, Embedding, Gather backward now use backend ops only
   - Tensors never leave the GPU during backward pass (eliminates GPU→CPU readback)
   - Helper functions (`sumAll`, `sumAlongDimension`, `negateGradient`) now delegate to backend

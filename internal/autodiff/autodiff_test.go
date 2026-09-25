@@ -1069,3 +1069,336 @@ func TestDetach_IndependentGradients(t *testing.T) {
 		t.Error("Detached tensor should not have gradient")
 	}
 }
+
+// releaseSpyBackend is a test spy that counts ReleaseBackendData calls.
+// It embeds cpu.Backend for all non-release methods.
+type releaseSpyBackend struct {
+	tensor.Backend
+	released []any
+}
+
+func (s *releaseSpyBackend) ReleaseBackendData(data any) {
+	s.released = append(s.released, data)
+}
+
+func (s *releaseSpyBackend) SetPersistent(_ any, _ bool) {}
+
+func (s *releaseSpyBackend) IsPersistent(_ any) bool { return false }
+
+// TestReleaseGradients_NoBackend_IsNoop verifies that calling ReleaseGradients
+// without a backend argument leaves grad BackendData intact — function is a no-op.
+func TestReleaseGradients_NoBackend_IsNoop(t *testing.T) {
+	b := autodiff.New(cpu.New())
+	b.Tape().StartRecording()
+
+	a, _ := tensor.FromSlice([]float32{1, 2}, tensor.Shape{2}, b)
+	x, _ := tensor.FromSlice([]float32{3, 4}, tensor.Shape{2}, b)
+	result := tensor.New[float32](b.Add(a.Raw(), x.Raw()), b)
+
+	grads := autodiff.Backward(result, b)
+	if len(grads) == 0 {
+		t.Fatal("expected at least one gradient entry")
+	}
+
+	// Collect BackendData before release attempt (may be nil for CPU, that is fine).
+	before := make(map[*tensor.RawTensor]any, len(grads))
+	for k, v := range grads {
+		before[k] = v.BackendData()
+	}
+
+	// Call without backend — must not modify BackendData.
+	autodiff.ReleaseGradients(grads)
+
+	for k, v := range grads {
+		if v.BackendData() != before[k] {
+			t.Errorf("ReleaseGradients() without backend modified BackendData for grad[%p]", k)
+		}
+	}
+}
+
+// TestReleaseGradients_WithBackend_CallsReleaser verifies that passing a backend
+// causes ReleaseBackendData to be called for every gradient in the map and that
+// the gradient's BackendData is cleared to nil afterward.
+func TestReleaseGradients_WithBackend_CallsReleaser(t *testing.T) {
+	base := cpu.New()
+	b := autodiff.New(base)
+	b.Tape().StartRecording()
+
+	a, _ := tensor.FromSlice([]float32{1, 2}, tensor.Shape{2}, b)
+	x, _ := tensor.FromSlice([]float32{3, 4}, tensor.Shape{2}, b)
+	result := tensor.New[float32](b.Add(a.Raw(), x.Raw()), b)
+
+	grads := autodiff.Backward(result, b)
+	if len(grads) == 0 {
+		t.Fatal("expected at least one gradient entry")
+	}
+
+	// Inject spy backend data so the releaser has something to receive.
+	sentinel := make([]any, 0, len(grads))
+	for _, v := range grads {
+		sd := struct{ id int }{id: len(sentinel)}
+		v.SetBackendData(sd)
+		sentinel = append(sentinel, sd)
+	}
+
+	spy := &releaseSpyBackend{Backend: base}
+
+	autodiff.ReleaseGradients(grads, spy)
+
+	// Every gradient must have been released.
+	if len(spy.released) != len(grads) {
+		t.Errorf("ReleaseBackendData called %d times, want %d", len(spy.released), len(grads))
+	}
+
+	// BackendData must be nil after release.
+	for k, v := range grads {
+		if v.BackendData() != nil {
+			t.Errorf("BackendData not cleared for grad[%p] after ReleaseGradients", k)
+		}
+	}
+}
+
+// TestSum_GradientFlows verifies that Sum is recorded on the tape so that
+// gradient flows back through it. Without this, loss = y.Sum() produces nil
+// gradients for all upstream tensors.
+func TestSum_GradientFlows(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3, 4}, tensor.Shape{4}, backend)
+	x.RequireGrad()
+
+	// loss = Sum(x) — without Sum on tape this produces nil gradient.
+	sumRaw := backend.Sum(x.Raw())
+	loss := tensor.New[float32](sumRaw, backend)
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("Sum: gradient for x is nil — Sum not recorded on tape")
+	}
+
+	// d(sum(x))/dx = [1, 1, 1, 1]
+	got := grad.AsFloat32()
+	for i, v := range got {
+		if v != 1.0 {
+			t.Errorf("grad[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+// TestSum_GradientFlows_2D verifies gradient flows through Sum for a 2D tensor.
+func TestSum_GradientFlows_2D(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3, 4, 5, 6}, tensor.Shape{2, 3}, backend)
+	x.RequireGrad()
+
+	sumRaw := backend.Sum(x.Raw())
+	loss := tensor.New[float32](sumRaw, backend)
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("Sum 2D: gradient for x is nil")
+	}
+
+	if !grad.Shape().Equal(tensor.Shape{2, 3}) {
+		t.Errorf("gradient shape = %v, want [2 3]", grad.Shape())
+	}
+
+	got := grad.AsFloat32()
+	for i, v := range got {
+		if v != 1.0 {
+			t.Errorf("grad[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+// TestSum_ChainedGradient verifies the chain: loss = Sum(x²) → d/dx = 2x.
+func TestSum_ChainedGradient(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	x.RequireGrad()
+
+	// y = x * x, loss = sum(y)
+	y := x.Mul(x)
+	sumRaw := backend.Sum(y.Raw())
+	loss := tensor.New[float32](sumRaw, backend)
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("Sum chain: gradient for x is nil")
+	}
+
+	// d(sum(x²))/dx = 2x = [2, 4, 6]
+	expected := []float32{2, 4, 6}
+	got := grad.AsFloat32()
+	for i, v := range got {
+		diff := v - expected[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-4 {
+			t.Errorf("grad[%d] = %f, want %f", i, got[i], expected[i])
+		}
+	}
+}
+
+// TestSum_TapeRecordsOp verifies that Sum records exactly one operation on the tape.
+func TestSum_TapeRecordsOp(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	backend.Sum(x.Raw())
+
+	if tape.NumOps() != 1 {
+		t.Errorf("Sum: expected 1 op on tape, got %d", tape.NumOps())
+	}
+}
+
+// TestExpand_GradientFlows verifies gradient flows through Expand (broadcast).
+// Expand forward broadcasts; backward reduces (sums) along expanded dims.
+func TestExpand_GradientFlows(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	// x is shape [3]; expand to [2, 3] — broadcasts along a new leading dim.
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	x.RequireGrad()
+
+	expandedRaw := backend.Expand(x.Raw(), tensor.Shape{2, 3})
+	// Sum all to get scalar loss so backward reaches x.
+	sumRaw := backend.Sum(expandedRaw)
+	loss := tensor.New[float32](sumRaw, backend)
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("Expand: gradient for x is nil")
+	}
+
+	if !grad.Shape().Equal(tensor.Shape{3}) {
+		t.Errorf("gradient shape = %v, want [3]", grad.Shape())
+	}
+
+	// Each of the 3 elements was used in 2 rows → grad = 2.0 per element.
+	got := grad.AsFloat32()
+	for i, v := range got {
+		if math.Abs(float64(v-2.0)) > 1e-4 {
+			t.Errorf("grad[%d] = %f, want 2.0", i, v)
+		}
+	}
+}
+
+// TestExpand_TapeRecordsOp verifies that Expand records exactly one op on the tape.
+func TestExpand_TapeRecordsOp(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	backend.Expand(x.Raw(), tensor.Shape{2, 3})
+
+	if tape.NumOps() != 1 {
+		t.Errorf("Expand: expected 1 op on tape, got %d", tape.NumOps())
+	}
+}
+
+// TestCast_GradientFlows verifies gradient flows through Cast float32→float64→float32.
+// Cast backward re-casts the gradient to the original input dtype.
+func TestCast_GradientFlows(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	x.RequireGrad()
+
+	// Cast x to float64, then sum (scalar) and backward.
+	castedRaw := backend.Cast(x.Raw(), tensor.Float64)
+	sumRaw := backend.Sum(castedRaw)
+	loss := tensor.New[float64](sumRaw, backend)
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+	if grad == nil {
+		t.Fatal("Cast: gradient for x is nil")
+	}
+
+	// Gradient must come back as float32 (original input dtype).
+	if grad.DType() != tensor.Float32 {
+		t.Errorf("gradient dtype = %v, want float32", grad.DType())
+	}
+
+	if !grad.Shape().Equal(tensor.Shape{3}) {
+		t.Errorf("gradient shape = %v, want [3]", grad.Shape())
+	}
+
+	// d(sum(cast(x)))/dx = [1, 1, 1] (cast is element-wise identity for value)
+	got := grad.AsFloat32()
+	for i, v := range got {
+		if math.Abs(float64(v-1.0)) > 1e-4 {
+			t.Errorf("grad[%d] = %f, want 1.0", i, v)
+		}
+	}
+}
+
+// TestCast_TapeRecordsOp verifies that Cast records exactly one op on the tape.
+func TestCast_TapeRecordsOp(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	tape := backend.Tape()
+	tape.StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	backend.Cast(x.Raw(), tensor.Float64)
+
+	if tape.NumOps() != 1 {
+		t.Errorf("Cast: expected 1 op on tape, got %d", tape.NumOps())
+	}
+}
+
+// TestBackward_RootsAtLossTensor verifies that Backward computes gradients
+// from the loss tensor, not from the last operation recorded on the tape.
+// Bug: tape.go placed gradient seed at lastOp.Output() regardless of which
+// tensor was passed to Backward(). Any op after loss → wrong gradients.
+func TestBackward_RootsAtLossTensor(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	x.RequireGrad()
+
+	// loss = sum_dim(x²) — a scalar
+	y := x.Mul(x) // y = x²
+	loss := tensor.New[float32](backend.SumDim(y.Raw(), 0, false), backend)
+
+	// EXTRA OP recorded AFTER loss — simulates metric/logging
+	metric := x.Add(x) // metric = 2x
+	_ = metric
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+
+	if grad == nil {
+		t.Fatal("gradient for x is nil")
+	}
+
+	// d(sum(x²))/dx = 2x = [2, 4, 6]
+	expected := []float32{2, 4, 6}
+	got := grad.AsFloat32()
+	for i := range expected {
+		diff := got[i] - expected[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-4 {
+			t.Errorf("grad[%d] = %f, want %f", i, got[i], expected[i])
+		}
+	}
+}

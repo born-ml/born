@@ -69,7 +69,7 @@ Backward: ← backend.Mul ← backend.Sigmoid ← backend.MatMul ← grad
 
 This follows the Burn (Rust) architecture where `B::float_matmul()`, `B::float_mul()`, etc. are used in both forward and backward passes.
 
-**No CPU fallback**: Prior to v0.8.2, some backward ops (SiLU, CrossEntropy, Embedding, etc.) read tensor data to CPU via `AsFloat32()` and computed gradients in Go loops. This forced GPU→CPU synchronization and broke the pipeline. v0.8.2 migrated all 7 affected ops to forward composition per [ADR-009](dev/ADR-009-backward-ops-composition.md).
+**No CPU fallback**: Prior to v0.8.2, some backward ops (SiLU, CrossEntropy, Embedding, etc.) read tensor data to CPU via `AsFloat32()` and computed gradients in Go loops. This forced GPU→CPU synchronization and broke the pipeline. v0.8.2 migrated all 7 affected ops to forward composition per [ADR-009](dev/architecture/ADR-009-backward-ops-composition.md).
 
 ### Gradient Tape
 
@@ -196,7 +196,7 @@ for step := range steps {
     output := model.Forward(input)          // GPU lazy ops (no readback)
     grads := autodiff.Backward(output)      // GPU backward composition
     optimizer.Step(grads)                   // GPU-native Adam
-    autodiff.ReleaseGradients(grads)        // Free gradient buffers
+    autodiff.ReleaseGradients(grads, backend) // Free gradient buffers
     backend.ClearTape()                     // Free tape intermediates
     reclaimer.ReclaimMemory()               // Free non-persistent GPU tensors
 }
@@ -233,7 +233,7 @@ GGUF file → gguf.ParseFile → TensorConverter → models/llama.LoadGGUF
 | ExclusivePool (Burn/CubeCL pattern) | Buffer reuse, zero alloc after warmup | ADR-016 |
 | TieredPool from device.Limits() | Size-class routing, budget enforcement | ADR-017 |
 
-Full ADR list: `docs/dev/ADR-*.md`
+Full ADR list: `docs/dev/architecture/ADR-*.md`
 
 ---
 

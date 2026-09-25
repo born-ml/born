@@ -2,9 +2,34 @@ package ops
 
 import (
 	"math"
+	"sync"
 
 	"github.com/born-ml/born/internal/tensor"
 )
+
+// identityCache stores pre-built one-hot identity matrices keyed by (numClasses, dtype).
+// Building the identity for vocab size 32K allocates a 32K×32K matrix (~4 GB for float32).
+// Caching it eliminates that allocation on every backward call.
+var identityCache sync.Map //nolint:gochecknoglobals // intentional process-level cache for identity matrices
+
+type identityCacheKey struct {
+	n     int
+	dtype tensor.DataType
+}
+
+// getOrBuildOneHotIdentity returns the cached [n×n] identity matrix for (n, dtype),
+// building and storing it on the first call. Subsequent calls for the same key are
+// free — a single sync.Map load with no allocation.
+// Device is only consulted on a cache miss (first call per key).
+func getOrBuildOneHotIdentity(n int, dtype tensor.DataType, device tensor.Device) *tensor.RawTensor {
+	key := identityCacheKey{n, dtype}
+	if v, ok := identityCache.Load(key); ok {
+		return v.(*tensor.RawTensor) //nolint:forcetypeassert // only *RawTensor is ever stored under this key
+	}
+	identity := buildOneHotIdentity(n, dtype, device)
+	identityCache.Store(key, identity)
+	return identity
+}
 
 // buildOneHotIdentity creates a float identity matrix of shape [n, n] in the given dtype.
 // Row i is the i-th standard basis vector (one-hot for class i).
@@ -117,7 +142,7 @@ func (op *CrossEntropyOp) Backward(outputGrad *tensor.RawTensor, backend tensor.
 
 	// Step 2: Build identity matrix [classes, classes] in logits dtype.
 	// Only numClasses scalar 1.0 values are written on CPU; no batch data crosses the bus.
-	identity := buildOneHotIdentity(numClasses, dtype, op.logits.Device())
+	identity := getOrBuildOneHotIdentity(numClasses, dtype, op.logits.Device())
 
 	// Step 3: one_hot = Embedding(identity, targets) — [batch, classes].
 	// targets remain on device; Embedding reads their values internally via AsInt32()

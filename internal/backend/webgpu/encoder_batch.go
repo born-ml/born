@@ -6,6 +6,7 @@ package webgpu
 import (
 	"fmt"
 	"runtime"
+	"unsafe"
 
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
@@ -228,12 +229,17 @@ func (b *Backend) getOrCreateInputBuffer(t *tensor.RawTensor) inputBufferResult 
 // Called automatically from Backend.Release(). May also be called explicitly
 // between training steps when weight tensors change (e.g. after optimizer.Step
 // replaces tensors with new objects).
+//
+// Buffers are released via DeferReleaseGPUBuffer (not immediate Release) because
+// this may be called from optimizer.Step() while GPU commands in activeBatch still
+// reference cached buffers. Immediate release would cause wgpu validation panic:
+// "command buffer references destroyed buffer" (regression R1, Fable 5.1).
 func (b *Backend) clearInputBufferCache() {
 	b.inputBufferCache.mu.Lock()
 	defer b.inputBufferCache.mu.Unlock()
 
 	for _, cb := range b.inputBufferCache.cache {
-		cb.buffer.Release()
+		b.DeferReleaseGPUBuffer(unsafe.Pointer(cb.buffer)) //nolint:gosec // G103: safe — cb.buffer is *wgpu.Buffer from our cache
 	}
 	b.inputBufferCache.cache = nil
 }

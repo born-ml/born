@@ -4,7 +4,7 @@
 > **Architecture**: Burn-inspired (Rust), Go-idiomatic API
 > **Philosophy**: Correctness → Performance → Scale
 
-**Last Updated**: 2026-08-04 | **Current Version**: v0.9.23 | **Go**: 1.26+ | **Strategy**: Core → GPU → Models → Performance → Scale → Production → v1.0 LTS
+**Last Updated**: 2026-09-25 | **Current Version**: v0.9.24 | **Go**: 1.26+ | **Strategy**: Core → GPU → Models → Performance → Scale → Production → v1.0 LTS
 
 ---
 

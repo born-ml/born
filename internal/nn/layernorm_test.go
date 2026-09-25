@@ -306,7 +306,7 @@ func TestLayerNorm_Gradient(t *testing.T) {
 	}
 
 	// Backward
-	grads := backend.Tape().Backward(outputGrad.Raw(), backend)
+	grads := backend.Tape().Backward(nil, outputGrad.Raw(), backend)
 
 	// Check that gradient exists for input
 	_, hasInputGrad := grads[input.Raw()]

@@ -142,6 +142,25 @@ func (l *LazyGPUData) AddRef() {
 	l.mu.Unlock()
 }
 
+// ForceRelease releases the underlying GPU buffer unconditionally, ignoring the
+// reference count. It is the safety-net path used by ReclaimMemory when draining
+// all non-persistent live tensors at the end of a training step.
+//
+// After ForceRelease the LazyGPUData is inert: bufferPtr is nil and refCount is
+// zero. Any subsequent call to Release/ScheduleRelease will be a no-op because
+// both paths guard on bufferPtr != nil.
+func (l *LazyGPUData) ForceRelease() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.bufferPtr != nil && l.backend != nil {
+		l.backend.UnregisterLiveGPU(l)
+		l.backend.DeferReleaseGPUBuffer(l.bufferPtr)
+		l.bufferPtr = nil
+		l.bufferRef = nil
+	}
+	l.refCount = 0
+}
+
 // RefCount returns the number of RawTensors sharing this GPU data.
 func (l *LazyGPUData) RefCount() int32 {
 	l.mu.Lock()

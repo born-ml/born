@@ -68,7 +68,7 @@ func Backward[T tensor.DType, B BackwardCapable](t *tensor.Tensor[T, B], backend
 	}
 
 	// Compute gradients using tape
-	return tape.Backward(outputGrad, backend)
+	return tape.Backward(t.Raw(), outputGrad, backend)
 }
 
 // ReleaseGradients releases GPU buffers for all gradient tensors in the map.
