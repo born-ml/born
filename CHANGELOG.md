@@ -282,7 +282,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **GPU shared encoder accumulator** ([ADR-012](docs/dev/ADR-012-gpu-encoder-batching-buffer-cache.md))
+- **GPU shared encoder accumulator** ([ADR-012](docs/dev/architecture/ADR-012-gpu-encoder-batching-buffer-cache.md))
   - One CommandEncoder for N compute passes instead of N encoders
   - 128 Finish() calls → 1 per batch. GPU utilization 55% → 70-80%
   - All 15 lazy ops simplified via `addComputePassToEncoder` (-456 lines)
@@ -392,7 +392,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Autodiff backward ops**: Migrated 7 ops from CPU-fallback to forward composition ([ADR-009](docs/dev/ADR-009-backward-ops-composition.md))
+- **Autodiff backward ops**: Migrated 7 ops from CPU-fallback to forward composition ([ADR-009](docs/dev/architecture/ADR-009-backward-ops-composition.md))
   - SiLU, Log, ReLU, CrossEntropy, MeanDim, Embedding, Gather backward now use backend ops only
   - Tensors never leave the GPU during backward pass (eliminates GPU→CPU readback)
   - Helper functions (`sumAll`, `sumAlongDimension`, `negateGradient`) now delegate to backend

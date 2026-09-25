@@ -16,6 +16,7 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
 	wgpu "github.com/gogpu/wgpu"
+	"github.com/gogpu/wgpu/hal"
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 	"github.com/gogpu/wgpu/hal/software"
 )
@@ -100,7 +101,7 @@ type Backend struct {
 	mu        sync.RWMutex
 
 	// Device info
-	adapterInfo *wgpu.AdapterInfo
+	adapterInfo *gputypes.AdapterInfo
 
 	// Buffer pool for memory management
 	bufferPool *BufferPool
@@ -216,7 +217,7 @@ func New() (*Backend, error) {
 	return b, err
 }
 
-func newHardwareBackend(backends wgpu.Backends) (*Backend, error) {
+func newHardwareBackend(backends gputypes.Backends) (*Backend, error) {
 	instance, err := wgpu.CreateInstance(&wgpu.InstanceDescriptor{
 		Backends: backends,
 	})
@@ -276,8 +277,8 @@ func newHardwareBackend(backends wgpu.Backends) (*Backend, error) {
 // compute with SPIR-V interpreter. No GPU hardware required.
 // Used when GOGPU_GRAPHICS_API=software (CI, testing, headless).
 func newSoftwareBackend() (*Backend, error) {
-	api := software.API{}
-	inst, err := api.CreateInstance(nil)
+	swBackend := software.NewBackend()
+	inst, err := swBackend.CreateInstance(&hal.InstanceDescriptor{})
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: software CreateInstance: %w", err)
 	}
@@ -304,11 +305,11 @@ func newSoftwareBackend() (*Backend, error) {
 	}
 
 	queue := device.Queue()
-	info := wgpu.AdapterInfo{Name: "Software Renderer", DeviceType: gputypes.DeviceTypeCPU}
+	info := gputypes.AdapterInfo{Name: "Software Renderer", DeviceType: gputypes.DeviceTypeCPU}
 	return newBackendFromDevice(nil, nil, device, queue, &info)
 }
 
-func newBackendFromDevice(instance *wgpu.Instance, adapter *wgpu.Adapter, device *wgpu.Device, queue *wgpu.Queue, info *wgpu.AdapterInfo) (*Backend, error) {
+func newBackendFromDevice(instance *wgpu.Instance, adapter *wgpu.Adapter, device *wgpu.Device, queue *wgpu.Queue, info *gputypes.AdapterInfo) (*Backend, error) {
 	b := &Backend{
 		instance:    instance,
 		adapter:     adapter,
@@ -493,7 +494,7 @@ func (b *Backend) Device() tensor.Device {
 }
 
 // AdapterInfo returns information about the GPU adapter.
-func (b *Backend) AdapterInfo() *wgpu.AdapterInfo {
+func (b *Backend) AdapterInfo() *gputypes.AdapterInfo {
 	return b.adapterInfo
 }
 
@@ -563,7 +564,7 @@ func isAvailableProbe() (available bool) {
 }
 
 // ListAdapters returns information about all available GPU adapters.
-func ListAdapters() ([]*wgpu.AdapterInfo, error) {
+func ListAdapters() ([]*gputypes.AdapterInfo, error) {
 	instance, err := wgpu.CreateInstance(nil)
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: failed to create instance: %w", err)
@@ -579,7 +580,7 @@ func ListAdapters() ([]*wgpu.AdapterInfo, error) {
 
 	// In gogpu/wgpu, Info() returns AdapterInfo by value (no error).
 	info := adapter.Info()
-	return []*wgpu.AdapterInfo{&info}, nil
+	return []*gputypes.AdapterInfo{&info}, nil
 }
 
 // MemoryStats represents GPU memory usage statistics.
@@ -918,6 +919,13 @@ func (b *Backend) ReclaimMemory() {
 	if b.gpuPool != nil {
 		b.gpuPool.Cleanup(false)
 	}
+
+	// Defense-in-depth: clear the input buffer cache so that weight tensors
+	// replaced by the optimizer are re-uploaded on the next forward pass.
+	// This complements the explicit ClearInputBufferCache() call made by
+	// optimizers via optim.CacheInvalidator — ReclaimMemory may be called
+	// from ClearTape() between training steps even if no optimizer ran.
+	b.clearInputBufferCache()
 }
 
 // Conv2DInputBackward computes gradient with respect to input for Conv2D.

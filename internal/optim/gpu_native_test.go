@@ -548,6 +548,33 @@ func TestAdam_CacheInvalidator(t *testing.T) {
 	}
 }
 
+// TestSGD_CacheInvalidator_ThroughAutodiff verifies that ClearInputBufferCache()
+// is forwarded through AutodiffBackend to the inner backend.
+//
+// This covers the real training path: in production the optimizer receives an
+// *AutodiffBackend[*webgpu.Backend], not a bare webgpu.Backend. Without the
+// forwarding method on AutodiffBackend the type assertion in
+// invalidateCacheIfNeeded silently fails and the cache is never cleared.
+func TestSGD_CacheInvalidator_ThroughAutodiff(t *testing.T) {
+	inner := &mockCacheBackend{CPUBackend: cpu.New()}
+	b := autodiff.New(inner)
+
+	data, _ := tensor.FromSlice([]float32{1.0}, tensor.Shape{1}, b)
+	param := nn.NewParameter("w", data)
+
+	raw, _ := tensor.NewRaw(tensor.Shape{1}, tensor.Float32, b.Device())
+	raw.AsFloat32()[0] = 0.1
+	grads := map[*tensor.RawTensor]*tensor.RawTensor{param.Tensor().Raw(): raw}
+
+	opt := optim.NewSGD([]*nn.Parameter[*autodiff.AutodiffBackend[*mockCacheBackend]]{param},
+		optim.SGDConfig{LR: 0.1}, b)
+	opt.Step(grads)
+
+	if inner.cleared != 1 {
+		t.Errorf("ClearInputBufferCache through AutodiffBackend: got %d calls, want 1", inner.cleared)
+	}
+}
+
 // TestSGD_CacheInvalidator_NotCalledWithoutInterface verifies that Step() does NOT
 // panic and does NOT call any method when the backend is a plain CPU backend
 // (no CacheInvalidator interface).

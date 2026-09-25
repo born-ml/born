@@ -31,6 +31,7 @@ package autodiff
 
 import (
 	"github.com/born-ml/born/internal/autodiff"
+	internaltensor "github.com/born-ml/born/internal/tensor"
 	"github.com/born-ml/born/tensor"
 )
 
@@ -65,8 +66,23 @@ func Backward[T tensor.DType, B BackwardCapable](t *tensor.Tensor[T, B], backend
 
 // ReleaseGradients releases GPU buffers for all gradient tensors in the map.
 // Call after optimizer.Step(grads) to free GPU memory immediately.
-func ReleaseGradients(grads map[*tensor.RawTensor]*tensor.RawTensor) {
-	autodiff.ReleaseGradients(grads)
+// Pass the backend so the releaser can schedule GPU buffer deferred destruction.
+// Without a backend the function is a no-op (backwards-compatible default).
+func ReleaseGradients(grads map[*tensor.RawTensor]*tensor.RawTensor, backend ...tensor.Backend) {
+	// The public tensor.Backend and internal/tensor.Backend are structurally
+	// identical but are separate interface types, so we cannot forward the
+	// variadic slice directly. Implement the release here using the internal
+	// BackendReleaser interface.
+	var br internaltensor.BackendReleaser
+	if len(backend) > 0 && backend[0] != nil {
+		br, _ = any(backend[0]).(internaltensor.BackendReleaser)
+	}
+	for _, grad := range grads {
+		if br != nil {
+			br.ReleaseBackendData(grad.BackendData())
+			grad.SetBackendData(nil)
+		}
+	}
 }
 
 // NoGrad disables gradient recording for operations within the function.

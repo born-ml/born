@@ -992,6 +992,20 @@ func (b *AutodiffBackend[B]) ReclaimMemory() {
 	}
 }
 
+// ClearInputBufferCache forwards to the inner backend's ClearInputBufferCache
+// if available. Optimizers call this via optim.CacheInvalidator type-assertion
+// at the end of Step() to invalidate stale GPU buffer entries after weight
+// tensors are replaced by new *RawTensor objects.
+//
+// Without this forwarding method the type-assertion in invalidateCacheIfNeeded
+// fails silently when the backend is AutodiffBackend[*webgpu.Backend], meaning
+// the cache is never cleared and the next forward pass reads stale weights.
+func (b *AutodiffBackend[B]) ClearInputBufferCache() {
+	if ci, ok := any(b.inner).(interface{ ClearInputBufferCache() }); ok {
+		ci.ClearInputBufferCache()
+	}
+}
+
 // ReleaseBackendData delegates to the inner backend's BackendReleaser if available.
 // Implements tensor.BackendReleaser (ADR-019 Phase 3).
 func (b *AutodiffBackend[B]) ReleaseBackendData(data any) {

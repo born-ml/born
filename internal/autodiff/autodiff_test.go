@@ -1069,3 +1069,91 @@ func TestDetach_IndependentGradients(t *testing.T) {
 		t.Error("Detached tensor should not have gradient")
 	}
 }
+
+// releaseSpyBackend is a test spy that counts ReleaseBackendData calls.
+// It embeds cpu.Backend for all non-release methods.
+type releaseSpyBackend struct {
+	tensor.Backend
+	released []any
+}
+
+func (s *releaseSpyBackend) ReleaseBackendData(data any) {
+	s.released = append(s.released, data)
+}
+
+func (s *releaseSpyBackend) SetPersistent(_ any, _ bool) {}
+
+func (s *releaseSpyBackend) IsPersistent(_ any) bool { return false }
+
+// TestReleaseGradients_NoBackend_IsNoop verifies that calling ReleaseGradients
+// without a backend argument leaves grad BackendData intact — function is a no-op.
+func TestReleaseGradients_NoBackend_IsNoop(t *testing.T) {
+	b := autodiff.New(cpu.New())
+	b.Tape().StartRecording()
+
+	a, _ := tensor.FromSlice([]float32{1, 2}, tensor.Shape{2}, b)
+	x, _ := tensor.FromSlice([]float32{3, 4}, tensor.Shape{2}, b)
+	result := tensor.New[float32](b.Add(a.Raw(), x.Raw()), b)
+
+	grads := autodiff.Backward(result, b)
+	if len(grads) == 0 {
+		t.Fatal("expected at least one gradient entry")
+	}
+
+	// Collect BackendData before release attempt (may be nil for CPU, that is fine).
+	before := make(map[*tensor.RawTensor]any, len(grads))
+	for k, v := range grads {
+		before[k] = v.BackendData()
+	}
+
+	// Call without backend — must not modify BackendData.
+	autodiff.ReleaseGradients(grads)
+
+	for k, v := range grads {
+		if v.BackendData() != before[k] {
+			t.Errorf("ReleaseGradients() without backend modified BackendData for grad[%p]", k)
+		}
+	}
+}
+
+// TestReleaseGradients_WithBackend_CallsReleaser verifies that passing a backend
+// causes ReleaseBackendData to be called for every gradient in the map and that
+// the gradient's BackendData is cleared to nil afterward.
+func TestReleaseGradients_WithBackend_CallsReleaser(t *testing.T) {
+	base := cpu.New()
+	b := autodiff.New(base)
+	b.Tape().StartRecording()
+
+	a, _ := tensor.FromSlice([]float32{1, 2}, tensor.Shape{2}, b)
+	x, _ := tensor.FromSlice([]float32{3, 4}, tensor.Shape{2}, b)
+	result := tensor.New[float32](b.Add(a.Raw(), x.Raw()), b)
+
+	grads := autodiff.Backward(result, b)
+	if len(grads) == 0 {
+		t.Fatal("expected at least one gradient entry")
+	}
+
+	// Inject spy backend data so the releaser has something to receive.
+	sentinel := make([]any, 0, len(grads))
+	for _, v := range grads {
+		sd := struct{ id int }{id: len(sentinel)}
+		v.SetBackendData(sd)
+		sentinel = append(sentinel, sd)
+	}
+
+	spy := &releaseSpyBackend{Backend: base}
+
+	autodiff.ReleaseGradients(grads, spy)
+
+	// Every gradient must have been released.
+	if len(spy.released) != len(grads) {
+		t.Errorf("ReleaseBackendData called %d times, want %d", len(spy.released), len(grads))
+	}
+
+	// BackendData must be nil after release.
+	for k, v := range grads {
+		if v.BackendData() != nil {
+			t.Errorf("BackendData not cleared for grad[%p] after ReleaseGradients", k)
+		}
+	}
+}
