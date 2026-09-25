@@ -22,6 +22,12 @@ func (b *Backend) liveCount() int {
 
 // RV1: training loop — cache size, live GPU tensors, allocated bytes per step.
 func TestRV_TrainingLoopMemory(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	gpu, err := New()
 	if err != nil {
 		t.Skip("no webgpu")
@@ -68,6 +74,9 @@ func TestRV_TrainingLoopMemory(t *testing.T) {
 
 // RV2: diamond graph that panicked before F3.
 func TestRV_DiamondGraph(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	gpu, err := New()
 	if err != nil {
 		t.Skip("no webgpu")
@@ -99,6 +108,9 @@ func TestRV_DiamondGraph(t *testing.T) {
 // first conv's output is both a Conv2D input and a ReLU output (shared
 // tensor used by two backward ops after materializeForCPU).
 func TestRV_Conv2DBackwardGPU(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	gpu, err := New()
 	if err != nil {
 		t.Skip("no webgpu")
@@ -142,6 +154,9 @@ func TestRV_Conv2DBackwardGPU(t *testing.T) {
 
 // RV4: inference-style loop — no ClearTape/ReclaimMemory ever called.
 func TestRV_InferenceCacheGrowth(t *testing.T) {
+	if !computeAvailable {
+		t.Skip("WebGPU compute not available")
+	}
 	gpu, err := New()
 	if err != nil {
 		t.Skip("no webgpu")
