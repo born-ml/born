@@ -1157,3 +1157,43 @@ func TestReleaseGradients_WithBackend_CallsReleaser(t *testing.T) {
 		}
 	}
 }
+
+// TestBackward_RootsAtLossTensor verifies that Backward computes gradients
+// from the loss tensor, not from the last operation recorded on the tape.
+// Bug: tape.go placed gradient seed at lastOp.Output() regardless of which
+// tensor was passed to Backward(). Any op after loss → wrong gradients.
+func TestBackward_RootsAtLossTensor(t *testing.T) {
+	backend := autodiff.New(cpu.New())
+	backend.Tape().StartRecording()
+
+	x, _ := tensor.FromSlice([]float32{1, 2, 3}, tensor.Shape{3}, backend)
+	x.RequireGrad()
+
+	// loss = sum_dim(x²) — a scalar
+	y := x.Mul(x) // y = x²
+	loss := tensor.New[float32](backend.SumDim(y.Raw(), 0, false), backend)
+
+	// EXTRA OP recorded AFTER loss — simulates metric/logging
+	metric := x.Add(x) // metric = 2x
+	_ = metric
+
+	grads := autodiff.Backward(loss, backend)
+	grad := grads[x.Raw()]
+
+	if grad == nil {
+		t.Fatal("gradient for x is nil")
+	}
+
+	// d(sum(x²))/dx = 2x = [2, 4, 6]
+	expected := []float32{2, 4, 6}
+	got := grad.AsFloat32()
+	for i := range expected {
+		diff := got[i] - expected[i]
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 1e-4 {
+			t.Errorf("grad[%d] = %f, want %f", i, got[i], expected[i])
+		}
+	}
+}

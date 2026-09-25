@@ -168,7 +168,7 @@ func TestMaxPool2D_IntegrationWithAutodiff(t *testing.T) {
 	}
 
 	// Backward pass
-	grads := backend.Tape().Backward(outputGrad, backend)
+	grads := backend.Tape().Backward(nil, outputGrad, backend)
 
 	// Check that input gradient exists
 	inputGrad, hasInputGrad := grads[input.Raw()]
@@ -233,7 +233,7 @@ func TestMaxPool2D_AfterConv2D(t *testing.T) {
 	}
 
 	// Backward pass
-	grads := backend.Tape().Backward(outputGrad, backend)
+	grads := backend.Tape().Backward(nil, outputGrad, backend)
 
 	// Verify gradients exist for Conv2D parameters
 	_, hasWeightGrad := grads[conv.weight.Tensor().Raw()]

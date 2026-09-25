@@ -207,7 +207,7 @@ func TestConv2D_IntegrationWithAutodiff(t *testing.T) {
 	}
 
 	// Backward pass
-	grads := backend.Tape().Backward(outputGrad, backend)
+	grads := backend.Tape().Backward(nil, outputGrad, backend)
 
 	// Debug: Print all gradient keys
 	t.Logf("Total gradients computed: %d", len(grads))

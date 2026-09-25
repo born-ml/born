@@ -77,7 +77,12 @@ func (t *GradientTape) Clear() {
 //  4. Accumulate gradients when the same tensor is used multiple times
 //
 // Returns a map from RawTensor to its accumulated gradient.
-func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Backend) map[*tensor.RawTensor]*tensor.RawTensor {
+//
+// outputTensor identifies the loss tensor on the tape. The backward pass
+// starts from the operation that produced outputTensor, ignoring any
+// operations recorded after it (e.g., metrics, logging). If outputTensor
+// is nil or not found on the tape, falls back to the last recorded op.
+func (t *GradientTape) Backward(outputTensor *tensor.RawTensor, outputGrad *tensor.RawTensor, backend tensor.Backend) map[*tensor.RawTensor]*tensor.RawTensor {
 	if len(t.operations) == 0 {
 		return make(map[*tensor.RawTensor]*tensor.RawTensor)
 	}
@@ -97,15 +102,20 @@ func (t *GradientTape) Backward(outputGrad *tensor.RawTensor, backend tensor.Bac
 	// Map to accumulate gradients for each tensor
 	grads := make(map[*tensor.RawTensor]*tensor.RawTensor)
 
-	// Initialize with output gradient
-	lastOp := t.operations[len(t.operations)-1]
-	grads[lastOp.Output()] = outputGrad
+	// Find the operation that produced the loss tensor.
+	rootIdx := len(t.operations) - 1
+	if outputTensor != nil {
+		for i := len(t.operations) - 1; i >= 0; i-- {
+			if t.operations[i].Output() == outputTensor {
+				rootIdx = i
+				break
+			}
+		}
+	}
+	grads[t.operations[rootIdx].Output()] = outputGrad
 
-	// Walk tape backwards, releasing forward-pass activations eagerly.
-	// Once an op's backward is computed, its saved output (activation) is
-	// no longer needed — releasing immediately prevents accumulating all
-	// 2000+ intermediate buffers simultaneously (ADR-015).
-	for i := len(t.operations) - 1; i >= 0; i-- {
+	// Walk tape backwards from rootIdx, skipping ops recorded after loss.
+	for i := rootIdx; i >= 0; i-- {
 		op := t.operations[i]
 		inputGrads := t.computeInputGrads(op, grads, backend)
 		if inputGrads == nil {

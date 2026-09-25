@@ -196,7 +196,7 @@ func trainEpoch[B tensor.Backend](
 		}
 		outputGrad.AsFloat32()[0] = 1.0
 
-		grads := backend.Tape().Backward(outputGrad, backend)
+		grads := backend.Tape().Backward(loss.Raw(), outputGrad, backend)
 
 		// Update parameters
 		optimizer.Step(grads)

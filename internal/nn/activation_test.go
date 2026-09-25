@@ -83,7 +83,7 @@ func TestSiLUGradient(t *testing.T) {
 	outputGrad := tensor.Ones[float32](tensor.Shape{1}, backend)
 
 	// Backward pass
-	grads := backend.Tape().Backward(outputGrad.Raw(), backend)
+	grads := backend.Tape().Backward(nil, outputGrad.Raw(), backend)
 
 	// Get gradient for input
 	xGrad, exists := grads[x.Raw()]
