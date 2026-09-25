@@ -252,6 +252,9 @@ func TestSubgroupShaderWGSLSyntax(t *testing.T) {
 		t.Skipf("WebGPU backend unavailable: %v", err)
 	}
 	defer b.Release()
+	if !b.subgroupsEnabled {
+		t.Skip("subgroup operations not supported by adapter")
+	}
 
 	shaders := []struct {
 		name string

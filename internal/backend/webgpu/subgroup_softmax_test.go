@@ -298,6 +298,9 @@ func TestSubgroupSoftmaxWGSLSyntax(t *testing.T) {
 		t.Skipf("WebGPU backend unavailable: %v", err)
 	}
 	defer b.Release()
+	if !b.subgroupsEnabled {
+		t.Skip("subgroup operations not supported by adapter")
+	}
 
 	// compileShader panics on failure; recover to turn it into a test failure.
 	defer func() {
