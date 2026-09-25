@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.24] - 2026-09-25
+
 ### Fixed
 
 - **Autodiff backward root** — `tape.Backward` now roots at the loss tensor, not the last recorded op. Operations after loss (metrics, logging) no longer corrupt gradients (ADR-020 F5)

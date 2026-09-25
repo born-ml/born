@@ -196,7 +196,7 @@ for step := range steps {
     output := model.Forward(input)          // GPU lazy ops (no readback)
     grads := autodiff.Backward(output)      // GPU backward composition
     optimizer.Step(grads)                   // GPU-native Adam
-    autodiff.ReleaseGradients(grads)        // Free gradient buffers
+    autodiff.ReleaseGradients(grads, backend) // Free gradient buffers
     backend.ClearTape()                     // Free tape intermediates
     reclaimer.ReclaimMemory()               // Free non-persistent GPU tensors
 }
