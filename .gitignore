@@ -132,5 +132,8 @@ reference/
 INDEX.md
 docs/dev/
 
+# Private project management: status, handoff, kanban (never published)
+.pm/
+
 # Internal format specification (not public until v1.0+)
 docs/spec/
