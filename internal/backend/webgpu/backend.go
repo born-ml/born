@@ -17,9 +17,7 @@ import (
 	"github.com/born-ml/born/internal/tensor"
 	"github.com/gogpu/gputypes"
 	wgpu "github.com/gogpu/wgpu"
-	"github.com/gogpu/wgpu/hal"
 	_ "github.com/gogpu/wgpu/hal/allbackends"
-	"github.com/gogpu/wgpu/hal/software"
 )
 
 // pipelineEntry caches a compute pipeline together with its layouts.
@@ -198,16 +196,16 @@ func New() (*Backend, error) {
 		return newSoftwareBackend()
 	}
 
-	backends := wgpu.BackendsPrimary
+	backends := gputypes.BackendsPrimary
 	switch api {
 	case "vulkan", "vk":
-		backends = wgpu.BackendsVulkan
+		backends = gputypes.BackendsVulkan
 	case "dx12", "d3d12":
-		backends = wgpu.BackendsDX12
+		backends = gputypes.BackendsDX12
 	case "metal":
-		backends = wgpu.BackendsMetal
+		backends = gputypes.BackendsMetal
 	case "gl", "gles":
-		backends = wgpu.BackendsGL
+		backends = gputypes.BackendsGL
 	}
 
 	b, err := newHardwareBackend(backends)
@@ -280,40 +278,45 @@ func newHardwareBackend(backends gputypes.Backends) (*Backend, error) {
 	return b, nil
 }
 
-// newSoftwareBackend creates a Backend using the software HAL — CPU-based
-// compute with SPIR-V interpreter. No GPU hardware required.
+// newSoftwareBackend creates a Backend on the software adapter — CPU-based
+// compute with a SPIR-V interpreter. No GPU hardware required.
 // Used when GOGPU_GRAPHICS_API=software (CI, testing, headless).
+//
+// The adapter is reached through the public API only (ADR-005): a nil instance
+// descriptor enables every registered backend, including the software one that
+// hal/allbackends registers, and ForceFallbackAdapter selects it (Rust wgpu
+// RequestAdapterOptions::force_fallback_adapter).
 func newSoftwareBackend() (*Backend, error) {
-	swBackend := software.NewBackend()
-	inst, err := swBackend.CreateInstance(&hal.InstanceDescriptor{})
+	instance, err := wgpu.CreateInstance(nil)
 	if err != nil {
 		return nil, fmt.Errorf("webgpu: software CreateInstance: %w", err)
 	}
-	adapters := inst.EnumerateAdapters(nil)
-	if len(adapters) == 0 {
-		inst.Destroy()
-		return nil, fmt.Errorf("webgpu: software backend: no adapters")
-	}
-	openDev, err := adapters[0].Adapter.Open(0, gputypes.DefaultLimits())
+
+	adapter, err := instance.RequestAdapter(&wgpu.RequestAdapterOptions{
+		ForceFallbackAdapter: true,
+	})
 	if err != nil {
-		inst.Destroy()
-		return nil, fmt.Errorf("webgpu: software Open: %w", err)
+		instance.Release()
+		return nil, fmt.Errorf("webgpu: software adapter: %w", err)
 	}
 
-	device, err := wgpu.NewDeviceFromHAL(
-		openDev.Device, openDev.Queue,
-		gputypes.Features(0), gputypes.DefaultLimits(),
-		"born-software",
-	)
+	device, err := adapter.RequestDevice(nil)
 	if err != nil {
-		openDev.Device.Destroy()
-		inst.Destroy()
-		return nil, fmt.Errorf("webgpu: software NewDeviceFromHAL: %w", err)
+		adapter.Release()
+		instance.Release()
+		return nil, fmt.Errorf("webgpu: software RequestDevice: %w", err)
 	}
 
 	queue := device.Queue()
-	info := gputypes.AdapterInfo{Name: "Software Renderer", DeviceType: gputypes.DeviceTypeCPU}
-	return newBackendFromDevice(nil, nil, device, queue, &info)
+	if queue == nil {
+		device.Release()
+		adapter.Release()
+		instance.Release()
+		return nil, fmt.Errorf("webgpu: software device has no queue")
+	}
+
+	info := adapter.Info()
+	return newBackendFromDevice(instance, adapter, device, queue, &info)
 }
 
 func newBackendFromDevice(instance *wgpu.Instance, adapter *wgpu.Adapter, device *wgpu.Device, queue *wgpu.Queue, info *gputypes.AdapterInfo) (*Backend, error) {

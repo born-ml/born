@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **WebGPU software backend through the public wgpu API** — `GOGPU_GRAPHICS_API=software` (and the automatic fallback) now gets the software adapter with `RequestAdapterOptions.ForceFallbackAdapter` instead of building a device from `wgpu/hal/software` via `NewDeviceFromHAL`. Born no longer imports `wgpu/hal` or `wgpu/core` (only the `hal/allbackends` registration), which gogpu/wgpu is moving under `internal/`; a test enforces it (ADR-005). The deprecated `wgpu.Backends*` aliases are replaced with `gputypes.Backends*`
+
 ## [0.9.24] - 2026-09-25
 
 ### Fixed
