@@ -1228,29 +1228,17 @@ func (b *Backend) runWhereLazy(condition, x, y *tensor.RawTensor) (*tensor.RawTe
 // However, this avoids blocking the GPU pipeline during chained operations.
 func (b *Backend) runSumLazy(input *tensor.RawTensor) (*tensor.RawTensor, error) {
 	dtype := input.DType()
-	if dtype != tensor.Float32 && dtype != tensor.Int32 {
-		return nil, errUnsupportedDType(dtype)
+	shaderName, shaderCode, err := sumKernel(dtype)
+	if err != nil {
+		return nil, err
 	}
 
 	numElements := input.NumElements()
 
-	// For small tensors, use CPU (no benefit from lazy mode)
-	if numElements < 1024 {
+	// For small tensors, use CPU (no benefit from lazy mode). Also when the
+	// device can't run the workgroup reduction correctly (see gpuSumUsable).
+	if numElements < gpuSumMinElements || !b.gpuSumUsable() {
 		return b.runSumCPU(input)
-	}
-
-	// Select shader based on dtype
-	var shaderName string
-	var shaderCode string
-	switch dtype {
-	case tensor.Float32:
-		shaderName = "globalSum"
-		shaderCode = globalSumShader
-	case tensor.Int32:
-		shaderName = "globalSumInt32"
-		shaderCode = globalSumShaderInt32
-	default:
-		return nil, errUnsupportedDType(dtype)
 	}
 
 	shader := b.compileShader(shaderName, shaderCode)

@@ -18,10 +18,20 @@ import (
 // Panics on failure because all shaders are statically embedded and compilation
 // failure indicates a programming error, not a runtime condition.
 func (b *Backend) compileShader(name, code string) *wgpu.ShaderModule {
+	shader, err := b.tryCompileShader(name, code)
+	if err != nil {
+		panic(err.Error())
+	}
+	return shader
+}
+
+// tryCompileShader is compileShader for callers that handle a failure, such as
+// a backend refusing a kernel the device can't run.
+func (b *Backend) tryCompileShader(name, code string) (*wgpu.ShaderModule, error) {
 	b.mu.RLock()
 	if shader, exists := b.shaders[name]; exists {
 		b.mu.RUnlock()
-		return shader
+		return shader, nil
 	}
 	b.mu.RUnlock()
 
@@ -31,14 +41,14 @@ func (b *Backend) compileShader(name, code string) *wgpu.ShaderModule {
 		WGSL:  code,
 	})
 	if err != nil {
-		panic(fmt.Sprintf("webgpu: failed to compile shader %q: %v", name, err))
+		return nil, fmt.Errorf("webgpu: failed to compile shader %q: %w", name, err)
 	}
 
 	b.mu.Lock()
 	b.shaders[name] = shader
 	b.mu.Unlock()
 
-	return shader
+	return shader, nil
 }
 
 // getOrCreatePipeline returns a cached compute pipeline entry (pipeline + bind group layout).
@@ -48,10 +58,20 @@ func (b *Backend) compileShader(name, code string) *wgpu.ShaderModule {
 //
 // Panics on failure because pipelines use statically embedded shaders.
 func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, entries []gputypes.BindGroupLayoutEntry) pipelineEntry {
+	entry, err := b.tryGetOrCreatePipeline(name, shader, entries)
+	if err != nil {
+		panic(err.Error())
+	}
+	return entry
+}
+
+// tryGetOrCreatePipeline is getOrCreatePipeline for callers that handle a failure.
+// The returned error wraps the device's, so errors.Is sees backend sentinels.
+func (b *Backend) tryGetOrCreatePipeline(name string, shader *wgpu.ShaderModule, entries []gputypes.BindGroupLayoutEntry) (pipelineEntry, error) {
 	b.mu.RLock()
 	if entry, exists := b.pipelines[name]; exists {
 		b.mu.RUnlock()
-		return entry
+		return entry, nil
 	}
 	b.mu.RUnlock()
 
@@ -61,7 +81,7 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, en
 		Entries: entries,
 	})
 	if err != nil {
-		panic(fmt.Sprintf("webgpu: failed to create bind group layout for %q: %v", name, err))
+		return pipelineEntry{}, fmt.Errorf("webgpu: failed to create bind group layout for %q: %w", name, err)
 	}
 
 	// Create pipeline layout with the single bind group layout.
@@ -71,7 +91,7 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, en
 	})
 	if err != nil {
 		bgl.Release()
-		panic(fmt.Sprintf("webgpu: failed to create pipeline layout for %q: %v", name, err))
+		return pipelineEntry{}, fmt.Errorf("webgpu: failed to create pipeline layout for %q: %w", name, err)
 	}
 
 	pipeline, err := b.device.CreateComputePipeline(&wgpu.ComputePipelineDescriptor{
@@ -83,7 +103,7 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, en
 	if err != nil {
 		pipelineLayout.Release()
 		bgl.Release()
-		panic(fmt.Sprintf("webgpu: failed to create compute pipeline %q: %v", name, err))
+		return pipelineEntry{}, fmt.Errorf("webgpu: failed to create compute pipeline %q: %w", name, err)
 	}
 
 	entry := pipelineEntry{pipeline: pipeline, layout: bgl, pipelineLayout: pipelineLayout}
@@ -91,7 +111,7 @@ func (b *Backend) getOrCreatePipeline(name string, shader *wgpu.ShaderModule, en
 	b.pipelines[name] = entry
 	b.mu.Unlock()
 
-	return entry
+	return entry, nil
 }
 
 // bglStorage returns a compute-visible storage buffer binding layout entry.
@@ -1254,13 +1274,103 @@ func (b *Backend) runSum(input *tensor.RawTensor) (*tensor.RawTensor, error) {
 
 	numElements := input.NumElements()
 
-	// For small tensors, use CPU
-	if numElements < 1024 {
+	// For small tensors, use CPU. Also when the device can't run the
+	// workgroup reduction correctly (see gpuSumUsable).
+	if numElements < gpuSumMinElements || !b.gpuSumUsable() {
 		return b.runSumCPU(input)
 	}
 
 	// GPU parallel reduction
 	return b.runSumGPU(input)
+}
+
+// gpuSumMinElements is the size from which Sum runs the GPU reduction; smaller
+// tensors are summed on the CPU, where the readback would cost more than the work.
+const gpuSumMinElements = 1024
+
+// gpuSumUsable reports whether the workgroup-reduction sum kernels give exact
+// results on this device. They rely on workgroup memory shared across a
+// workgroupBarrier, which gogpu/wgpu's software backend did not implement before
+// v0.34.8: up to v0.34.6 each invocation got a private copy and the sums came out
+// silently wrong; v0.34.7 refuses the pipeline (wgpu P1-SW-025). It is decided
+// once per backend, on the first Sum that would use the kernels, so it costs
+// nothing for programs that never sum large tensors. When it fails, Sum takes the
+// CPU path, which is correct on every device.
+func (b *Backend) gpuSumUsable() bool {
+	b.gpuSumCheck.once.Do(func() {
+		b.gpuSumCheck.err = b.checkGPUSum()
+	})
+	return b.gpuSumCheck.err == nil
+}
+
+// sumKernel returns the name and WGSL source of the sum reduction for dtype.
+func sumKernel(dtype tensor.DataType) (name, code string, err error) {
+	switch dtype {
+	case tensor.Float32:
+		return "globalSum", globalSumShader, nil
+	case tensor.Int32:
+		return "globalSumInt32", globalSumShaderInt32, nil
+	default:
+		return "", "", errUnsupportedDType(dtype)
+	}
+}
+
+// checkGPUSum runs both sum kernels on a known input that spans several
+// workgroups and a partial one, and compares the result with the exact sum.
+func (b *Backend) checkGPUSum() error {
+	for _, dtype := range []tensor.DataType{tensor.Float32, tensor.Int32} {
+		if err := b.checkGPUSumKernel(dtype); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkGPUSumKernel checks the sum kernel for one dtype.
+func (b *Backend) checkGPUSumKernel(dtype tensor.DataType) error {
+	const n = 3*workgroupSize + 5
+	name, code, err := sumKernel(dtype)
+	if err != nil {
+		return err
+	}
+	shader, err := b.tryCompileShader(name, code)
+	if err != nil {
+		return err
+	}
+	if _, err := b.tryGetOrCreatePipeline(name, shader, bglUnary); err != nil {
+		return err
+	}
+
+	input, err := tensor.NewRaw(tensor.Shape{n}, dtype, tensor.WebGPU)
+	if err != nil {
+		return err
+	}
+	// Small integers keep every partial and total sum exact in float32 too.
+	want := 0
+	for i := range n {
+		v := i%7 - 3
+		want += v
+		if dtype == tensor.Float32 {
+			input.AsFloat32()[i] = float32(v)
+		} else {
+			input.AsInt32()[i] = int32(v)
+		}
+	}
+
+	out, err := b.runSumGPU(input)
+	if err != nil {
+		return err
+	}
+	var got int
+	if dtype == tensor.Float32 {
+		got = int(out.AsFloat32()[0])
+	} else {
+		got = int(out.AsInt32()[0])
+	}
+	if got != want {
+		return fmt.Errorf("webgpu: %s kernel returned %d for a sum of %d", name, got, want)
+	}
+	return nil
 }
 
 // runSumCPU executes sum on CPU for small tensors.
@@ -1304,18 +1414,9 @@ func (b *Backend) runSumGPU(input *tensor.RawTensor) (*tensor.RawTensor, error) 
 	dtype := input.DType()
 	numElements := input.NumElements()
 
-	// Select shader based on dtype
-	var shaderName string
-	var shaderCode string
-	switch dtype {
-	case tensor.Float32:
-		shaderName = "globalSum"
-		shaderCode = globalSumShader
-	case tensor.Int32:
-		shaderName = "globalSumInt32"
-		shaderCode = globalSumShaderInt32
-	default:
-		return nil, fmt.Errorf("webgpu: unsupported dtype for Sum: %s", dtype)
+	shaderName, shaderCode, err := sumKernel(dtype)
+	if err != nil {
+		return nil, err
 	}
 
 	shader := b.compileShader(shaderName, shaderCode)

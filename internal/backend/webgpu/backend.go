@@ -170,6 +170,13 @@ type Backend struct {
 	// and used to select the subgroup MatMul path at dispatch time.
 	subgroupsEnabled bool
 
+	// gpuSumCheck records, once, whether the workgroup-reduction sum kernels give
+	// exact results on this device (see gpuSumUsable). A nil err means they do.
+	gpuSumCheck struct {
+		once sync.Once
+		err  error
+	}
+
 	// Memory tracking
 	memoryStats struct {
 		totalAllocatedBytes uint64
