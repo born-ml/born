@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **WebGPU `Sum` returned wrong results on the software adapter** for tensors of 1024 elements or more (TASK-181). The GPU reduction relies on workgroup memory shared across a barrier, which the gogpu/wgpu software backend does not implement yet: up to wgpu v0.34.6 each invocation saw its own copy (a sum of 4096 ones came out as 16), and v0.34.7 refuses the pipeline. Software is also what Born falls back to on machines without a usable GPU. The backend now checks the sum kernels once, on the first large `Sum`, against a known input; if the pipeline is refused or the result is wrong, `Sum` runs on the CPU. A new test covers sizes across the workgroup boundary in both evaluation modes
+
 ### Changed
 
 - **WebGPU software backend through the public wgpu API** — `GOGPU_GRAPHICS_API=software` (and the automatic fallback) now gets the software adapter with `RequestAdapterOptions.ForceFallbackAdapter` instead of building a device from `wgpu/hal/software` via `NewDeviceFromHAL`. Born no longer imports `wgpu/hal` or `wgpu/core` (only the `hal/allbackends` registration), which gogpu/wgpu is moving under `internal/`; a test enforces it (ADR-005). The deprecated `wgpu.Backends*` aliases are replaced with `gputypes.Backends*`
