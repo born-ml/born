@@ -630,39 +630,18 @@ func transposeDataInt64(in, out []int64, oldShape, newShape Shape, axes []int) {
 // Squeeze removes dimensions of size 1 at the specified axes.
 //
 // If no axes are specified, removes all dimensions of size 1.
-//
-//nolint:nestif // Squeeze has inherent complexity with axes handling
 func Squeeze(x *RawTensor, axes ...int) (*RawTensor, error) {
 	if x == nil {
 		return nil, fmt.Errorf("Squeeze: input tensor is nil")
 	}
 
-	newShape := make(Shape, 0, len(x.shape))
-
+	var newShape Shape
 	if len(axes) == 0 {
-		// Remove all dimensions of size 1
-		for _, dim := range x.shape {
-			if dim != 1 {
-				newShape = append(newShape, dim)
-			}
-		}
+		newShape = squeezeAllOnes(x.shape)
 	} else {
-		// Only remove specified axes
-		axisSet := make(map[int]bool)
-		for _, ax := range axes {
-			if ax < 0 {
-				ax = len(x.shape) + ax
-			}
-			axisSet[ax] = true
-		}
-		for i, dim := range x.shape {
-			if axisSet[i] {
-				if dim != 1 {
-					return nil, fmt.Errorf("Squeeze: cannot squeeze axis %d with size %d (must be 1)", i, dim)
-				}
-			} else {
-				newShape = append(newShape, dim)
-			}
+		var err error
+		if newShape, err = squeezeAxes(x.shape, axes); err != nil {
+			return nil, err
 		}
 	}
 
@@ -671,6 +650,41 @@ func Squeeze(x *RawTensor, axes ...int) (*RawTensor, error) {
 	}
 
 	return Reshape(x, newShape)
+}
+
+// squeezeAllOnes returns shape without its size-1 dimensions.
+func squeezeAllOnes(shape Shape) Shape {
+	newShape := make(Shape, 0, len(shape))
+	for _, dim := range shape {
+		if dim != 1 {
+			newShape = append(newShape, dim)
+		}
+	}
+	return newShape
+}
+
+// squeezeAxes returns shape without the given axes (negative axes count from
+// the end). Each removed axis must have size 1.
+func squeezeAxes(shape Shape, axes []int) (Shape, error) {
+	axisSet := make(map[int]bool, len(axes))
+	for _, ax := range axes {
+		if ax < 0 {
+			ax = len(shape) + ax
+		}
+		axisSet[ax] = true
+	}
+
+	newShape := make(Shape, 0, len(shape))
+	for i, dim := range shape {
+		if !axisSet[i] {
+			newShape = append(newShape, dim)
+			continue
+		}
+		if dim != 1 {
+			return nil, fmt.Errorf("Squeeze: cannot squeeze axis %d with size %d (must be 1)", i, dim)
+		}
+	}
+	return newShape, nil
 }
 
 // Unsqueeze adds dimensions of size 1 at the specified axes.
